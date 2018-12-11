@@ -10,10 +10,10 @@ set(CMAKE_MACOSX_RPATH 1)
 # Set the mount path of your pmem device where the structures should be stored
 set(PMEM_MNT_PATH "/mnt/pmem/test")
 
-option(ENABLE_LOG         "enables log output for e.g. debugging" OFF)
-option(BUILD_TEST_CASES   "build tests for PTable functionality"  ON )
-option(BUILD_GOOGLE_BENCH "build google benchmark"                ON )
-option(BUILD_BENCHMARKS   "build benchmarks for structures"       ON )
+option(ENABLE_LOG         "enables log output for e.g. debugging"       OFF)
+option(BUILD_TEST_CASES   "build tests for functionality of structures" ON )
+option(BUILD_GOOGLE_BENCH "build google benchmark"                      ON )
+option(BUILD_BENCHMARKS   "build benchmarks for structures"             ON )
 
 ################################################################################
 # End of customization section                                                 #
