@@ -1,0 +1,58 @@
+#=============================================
+#
+# Define a macro to simplify building and linking test executables
+#
+#=============================================
+macro( build_test name)
+  include_directories(${TEST_INCLUDE_DIRS})
+  add_executable( ${name} "${name}.cpp" $<TARGET_OBJECTS:MainTest>)
+  set(DEPS dependencies)
+  if (${ARGC} GREATER 1) # extra dependencies
+    set(DEPS ${DEPS} ${ARGV1})
+  endif()
+  target_link_libraries( ${name} ${DEPS})
+endmacro( build_test )
+
+macro( build_bench name )
+  include_directories(${TEST_INCLUDE_DIRS})
+  add_executable( ${name} "${name}.cpp")
+  add_dependencies(${name} BENCHMARK_DEPS)
+  set(DEPS dependencies ${BENCHMARK_LIB})
+  if (${ARGC} GREATER 1) # extra dependencies
+    set(DEPS ${DEPS} ${ARGV1})
+  endif()
+  target_link_libraries( ${name} ${DEPS} )
+endmacro( build_bench )
+
+#=============================================
+#
+# Define a macro to simplify adding tests
+#
+#=============================================
+macro (do_test name)
+  add_test(
+    NAME ${name}
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${name}"
+    )
+  if (${ARGC} GREATER 1) # extra dependencies
+    build_test( ${name} ${ARGV1})
+  else()
+    build_test( ${name})
+  endif()
+endmacro(do_test)
+
+macro (do_bench name)
+  add_test(
+    NAME ${name}
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${name}"
+    )
+  if (${ARGC} GREATER 1) # extra dependencies
+    build_bench( ${name} ${ARGV1})
+  else()
+    build_bench( ${name})
+  endif()
+endmacro(do_bench)
+
+set (CTEST_ENVIRONMENT
+  "DYLD_FALLBACK_LIBRARY_PATH=${DYLD_LIBRARY_PATH}"
+  )

@@ -1,0 +1,11 @@
+#ifndef NVM_DS_CONFIG_H
+#define NVM_DS_CONFIG_H
+#include <iostream>
+
+#define LOG(msg) if(@LOG@) std::cout << "[DBIS:NVM_DS] " << msg << '\n';
+
+namespace dbis {
+  const std::string gPmemPath("@PMEM_MNT_PATH@/");
+}
+
+#endif /* NVM_DS_CONFIG_H */
