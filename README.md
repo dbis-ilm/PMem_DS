@@ -8,7 +8,7 @@ This is a repository for persistent data structures based on non-volatile memory
 - [ ] Alexander's implementations
 - [ ] Arun's implementations
 - [ ] Link this repo to PFabric
-- [ ] Data structure installation
+- [x] Data structure installation
 - [ ] Data structure common benchmark
 - [ ] Documentation
 
