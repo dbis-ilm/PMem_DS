@@ -1,11 +1,35 @@
-#ifndef NVM_DS_CONFIG_H
-#define NVM_DS_CONFIG_H
-#include <iostream>
+#ifndef DBIS_CONFIG_H
+#define DBIS_CONFIG_H
 
-#define LOG(msg) if(@LOG@) std::cout << "[DBIS:NVM_DS] " << msg << '\n';
+#ifdef ENABLE_LOG
+#include <iostream>
+#define LOG(msg) std::cout << "[DBIS:NVM_DS] " << msg << '\n';
+#else
+#define LOG(msg)
+#endif
+
+#ifdef ENABLE_PROFILING
+#include <memory>
+#include <IdxProfile.hpp>
+#define PROFILE_DECL std::unique_ptr<IdxProfile> profile;
+#define PROFILE_INIT profile = std::make_unique<IdxProfile>();
+#define PROFILE_READ(n) profile->read(n);
+#define PROFILE_WRITE(n) profile->write(n);
+#define PROFILE_SPLIT profile->split();
+#define PROFILE_UNDERFLOW profile->underflow();
+#define PROFILE_PRINT void printIdxProfile() { profile->print(); }
+#else
+#define PROFILE_DECL
+#define PROFILE_INIT
+#define PROFILE_READ(n)
+#define PROFILE_WRITE(n)
+#define PROFILE_SPLIT
+#define PROFILE_UNDERFLOW
+#define PROFILE_PRINT
+#endif
 
 namespace dbis {
   const std::string gPmemPath("@PMEM_MNT_PATH@/");
 }
 
-#endif /* NVM_DS_CONFIG_H */
+#endif /* DBIS_CONFIG_H */

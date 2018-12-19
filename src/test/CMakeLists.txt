@@ -8,6 +8,9 @@ if (BUILD_TEST_CASES)
     add_library(MainTest OBJECT MainTest.cpp)
     # PBPTree
     do_test(PBPTreeTest)
+    do_test(UnsortedPBPTreeTest)
+    # FPTree
+    do_test(FPTreeTest)
     # PTable
     do_test(VTableInfoTest ptable)
     do_test(BDCCInfoTest ptable)
