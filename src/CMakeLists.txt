@@ -10,11 +10,16 @@ set(CMAKE_MACOSX_RPATH 1)
 # Set the mount path of your pmem device where the structures should be stored
 set(PMEM_MNT_PATH "/mnt/pmem/test")
 
+# Installation path (creates include and lib within this directory)
+if(NOT PROJECT_INSTALL_DIR)
+  set(PROJECT_INSTALL_DIR ${CMAKE_INSTALL_PREFIX})
+endif()
+
 option(ENABLE_LOG         "enables log output for e.g. debugging"        OFF)
-option(ENABLE_PROFILING   "enables profiling for some of the structures" ON )
+option(ENABLE_PROFILING   "enables profiling for some of the structures" OFF)
 option(BUILD_TEST_CASES   "build tests for functionality of structures"  ON )
-option(BUILD_GOOGLE_BENCH "build google benchmark"                       ON )
-option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
+option(BUILD_GOOGLE_BENCH "build google benchmark"                       OFF)
+option(BUILD_BENCHMARKS   "build benchmarks for structures"              OFF)
 
 ################################################################################
 # End of customization section                                                 #
@@ -22,16 +27,10 @@ option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
 
 if(ENABLE_LOG)
   add_definitions("-DENABLE_LOG")
-  set(LOG 1)
-else()
-  set(LOG 0)
 endif()
 
 if(ENABLE_PROFILING)
   add_definitions("-DENABLE_PROFILING")
-  set(PROFILING 1)
-else()
-  set(PROFILING 0)
 endif()
 
 # Benchmark test requires benchmark library
@@ -40,7 +39,7 @@ if (BUILD_BENCHMARKS)
 endif()
 
 # C++ compiler flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -g -O0 -Wsign-compare")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -g -O3 -Wsign-compare")
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs -Wno-#pragma-messages")
 elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
@@ -115,6 +114,19 @@ add_library(dependencies SHARED ${dep_sources}) # triggers building of dependenc
 target_link_libraries(dependencies ${PMDK_LIBRARIES} ndctl daxctl)
 set_target_properties(dependencies PROPERTIES LINKER_LANGUAGE CXX)
 
+#################
+# Install Paths #
+#################
+#
+#set(PROJECT_LIBS ${PROJECT_LIBS})
+set(PROJECT_INCLUDES_D ${PROJECT_INCLUDES_D})
+set(PROJECT_INCLUDES_F ${PROJECT_INCLUDES_F}
+                       ${CMAKE_BINARY_DIR}/generated/config.h
+                       ${CMAKE_CURRENT_SOURCE_DIR}/IdxProfile.hpp)
+
+set(PROJECT_LIB_DIR ${PROJECT_INSTALL_DIR}/lib)
+set(PROJECT_INCLUDE_DIR ${PROJECT_INSTALL_DIR}/include)
+
 #############################
 # Including Data Structures #
 #############################
@@ -133,7 +145,24 @@ enable_testing()
 add_subdirectory(test)
 
 #############################################
-# Micor-benchmarking using Google Benchmark #
+# Micro-benchmarking using Google Benchmark #
 #############################################
 #
 add_subdirectory(bench)
+
+###################
+# Install Process #
+###################
+#
+#foreach(LIB ${PROJECT_LIBS})
+#  install(TARGETS ${LIB} DESTINATION ${PROJECT_LIB_DIR})
+#endforeach(LIB)
+
+install(DIRECTORY ${PROJECT_INCLUDES_D}
+  DESTINATION ${PROJECT_INCLUDE_DIR}
+  FILES_MATCHING
+  PATTERN "*.hpp"
+  PATTERN "*.h"
+)
+
+install(FILES ${PROJECT_INCLUDES_F} DESTINATION ${PROJECT_INCLUDE_DIR})

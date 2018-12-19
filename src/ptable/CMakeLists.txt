@@ -3,20 +3,6 @@ project (ptable)
 set (PTable_VERSION_MAJOR 0)
 set (PTable_VERSION_MINOR 1)
 
-################################################################################
-# customization section                                                        #
-################################################################################
-
-# Installation path
-if(NOT PTABLE_DIR)
-  set(PTABLE_DIR "/usr/local/ptable")
-endif()
-
-################################################################################
-# End of customization section                                                 #
-################################################################################
-
-
 ###########################
 # Building PTable library #
 ###########################
@@ -43,23 +29,10 @@ target_link_libraries(ptable dependencies)
 # Installation #
 ################
 #
-set(PTABLE_LIBS ptable)
-set(PTABLE_LIB_DIR "${PTABLE_DIR}/lib")
-set(PTABLE_INCLUDE_DIR "${PTABLE_DIR}/include")
-
-foreach(LIB ${PTABLE_LIBS})
-install(TARGETS ${LIB} DESTINATION ${PTABLE_LIB_DIR})
-endforeach(LIB)
-
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/core"
-                  "${CMAKE_BINARY_DIR}/generated/"
-   DESTINATION ${PTABLE_INCLUDE_DIR}
-   FILES_MATCHING
-   PATTERN "*.hpp"
-   PATTERN "*.h"
-)
-
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/PBPTree.hpp"
-              "${CMAKE_CURRENT_SOURCE_DIR}/PTable.hpp"
-  DESTINATION ${PTABLE_INCLUDE_DIR}
-)
+install(TARGETS ptable DESTINATION ${PROJECT_LIB_DIR})
+set(PROJECT_INCLUDES_D ${PROJECT_INCLUDES_D}
+                       ${CMAKE_CURRENT_SOURCE_DIR}/core
+                       PARENT_SCOPE)
+set(PROJECT_INCLUDES_F ${PROJECT_INCLUDES_F}
+                       ${CMAKE_CURRENT_SOURCE_DIR}/PTable.hpp
+                       PARENT_SCOPE)
