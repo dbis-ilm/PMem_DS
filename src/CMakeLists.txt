@@ -10,19 +10,28 @@ set(CMAKE_MACOSX_RPATH 1)
 # Set the mount path of your pmem device where the structures should be stored
 set(PMEM_MNT_PATH "/mnt/pmem/test")
 
-option(ENABLE_LOG         "enables log output for e.g. debugging"       OFF)
-option(BUILD_TEST_CASES   "build tests for functionality of structures" ON )
-option(BUILD_GOOGLE_BENCH "build google benchmark"                      ON )
-option(BUILD_BENCHMARKS   "build benchmarks for structures"             ON )
+option(ENABLE_LOG         "enables log output for e.g. debugging"        OFF)
+option(ENABLE_PROFILING   "enables profiling for some of the structures" ON )
+option(BUILD_TEST_CASES   "build tests for functionality of structures"  ON )
+option(BUILD_GOOGLE_BENCH "build google benchmark"                       ON )
+option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
 
 ################################################################################
 # End of customization section                                                 #
 ################################################################################
 
 if(ENABLE_LOG)
+  add_definitions("-DENABLE_LOG")
   set(LOG 1)
 else()
   set(LOG 0)
+endif()
+
+if(ENABLE_PROFILING)
+  add_definitions("-DENABLE_PROFILING")
+  set(PROFILING 1)
+else()
+  set(PROFILING 0)
 endif()
 
 # Benchmark test requires benchmark library
@@ -31,7 +40,7 @@ if (BUILD_BENCHMARKS)
 endif()
 
 # C++ compiler flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -g -O3 -Wsign-compare")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -g -O0 -Wsign-compare")
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs -Wno-#pragma-messages")
 elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
@@ -98,7 +107,8 @@ set(dep_sources
 
 configure_file(config.h.in ${CMAKE_BINARY_DIR}/generated/config.h)
 
-include_directories(${CMAKE_BINARY_DIR}/generated
+include_directories(${PROJECT_SOURCE_DIR}
+                    ${CMAKE_BINARY_DIR}/generated
                     ${THIRD_PARTY_DIR}
                     ${THIRD_PARTY_DIR}/pmdk/include)
 add_library(dependencies SHARED ${dep_sources}) # triggers building of dependencies
@@ -110,6 +120,7 @@ set_target_properties(dependencies PROPERTIES LINKER_LANGUAGE CXX)
 #############################
 #
 add_subdirectory(pbptree)   # Persistent version of B⁺-Tree
+add_subdirectory(fptree)    # Remake of the FPTree
 add_subdirectory(ptable)    # BDCC-based analytical table structure
 
 #########################

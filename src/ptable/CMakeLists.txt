@@ -16,11 +16,6 @@ endif()
 # End of customization section                                                 #
 ################################################################################
 
-if(ENABLE_LOG)
-  set(LOG 1) 
-else()
-  set(LOG 0) 
-endif()
 
 ###########################
 # Building PTable library #

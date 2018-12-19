@@ -1,6 +1,16 @@
 NVM-based Data Strucutres
 =========================
 This is a repository for persistent data structures based on non-volatile memory (NVM).
+## TODOs: ##
+- [x] PBPTree (B⁺-Tree for NVM)
+- [x] PTable (BDCC + NVM)
+- [x] Steffen's implementations
+- [ ] Alexander's implementations
+- [ ] Arun's implementations
+- [ ] Link this repo to PFabric
+- [ ] Data structure installation
+- [ ] Data structure common benchmark
+- [ ] Documentation
 
 ## License ##
 The structures are licensed under GPLv3.
