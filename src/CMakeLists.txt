@@ -1,7 +1,5 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.8)
 project (nvm-DS)
-
-set(CMAKE_MACOSX_RPATH 1)
 
 ################################################################################
 # customization section                                                        #
@@ -39,19 +37,18 @@ if (BUILD_BENCHMARKS)
 endif()
 
 # C++ compiler flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -g -O3 -Wsign-compare")
-if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs -Wno-#pragma-messages")
-elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -Wno-unused")
-elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Intel")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd488 -wd597")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS_DEBUG -g)
+set(CMAKE_CXX_FLAGS_RELEASE -O3)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-unused -Wno-uninitialized")
 
 # show used compiler
 message("Using Compiler: ${CMAKE_CXX_COMPILER_ID}.")
+
+set(CMAKE_MACOSX_RPATH 1)
 
 # Add our CMake directory to CMake's module path
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/")
@@ -72,12 +69,9 @@ endif()
 ############################
 #
 if (BUILD_GOOGLE_BENCH)
-  add_custom_target(BENCHMARK_DEPS ALL DEPENDS ${THIRD_PARTY_DIR}/benchmark)
   set(TEST_INCLUDE_DIRS ${THIRD_PARTY_DIR}/benchmark/include
     CACHE INTERNAL "TESTING: Include Directories" FORCE)
   set (BENCHMARK_LIB "${THIRD_PARTY_DIR}/benchmark/lib/libbenchmark.a")
-else()
-  set (BENCHMARK_LIB "")
 endif()
 
 #####################################
@@ -97,22 +91,16 @@ set (PMDK_LIBRARIES
 # Pre-built common dependencies #
 #################################
 #
-set(dep_sources
-  ${THIRD_PARTY_DIR}/fmt
-  ${THIRD_PARTY_DIR}/catch
-  ${THIRD_PARTY_DIR}/pmdk
-  ${THIRD_PARTY_DIR}/pmdk-cpp
-)
-
 configure_file(config.h.in ${CMAKE_BINARY_DIR}/generated/config.h)
 
 include_directories(${PROJECT_SOURCE_DIR}
                     ${CMAKE_BINARY_DIR}/generated
                     ${THIRD_PARTY_DIR}
                     ${THIRD_PARTY_DIR}/pmdk/include)
-add_library(dependencies SHARED ${dep_sources}) # triggers building of dependencies
-target_link_libraries(dependencies ${PMDK_LIBRARIES} ndctl daxctl)
-set_target_properties(dependencies PROPERTIES LINKER_LANGUAGE CXX)
+add_library(nvmDS_deps STATIC ${THIRD_PARTY_DIR}/pmdk)
+add_dependencies(nvmDS_deps fmt_target catch_target pmdk_target) #< executes custom commands
+target_link_libraries(nvmDS_deps ${PMDK_LIBRARIES} ndctl daxctl)
+set_target_properties(nvmDS_deps PROPERTIES LINKER_LANGUAGE CXX)
 
 #################
 # Install Paths #

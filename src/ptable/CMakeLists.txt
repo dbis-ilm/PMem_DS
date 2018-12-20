@@ -18,7 +18,7 @@ set(TEST_INCLUDE_DIRS ${TEST_INCLUDE_DIRS}
 set(ptable_sources core/PTableInfo.cpp)
 
 add_library(ptable SHARED ${ptable_sources})
-target_link_libraries(ptable dependencies)
+target_link_libraries(ptable nvmDS_deps)
 
 #get_property(dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES)
 #foreach(dir ${dirs})

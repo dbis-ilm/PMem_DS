@@ -17,6 +17,7 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${Catch_SOURCE_DIR}/single_include/catch2/catch.hpp
                 ${PROJECT_SOURCE_DIR}/test)
+add_custom_target(catch_target DEPENDS ${THIRD_PARTY_DIR}/catch)
 
 #--------------------------------------------------------------------------------
 # the format library
@@ -38,6 +39,7 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${Format_SOURCE_DIR}/include/fmt/core.h
                 ${THIRD_PARTY_DIR}/fmt)
+add_custom_target(fmt_target DEPENDS ${THIRD_PARTY_DIR}/fmt)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_HEADER_ONLY=1")
 include_directories("${THIRD_PARTY_DIR}/fmt")
@@ -74,6 +76,7 @@ add_custom_command(
 	            ${benchmark_SOURCE_DIR}/src/libbenchmark.a
 	            ${THIRD_PARTY_DIR}/benchmark/lib
 )
+add_custom_target(benchmark_target DEPENDS ${THIRD_PARTY_DIR}/benchmark)
 
 endif()
 
@@ -100,11 +103,8 @@ download_project(PROJ               pmdk-cpp
 )
 add_custom_command(
         OUTPUT ${THIRD_PARTY_DIR}/pmdk-cpp
-        #        COMMAND ${CMAKE_COMMAND} -E make_directory ${pmdk-cpp_SOURCE_DIR}/build
-        #COMMAND ${CMAKE_COMMAND} -E chdir ${pmdk-cpp_SOURCE_DIR}/build cmake .. -DCMAKE_PREFIX_PATH=${THIRD_PARTY_DIR}/pmdk -DCMAKE_INSTALL_PREFIX=${THIRD_PARTY_DIR}/pmdk
-        #COMMAND ${CMAKE_COMMAND} -E chdir ${pmdk-cpp_SOURCE_DIR}/build $(MAKE)
-        #COMMAND ${CMAKE_COMMAND} -E chdir ${pmdk-cpp_SOURCE_DIR}/build $(MAKE) install
 	    COMMAND ${CMAKE_COMMAND} -E copy_directory
 	            ${pmdk-cpp_SOURCE_DIR}/include
 	            ${THIRD_PARTY_DIR}/pmdk/include
 )
+add_custom_target(pmdk_target DEPENDS ${THIRD_PARTY_DIR}/pmdk ${THIRD_PARTY_DIR}/pmdk-cpp)
