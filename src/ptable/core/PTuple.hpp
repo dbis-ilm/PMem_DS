@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 DBIS Group - TU Ilmenau, All Rights Reserved.
+ * Copyright (C) 2017-2019 DBIS Group - TU Ilmenau, All Rights Reserved.
  *
  * This file is part of our NVM-based Data Structure Repository.
  *
