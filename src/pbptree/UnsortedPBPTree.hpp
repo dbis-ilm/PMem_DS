@@ -28,7 +28,7 @@
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
-#include "ElementOfRankK.hpp"
+#include "utils/ElementOfRankK.hpp"
 
 #define BRANCH_PADDING  0
 #define LEAF_PADDING    0
@@ -968,26 +968,23 @@ class UnsortedPBPTree {
       // the node is full, so we must split it
       // determine the split position by finding the median in unsorted array of keys
       PROFILE_SPLIT
-      KeyType data[M];
-      for (auto i = 0u; i < M; i++) {
-        PROFILE_READ()
-        data[i] = node->keys.get_ro()[i];
-      }
+      auto data = node->keys.get_ro();
+      PROFILE_READ(M)
 
-      KeyType middle = ElementOfRank::elementOfRank((M + 1) / 2 + 1, data, M, 0);
+      KeyType middle = ElementOfRankK::elementOfRankK((M + 1) / 2, data, 0, M);
       // move all entries with greater or equal keys to a new sibling node
       persistent_ptr<LeafNode> sibling = newLeafNode();
       auto node_filled = 0u, sibling_filled = 0u;
       for (auto i = 0u; i < node->numKeys; i++) {
         PROFILE_READ()
         KeyType currkey = node->keys.get_ro()[i];
-        if (currkey>=middle){
+        if (currkey > middle){
           PROFILE_READ()
           PROFILE_WRITE(2)
           sibling->keys.get_rw()[sibling_filled] = currkey;
           sibling->values.get_rw()[sibling_filled] = node->values.get_ro()[i];
           sibling_filled++;
-        } else{
+        } else {
           PROFILE_READ()
           PROFILE_WRITE(2)
           node->keys.get_rw()[node_filled] = currkey;
@@ -1015,7 +1012,7 @@ class UnsortedPBPTree {
       split = true;
       splitInfo->leftChild = node;
       splitInfo->rightChild = sibling;
-      splitInfo->key = middle;
+      splitInfo->key = sibling->keys.get_ro()[findMinKeyAtLeafNode(sibling)];
     } else {
       // otherwise, we can simply insert the new entry at the last position
       insertInLeafNodeAtLastPosition(node, key, val);

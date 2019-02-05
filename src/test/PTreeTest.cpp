@@ -23,10 +23,10 @@
 #include "catch.hpp"
 #include "config.h"
 #define UNIT_TESTS 1
-#include "UnsortedPBPTree.hpp"
+#include "PTree.hpp"
 
 
-using namespace dbis::pbptree;
+using namespace dbis::fptree;
 
 using pmem::obj::delete_persistent;
 using pmem::obj::delete_persistent_atomic;
@@ -36,53 +36,53 @@ using pmem::obj::persistent_ptr;
 using pmem::obj::pool;
 using pmem::obj::transaction;
 
-TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
-  using PBPTreeType  = UnsortedPBPTree<int, int, 10, 10> ;
-  using PBPTreeType2 = UnsortedPBPTree<int, int, 4, 4>;
-  using PBPTreeType3 = UnsortedPBPTree<int, int, 6, 6>;
-  using PBPTreeType4 = UnsortedPBPTree<int, int, 12, 12>;
-  using PBPTreeType5 = UnsortedPBPTree<int, int, 20, 20>;
+TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
+  using PTreeType  = PTree<int, int, 10, 10> ;
+  using PTreeType2 = PTree<int, int, 4, 4>;
+  using PTreeType3 = PTree<int, int, 6, 6>;
+  using PTreeType4 = PTree<int, int, 12, 12>;
+  using PTreeType5 = PTree<int, int, 20, 20>;
 
   struct root {
-    persistent_ptr<PBPTreeType> btree1;
-    persistent_ptr<PBPTreeType2> btree2;
-    persistent_ptr<PBPTreeType3> btree3;
-    persistent_ptr<PBPTreeType4> btree4;
-    persistent_ptr<PBPTreeType5> btree5;
+    persistent_ptr<PTreeType> btree1;
+    persistent_ptr<PTreeType2> btree2;
+    persistent_ptr<PTreeType3> btree3;
+    persistent_ptr<PTreeType4> btree4;
+    persistent_ptr<PTreeType5> btree5;
   };
 
   pool<root> pop;
-  const std::string path = dbis::gPmemPath + "UnsortedPBPTreeTest";
+  const std::string path = dbis::gPmemPath + "PTreeTest";
 
   //std::remove(path.c_str());
   if (access(path.c_str(), F_OK) != 0) {
-    pop = pool<root>::create(path, "UnsortedPBPTree", ((std::size_t)(1024*1024*16)));
+    pop = pool<root>::create(path, "PTree", ((std::size_t)(1024*1024*16)));
   } else {
-    pop = pool<root>::open(path, "UnsortedPBPTree");
+    pop = pool<root>::open(path, "PTree");
   }
 
   auto q = pop.root();
 
   if (!q->btree1)
-    transaction::run(pop, [&] { q->btree1 = make_persistent<PBPTreeType>(); });
+    transaction::run(pop, [&] { q->btree1 = make_persistent<PTreeType>(); });
 
   if (!q->btree2)
-    transaction::run(pop, [&] { q->btree2 = make_persistent<PBPTreeType2>(); });
+    transaction::run(pop, [&] { q->btree2 = make_persistent<PTreeType2>(); });
 
   if (!q->btree3)
-    transaction::run(pop, [&] { q->btree3 = make_persistent<PBPTreeType3>(); });
+    transaction::run(pop, [&] { q->btree3 = make_persistent<PTreeType3>(); });
 
   if (!q->btree4)
-    transaction::run(pop, [&] { q->btree4 = make_persistent<PBPTreeType4>(); });
+    transaction::run(pop, [&] { q->btree4 = make_persistent<PTreeType4>(); });
 
   if (!q->btree5)
-    transaction::run(pop, [&] { q->btree5 = make_persistent<PBPTreeType5>(); });
+    transaction::run(pop, [&] { q->btree5 = make_persistent<PTreeType5>(); });
 
 
   /* ------------------------------------------------------------------ */
   SECTION("Looking up a key in an inner node") {
     auto node = q->btree1->newBranchNode();
-    for (auto i = 0; i < 10; i++) node->keys.get_rw()[i] = i + 1;
+    for (auto i = 0; i < 10; i++) node->keys[i] = i + 1;
     node->numKeys = 10;
 
     REQUIRE(q->btree1->lookupPositionInBranchNode(node, 0) == 0);
@@ -111,33 +111,33 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Balancing two inner nodes from left to right") {
     auto btree = q->btree2;
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 7> leafNodes = {{btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 7> leafNodes = {{btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
         btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode()}};
 
     auto node1 = btree->newBranchNode();
     auto node2 = btree->newBranchNode();
     auto node3 = btree->newBranchNode();
 
-    node1->keys.get_rw()[0] = 8;
-    node1->keys.get_rw()[1] = 20;
-    node1->children.get_rw()[0] = node2;
-    node1->children.get_rw()[1] = node3;
+    node1->keys[0] = 8;
+    node1->keys[1] = 20;
+    node1->children[0] = node2;
+    node1->children[1] = node3;
     node1->numKeys = 2;
 
-    node2->keys.get_rw()[0] = 3;
-    node2->keys.get_rw()[1] = 4;
-    node2->keys.get_rw()[2] = 5;
-    node2->keys.get_rw()[3] = 6;
-    node2->children.get_rw()[0] = leafNodes[0];
-    node2->children.get_rw()[1] = leafNodes[1];
-    node2->children.get_rw()[2] = leafNodes[2];
-    node2->children.get_rw()[3] = leafNodes[3];
-    node2->children.get_rw()[4] = leafNodes[4];
+    node2->keys[0] = 3;
+    node2->keys[1] = 4;
+    node2->keys[2] = 5;
+    node2->keys[3] = 6;
+    node2->children[0] = leafNodes[0];
+    node2->children[1] = leafNodes[1];
+    node2->children[2] = leafNodes[2];
+    node2->children[3] = leafNodes[3];
+    node2->children[4] = leafNodes[4];
     node2->numKeys = 4;
 
-    node3->keys.get_rw()[0] = 10;
-    node3->children.get_rw()[0] = leafNodes[5];
-    node3->children.get_rw()[1] = leafNodes[6];
+    node3->keys[0] = 10;
+    node3->children[0] = leafNodes[5];
+    node3->children[1] = leafNodes[6];
     node3->numKeys = 1;
 
     btree->rootNode = node1;
@@ -153,23 +153,23 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     std::array<int, 2> expectedKeys2{{3, 4}};
     std::array<int, 3> expectedKeys3{{6, 8, 10}};
 
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 3> expectedChildren2 = {{ leafNodes[0], leafNodes[1], leafNodes[2] }};
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 4> expectedChildren3 = {{ leafNodes[3], leafNodes[4], leafNodes[5], leafNodes[6] }};
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 3> expectedChildren2 = {{ leafNodes[0], leafNodes[1], leafNodes[2] }};
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 4> expectedChildren3 = {{ leafNodes[3], leafNodes[4], leafNodes[5], leafNodes[6] }};
 
     REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
-                       std::begin(node1->keys.get_ro())));
+                       std::begin(node1->keys)));
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
-                       std::begin(node2->keys.get_ro())));
+                       std::begin(node2->keys)));
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
-                       std::begin(node3->keys.get_ro())));
+                       std::begin(node3->keys)));
 
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 3> node2Children;
-    std::transform(std::begin(node2->children.get_rw()), std::end(node2->children.get_rw()), std::begin(node2Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 3> node2Children;
+    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
 
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 4> node3Children;
-    std::transform(std::begin(node3->children.get_rw()), std::end(node3->children.get_rw()), std::begin(node3Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 4> node3Children;
+    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -177,34 +177,34 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Balancing two inner nodes from right to left") {
     auto btree = q->btree2;
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 7> leafNodes = {{btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 7> leafNodes = {{btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
         btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode()}};
 
     auto node1 = btree->newBranchNode();
     auto node2 = btree->newBranchNode();
     auto node3 = btree->newBranchNode();
 
-    node1->keys.get_rw()[0] = 4;
-    (node1->keys.get_rw())[1] = 20;
-    (node1->children.get_rw())[0] = node2;
-    (node1->children.get_rw())[1] = node3;
+    node1->keys[0] = 4;
+    node1->keys[1] = 20;
+    node1->children[0] = node2;
+    node1->children[1] = node3;
     node1->numKeys = 2;
 
-    (node2->keys.get_rw())[0] = 3;
-    (node2->children.get_rw())[0] = leafNodes[0];
-    (node2->children.get_rw())[1] = leafNodes[1];
+    node2->keys[0] = 3;
+    node2->children[0] = leafNodes[0];
+    node2->children[1] = leafNodes[1];
 
     node2->numKeys = 1;
 
-    (node3->keys.get_rw())[0] = 5;
-    (node3->keys.get_rw())[1] = 6;
-    (node3->keys.get_rw())[2] = 7;
-    (node3->keys.get_rw())[3] = 8;
-    (node3->children.get_rw())[0] = leafNodes[2];
-    (node3->children.get_rw())[1] = leafNodes[3];
-    (node3->children.get_rw())[2] = leafNodes[4];
-    (node3->children.get_rw())[3] = leafNodes[5];
-    (node3->children.get_rw())[4] = leafNodes[6];
+    node3->keys[0] = 5;
+    node3->keys[1] = 6;
+    node3->keys[2] = 7;
+    node3->keys[3] = 8;
+    node3->children[0] = leafNodes[2];
+    node3->children[1] = leafNodes[3];
+    node3->children[2] = leafNodes[4];
+    node3->children[3] = leafNodes[5];
+    node3->children[4] = leafNodes[6];
 
     node3->numKeys = 4;
 
@@ -221,21 +221,21 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     std::array<int, 3> expectedKeys2{{3, 4, 5}};
     std::array<int, 2> expectedKeys3{{7, 8}};
 
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 4> expectedChildren2 = {{ leafNodes[0], leafNodes[1], leafNodes[2], leafNodes[3] }};
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 3> expectedChildren3 = {{ leafNodes[4], leafNodes[5], leafNodes[6] }};
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 4> expectedChildren2 = {{ leafNodes[0], leafNodes[1], leafNodes[2], leafNodes[3] }};
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 3> expectedChildren3 = {{ leafNodes[4], leafNodes[5], leafNodes[6] }};
 
     REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
-                       std::begin(node1->keys.get_ro())));
+                       std::begin(node1->keys)));
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
-                       std::begin(node2->keys.get_ro())));
+                       std::begin(node2->keys)));
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
-                       std::begin(node3->keys.get_ro())));
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 4> node2Children;
-    std::transform(std::begin(node2->children.get_rw()), std::end(node2->children.get_rw()), std::begin(node2Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+                       std::begin(node3->keys)));
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 4> node2Children;
+    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 3> node3Children;
-    std::transform(std::begin(node3->children.get_rw()), std::end(node3->children.get_rw()), std::begin(node3Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 3> node3Children;
+    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -243,12 +243,12 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Handling of underflow at a inner node by rebalance") {
     auto btree = q->btree2;
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 6> leafNodes = {{ btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 6> leafNodes = {{ btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
         btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode()}};
 
-    std::array<persistent_ptr<PBPTreeType2::BranchNode>, 3> innerNodes = {{ btree->newBranchNode(), btree->newBranchNode(), btree->newBranchNode()}};
+    std::array<PTreeType2::BranchNode*, 3> innerNodes = {{ btree->newBranchNode(), btree->newBranchNode(), btree->newBranchNode()}};
 
-    PBPTreeType2::SplitInfo splitInfo;
+    PTreeType2::SplitInfo splitInfo;
     btree->insertInLeafNode(leafNodes[0], 1, 10, &splitInfo);
     btree->insertInLeafNode(leafNodes[0], 2, 20, &splitInfo);
     btree->insertInLeafNode(leafNodes[0], 3, 30, &splitInfo);
@@ -273,34 +273,34 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
 
     {
       auto n = innerNodes[0];
-      (n->keys.get_rw())[0] = 7;
-      (n->children.get_rw())[0] = innerNodes[1];
-      (n->children.get_rw())[1] = innerNodes[2];
+      n->keys[0] = 7;
+      n->children[0] = innerNodes[1];
+      n->children[1] = innerNodes[2];
       n->numKeys = 1;
     }
     {
       auto n = innerNodes[1];
-      (n->keys.get_rw())[0] = 5;
-      (n->children.get_rw())[0] = leafNodes[0];
-      (n->children.get_rw())[1] = leafNodes[1];
+      n->keys[0] = 5;
+      n->children[0] = leafNodes[0];
+      n->children[1] = leafNodes[1];
       n->numKeys = 1;
     }
     {
       auto n = innerNodes[2];
-      (n->keys.get_rw())[0] = 9;
-      (n->keys.get_rw())[1] = 11;
-      (n->keys.get_rw())[2] = 13;
-      (n->children.get_rw())[0] = leafNodes[2];
-      (n->children.get_rw())[1] = leafNodes[3];
-      (n->children.get_rw())[2] = leafNodes[4];
-      (n->children.get_rw())[3] = leafNodes[5];
+      n->keys[0] = 9;
+      n->keys[1] = 11;
+      n->keys[2] = 13;
+      n->children[0] = leafNodes[2];
+      n->children[1] = leafNodes[3];
+      n->children[2] = leafNodes[4];
+      n->children[3] = leafNodes[5];
       n->numKeys = 3;
     }
 
     btree->underflowAtBranchLevel(innerNodes[0], 0, innerNodes[1]);
 
     REQUIRE(innerNodes[0]->numKeys == 1);
-    REQUIRE((innerNodes[0]->keys.get_ro())[0] == 9);
+    REQUIRE(innerNodes[0]->keys[0] == 9);
 
     REQUIRE(innerNodes[1]->numKeys == 2);
     REQUIRE(innerNodes[2]->numKeys == 2);
@@ -309,51 +309,51 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     std::array<int, 2> expectedKeys2{{11, 13}};
 
     REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
-                       std::begin(innerNodes[1]->keys.get_ro())));
+                       std::begin(innerNodes[1]->keys)));
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
-                       std::begin(innerNodes[2]->keys.get_ro())));
+                       std::begin(innerNodes[2]->keys)));
 
   }
 
   /* ------------------------------------------------------------------ */
   SECTION("Merging two inner nodes") {
     auto btree = q->btree2;
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 5> leafNodes = { {btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 5> leafNodes = { {btree->newLeafNode(), btree->newLeafNode(), btree->newLeafNode(),
         btree->newLeafNode(), btree->newLeafNode()}};
 
     auto node1 = btree->newBranchNode();
     auto node2 = btree->newBranchNode();
 
-    (node1->keys.get_rw())[0] = 5;
-    (node1->children.get_rw())[0] = leafNodes[0];
-    (node1->children.get_rw())[1] = leafNodes[1];
+    node1->keys[0] = 5;
+    node1->children[0] = leafNodes[0];
+    node1->children[1] = leafNodes[1];
     node1->numKeys = 1;
 
-    (node2->keys.get_rw())[0] = 20;
-    (node2->keys.get_rw())[1] = 30;
-    (node2->children.get_rw())[0] = leafNodes[2];
-    (node2->children.get_rw())[1] = leafNodes[3];
-    (node2->children.get_rw())[2] = leafNodes[4];
+    node2->keys[0] = 20;
+    node2->keys[1] = 30;
+    node2->children[0] = leafNodes[2];
+    node2->children[1] = leafNodes[3];
+    node2->children[2] = leafNodes[4];
     node2->numKeys = 2;
 
     auto root = btree->newBranchNode();
-    (root->keys.get_rw())[0] = 15;
-    (root->children.get_rw())[0] = node1;
-    (root->children.get_rw())[1] = node2;
+    root->keys[0] = 15;
+    root->children[0] = node1;
+    root->children[1] = node2;
     root->numKeys = 1;
 
     btree->rootNode = root;
     btree->depth = 2;
 
-    btree->mergeBranchNodes(node1, (root->keys.get_ro())[0], node2);
+    btree->mergeBranchNodes(node1, root->keys[0], node2);
 
     REQUIRE(node1->numKeys == 4);
 
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
-                       std::begin(node1->keys.get_ro())));
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 5> node1Children;
-    std::transform(std::begin(node1->children.get_rw()), std::end(node1->children.get_rw()), std::begin(node1Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+                       std::begin(node1->keys)));
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 5> node1Children;
+    std::transform(std::begin(node1->children), std::end(node1->children), std::begin(node1Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(leafNodes), std::end(leafNodes),
                        std::begin(node1Children)));
 
@@ -444,19 +444,19 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     auto leaf2 = btree->newLeafNode();
     leaf1->nextLeaf = leaf2;
     leaf2->prevLeaf = leaf1;
-    auto parent = btree->newBranchNode();
+    auto parent = btree->newLowestBranchNode();
 
-    PBPTreeType3::SplitInfo splitInfo;
+    PTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
     btree->insertInLeafNode(leaf1, 2, 20, &splitInfo);
     btree->insertInLeafNode(leaf1, 3, 30, &splitInfo);
     btree->insertInLeafNode(leaf2, 4, 40, &splitInfo);
     btree->insertInLeafNode(leaf2, 5, 50, &splitInfo);
 
-    (parent->keys.get_rw())[0] = 4;
+    parent->keys[0] = 4;
     parent->numKeys = 1;
-    (parent->children.get_rw())[0] = leaf1;
-    (parent->children.get_rw())[1] = leaf2;
+    parent->children[0] = leaf1;
+    parent->children[1] = leaf2;
     btree->rootNode = parent;
     btree->depth = 1;
 
@@ -485,9 +485,9 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     leaf2->prevLeaf = leaf1;
     leaf2->nextLeaf = leaf3;
     leaf3->prevLeaf = leaf2;
-    auto parent = btree->newBranchNode();
+    auto parent = btree->newLowestBranchNode();
 
-    PBPTreeType3::SplitInfo splitInfo;
+    PTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
     btree->insertInLeafNode(leaf1, 2, 20, &splitInfo);
     btree->insertInLeafNode(leaf1, 3, 30, &splitInfo);
@@ -497,17 +497,17 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree->insertInLeafNode(leaf3, 8, 80, &splitInfo);
     btree->insertInLeafNode(leaf3, 9, 90, &splitInfo);
 
-    (parent->keys.get_rw())[0] = 4;
-    (parent->keys.get_rw())[1] = 7;
+    parent->keys[0] = 4;
+    parent->keys[1] = 7;
     parent->numKeys = 2;
-    (parent->children.get_rw())[0] = leaf1;
-    (parent->children.get_rw())[1] = leaf2;
-    (parent->children.get_rw())[1] = leaf3;
+    parent->children[0] = leaf1;
+    parent->children[1] = leaf2;
+    parent->children[1] = leaf3;
     btree->rootNode = parent;
 
     btree->underflowAtLeafLevel(parent, 1, leaf2);
     REQUIRE(leaf1->numKeys == 5);
-    REQUIRE(btree->rootNode.branch == parent);
+    REQUIRE(btree->rootNode.lowestbranch == parent);
     REQUIRE(parent->numKeys == 1);
 
   }
@@ -520,9 +520,9 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     auto leaf2 = btree->newLeafNode();
     leaf1->nextLeaf = leaf2;
     leaf2->prevLeaf = leaf1;
-    auto parent = btree->newBranchNode();
+    auto parent = btree->newLowestBranchNode();
 
-    PBPTreeType3::SplitInfo splitInfo;
+    PTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
     btree->insertInLeafNode(leaf1, 2, 20, &splitInfo);
     btree->insertInLeafNode(leaf1, 3, 30, &splitInfo);
@@ -530,10 +530,10 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree->insertInLeafNode(leaf2, 5, 50, &splitInfo);
     btree->insertInLeafNode(leaf2, 6, 60, &splitInfo);
 
-    (parent->keys.get_rw())[0] = 5;
+    parent->keys[0] = 5;
     parent->numKeys = 1;
-    (parent->children.get_rw())[0] = leaf1;
-    (parent->children.get_rw())[1] = leaf2;
+    parent->children[0] = leaf1;
+    parent->children[1] = leaf2;
 
     btree->underflowAtLeafLevel(parent, 1, leaf2);
     REQUIRE(leaf1->numKeys == 3);
@@ -564,7 +564,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Handling of underflow at a inner node") {
     auto btree = q->btree2;
-    PBPTreeType2::SplitInfo splitInfo;
+    PTreeType2::SplitInfo splitInfo;
 
     auto leaf1 = btree->newLeafNode();
     btree->insertInLeafNode(leaf1, 1, 1, &splitInfo);
@@ -603,26 +603,26 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     leaf5->nextLeaf = leaf6;
     leaf6->prevLeaf = leaf5;
 
-    auto inner1 = btree->newBranchNode();
-    (inner1->keys.get_rw())[0] = 5;
-    (inner1->keys.get_rw())[1] = 10;
-    (inner1->children.get_rw())[0] = leaf1;
-    (inner1->children.get_rw())[1] = leaf2;
-    (inner1->children.get_rw())[2] = leaf3;
+    auto inner1 = btree->newLowestBranchNode();
+    inner1->keys[0] = 5;
+    inner1->keys[1] = 10;
+    inner1->children[0] = leaf1;
+    inner1->children[1] = leaf2;
+    inner1->children[2] = leaf3;
     inner1->numKeys = 2;
 
-    auto inner2 = btree->newBranchNode();
-    (inner2->keys.get_rw())[0] = 20;
-    (inner2->keys.get_rw())[1] = 30;
-    (inner2->children.get_rw())[0] = leaf4;
-    (inner2->children.get_rw())[1] = leaf5;
-    (inner2->children.get_rw())[2] = leaf6;
+    auto inner2 = btree->newLowestBranchNode();
+    inner2->keys[0] = 20;
+    inner2->keys[1] = 30;
+    inner2->children[0] = leaf4;
+    inner2->children[1] = leaf5;
+    inner2->children[2] = leaf6;
     inner2->numKeys = 2;
 
     auto root = btree->newBranchNode();
-    (root->keys.get_rw())[0] = 15;
-    (root->children.get_rw())[0] = inner1;
-    (root->children.get_rw())[1] = inner2;
+    root->keys[0] = 15;
+    root->children[0] = inner1;
+    root->children[1] = inner2;
     root->numKeys = 1;
 
     btree->rootNode = root;
@@ -633,12 +633,12 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
 
     REQUIRE(inner1->numKeys == 4);
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 5> expectedChildren{{leaf1, leaf2, leaf4, leaf5, leaf6}};
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 5> expectedChildren{{leaf1, leaf2, leaf4, leaf5, leaf6}};
 
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
-                       std::begin(inner1->keys.get_ro())));
-    std::array<persistent_ptr<PBPTreeType2::LeafNode>, 5> inner1Children;
-    std::transform(std::begin(inner1->children.get_ro()), std::end(inner1->children.get_ro()), std::begin(inner1Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+                       std::begin(inner1->keys)));
+    std::array<persistent_ptr<PTreeType2::LeafNode>, 5> inner1Children;
+    std::transform(std::begin(inner1->children), std::end(inner1->children), std::begin(inner1Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren), std::end(expectedChildren),
                        std::begin(inner1Children)));
 
@@ -647,7 +647,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Inserting an entry into a leaf node") {
     auto btree = q->btree4;
-    PBPTreeType4::SplitInfo splitInfo;
+    PTreeType4::SplitInfo splitInfo;
     auto res = false;
     auto node = btree->newLeafNode();
 
@@ -671,7 +671,8 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     REQUIRE(node->numKeys == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
-    std::array<int, 11> expectedValues{{1, 102, 104, 106, 108, 110, 112, 114, 116, 1000, 5000}};
+    std::array<int, 11> expectedValues{
+        {1, 102, 104, 106, 108, 110, 112, 114, 116, 1000, 5000}};
 
     std::vector<int> nodevecK {std::begin(node->keys.get_ro()), std::begin(node->keys.get_ro())+11};
     std::vector<int> nodevecV {std::begin(node->values.get_ro()), std::begin(node->values.get_ro())+11};
@@ -703,9 +704,9 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     }
     node->numKeys = 9;
 
-    btree->insertInLeafNodeAtLastPosition(node, 5, 5000);
+    btree->insertInLeafNodeAtPosition(node, 2, 5, 5000);
     REQUIRE(node->numKeys == 10);
-    btree->insertInLeafNodeAtLastPosition(node, 1, 1);
+    btree->insertInLeafNodeAtPosition(node, 0, 1, 1);
     REQUIRE(node->numKeys == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
@@ -727,7 +728,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Inserting an entry into an inner node without a split") {
     auto btree = q->btree2;
-    PBPTreeType2::SplitInfo splitInfo;
+    PTreeType2::SplitInfo splitInfo;
 
     auto leaf1 = btree->newLeafNode();
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -738,16 +739,16 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree->insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree->insertInLeafNode(leaf2, 12, 120, &splitInfo);
 
-    auto node = btree->newBranchNode();
-    (node->keys.get_rw())[0] = 10;
-    (node->children.get_rw())[0] = leaf1;
-    (node->children.get_rw())[1] = leaf2;
+    auto node = btree->newLowestBranchNode();
+    node->keys[0] = 10;
+    node->children[0] = leaf1;
+    node->children[1] = leaf2;
     node->numKeys = 1;
 
     btree->rootNode = node;
     btree->depth = 2;
 
-    btree->insertInBranchNode(node, 1, 11, 112, &splitInfo);
+    btree->insertInLowestBranchNode(node, 11, 112, &splitInfo);
     REQUIRE(leaf2->numKeys == 3);
 
   }
@@ -755,7 +756,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Inserting an entry into an inner node with split") {
     auto btree = q->btree2;
-    PBPTreeType2::SplitInfo splitInfo;
+    PTreeType2::SplitInfo splitInfo;
 
     auto leaf1 = btree->newLeafNode();
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -768,25 +769,25 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree->insertInLeafNode(leaf2, 13, 130, &splitInfo);
     btree->insertInLeafNode(leaf2, 14, 140, &splitInfo);
 
-    auto node = btree->newBranchNode();
-    (node->keys.get_rw())[0] = 10;
-    (node->children.get_rw())[0] = leaf1;
-    (node->children.get_rw())[1] = leaf2;
+    auto node = btree->newLowestBranchNode();
+    node->keys[0] = 10;
+    node->children[0] = leaf1;
+    node->children[1] = leaf2;
     node->numKeys = 1;
 
     btree->rootNode = node;
     btree->depth = 2;
 
-    btree->insertInBranchNode(node, 1, 12, 112, &splitInfo);
+    btree->insertInLowestBranchNode(node, 12, 112, &splitInfo);
     REQUIRE(leaf2->numKeys == 2);
     REQUIRE(node->numKeys == 2);
 
     std::array<int, 2> expectedKeys{{10, 12}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
-                       std::begin(node->keys.get_ro())));
+                       std::begin(node->keys)));
 
-    std::array<int, 3> expectedKeys2{{13, 14, 12}};
-    auto leaf3 = (node->children.get_ro())[2].leaf;
+    std::array<int, 3> expectedKeys2{{12, 13, 14}};
+    auto leaf3 = node->children[2];
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
                        std::begin(leaf3->keys.get_ro())));
 
@@ -840,8 +841,8 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   SECTION("Constructing a B+ tree and iterating over it") {
     auto btree = q->btree1;
     transaction::run(pop, [&] {
-      if(btree) delete_persistent<PBPTreeType>(btree);
-      btree = make_persistent<PBPTreeType>();
+      if(btree) delete_persistent<PTreeType>(btree);
+      btree = make_persistent<PTreeType>();
       for (int i = 0; i < 50; i++) {
         btree->insert(i, i * 2);
       }
@@ -859,11 +860,11 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
   }
 
   /* Clean up */
-  delete_persistent_atomic<PBPTreeType>(q->btree1);
-  delete_persistent_atomic<PBPTreeType2>(q->btree2);
-  delete_persistent_atomic<PBPTreeType3>(q->btree3);
-  delete_persistent_atomic<PBPTreeType4>(q->btree4);
-  delete_persistent_atomic<PBPTreeType5>(q->btree5);
+  delete_persistent_atomic<PTreeType>(q->btree1);
+  delete_persistent_atomic<PTreeType2>(q->btree2);
+  delete_persistent_atomic<PTreeType3>(q->btree3);
+  delete_persistent_atomic<PTreeType4>(q->btree4);
+  delete_persistent_atomic<PTreeType5>(q->btree5);
   delete_persistent_atomic<root>(q);
   pop.close();
   std::remove(path.c_str());

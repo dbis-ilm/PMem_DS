@@ -13,7 +13,6 @@ set(TEST_INCLUDE_DIRS ${TEST_INCLUDE_DIRS}
 ################
 #
 set(PROJECT_INCLUDES_F ${PROJECT_INCLUDES_F}
-                       ${CMAKE_CURRENT_SOURCE_DIR}/ElementOfRankK.hpp
                        ${CMAKE_CURRENT_SOURCE_DIR}/PBPTree.hpp
                        ${CMAKE_CURRENT_SOURCE_DIR}/UnsortedPBPTree.hpp
                        PARENT_SCOPE)

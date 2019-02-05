@@ -9,5 +9,6 @@ set(TEST_INCLUDE_DIRS ${TEST_INCLUDE_DIRS}
 )
 
 set(PROJECT_INCLUDES_F ${PROJECT_INCLUDES_F}
+                       ${CMAKE_CURRENT_SOURCE_DIR}/PTree.hpp
                        ${CMAKE_CURRENT_SOURCE_DIR}/FPTree.hpp
                        PARENT_SCOPE)

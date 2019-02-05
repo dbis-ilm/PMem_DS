@@ -6,7 +6,7 @@ project (nvm-DS)
 ################################################################################
 
 # Set the mount path of your pmem device where the structures should be stored
-set(PMEM_MNT_PATH "/mnt/pmem/test")
+set(PMEM_MNT_PATH "/mnt/mem/test")
 
 # Installation path (creates include and lib within this directory)
 if(NOT PROJECT_INSTALL_DIR)
@@ -107,10 +107,10 @@ set_target_properties(nvmDS_deps PROPERTIES LINKER_LANGUAGE CXX)
 #################
 #
 #set(PROJECT_LIBS ${PROJECT_LIBS})
-set(PROJECT_INCLUDES_D ${PROJECT_INCLUDES_D})
+set(PROJECT_INCLUDES_D ${PROJECT_INCLUDES_D}
+                       ${CMAKE_CURRENT_SOURCE_DIR}/utils)
 set(PROJECT_INCLUDES_F ${PROJECT_INCLUDES_F}
-                       ${CMAKE_BINARY_DIR}/generated/config.h
-                       ${CMAKE_CURRENT_SOURCE_DIR}/IdxProfile.hpp)
+                       ${CMAKE_BINARY_DIR}/generated/config.h)
 
 set(PROJECT_LIB_DIR ${PROJECT_INSTALL_DIR}/lib)
 set(PROJECT_INCLUDE_DIR ${PROJECT_INSTALL_DIR}/include)

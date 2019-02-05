@@ -10,6 +10,7 @@ if (BUILD_TEST_CASES)
     do_test(PBPTreeTest)
     do_test(UnsortedPBPTreeTest)
     # FPTree
+    do_test(PTreeTest)
     do_test(FPTreeTest)
     # PTable
     do_test(VTableInfoTest ptable)
