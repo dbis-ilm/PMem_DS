@@ -19,7 +19,7 @@
 
 #include <unistd.h>
 #include "fmt/format.h"
-#include "common.h"
+#include "common.hpp"
 
 using namespace dbis::ptable;
 

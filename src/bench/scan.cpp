@@ -19,7 +19,7 @@
 
 #include <unistd.h>
 #include "benchmark/benchmark.h"
-#include "common.h"
+#include "common.hpp"
 
 using namespace dbis::ptable;
 
