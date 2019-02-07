@@ -20,82 +20,45 @@
 #ifndef DBIS_ELEMENTOFRANKK_HPP
 #define DBIS_ELEMENTOFRANKK_HPP
 
+#include <cstdlib> //< rand()
+
 namespace dbis {
 
-  class ElementOfRankK {
-    private:
+/* Based on: https://www.geeksforgeeks.org/kth-smallestlargest-element-unsorted-array-set-2-expected-linear-time/
+ * · Extension of QuickSelect
+ */
+class ElementOfRankK {
+  public:
+    template <typename KeyType, size_t L>
+    static KeyType elementOfRankK(int const k, std::array<KeyType, L> &data, int const start, int const length) {
+      assert(k > 0 && k <= length);
 
-			template<typename KeyType, std::size_t L>
-			static void insertionSort(std::array<KeyType, L> &data, int left, int right) {
-				for (auto i = left + 1; i <= right; i++) {
-					auto temp = data[i];
-					auto j = i - 1;
-					while (data[j] > temp && j >= left) {
-						data[j+1] = data[j];
-						j--;
-					}
-					data[j+1] = temp;
-				}
+      auto const end = start + length - 1;
+      int pos = setPivot(data, start, start + length - 1);
+      if (pos - start == k-1) return data[pos];
+      if (pos - start > k-1) return elementOfRankK(k, data, start, pos-start+1);
+      return elementOfRankK(k-pos+start-1, data, pos+1, length-(pos+1-start));
+    }
+  private:
+			template <typename KeyType, size_t L>
+			static int quickPartition(std::array<KeyType, L> &data, int const start, int const end) {
+				int x = data[end], i = start;
+				for (int j = start; j < end; j++)
+					if (data[j] <= x)
+          std::swap(data[i++], data[j]);
+				std::swap(data[i], data[end]);
+				return i;
 			}
 
-			template<typename KeyType, std::size_t L>
-			static void bubbleSort(std::array<KeyType, L> &data, int left, int right) {
-        bool swapped = true;
-        while (swapped) {
-          swapped = false;
-          for (int i = left; i < right; i++) {
-            if (data[i] > data[i + 1]) {
-              std::swap(data[i], data[i + 1]);
-              swapped = true;
-            }
-          }
-				}
+			template <typename KeyType, size_t L>
+			static int setPivot(std::array<KeyType, L> &data, int const start, int const end) {
+				auto const pivot = rand()/((RAND_MAX + 1u)/(end-start+1));
+				std::swap(data[start + pivot], data[end]);
+				return quickPartition(data, start, end);
 			}
 
-      template <typename KeyType, std::size_t L>
-      static KeyType elementOfRankKBySorting(int k, std::array<KeyType, L> &data, int start, int length) {
-				insertionSort(data, start, start + length - 1);
-        return data[k-1];
-      }
 
-      template <typename KeyType, std::size_t L>
-      static KeyType findPivot(std::array<KeyType, L> &data, int start) {
-        constexpr auto parts = L / 5;
-        if (parts <= 1) { return elementOfRankKBySorting(start + (L + 1) / 2 - 1, data, L, start); }
-
-        std::array<KeyType, parts> medians;
-        for (int i = 0; i < parts; i++) {
-          medians[i] = elementOfRankKBySorting(2, data, 5, start + i * 5);
-        }
-        return findPivot(medians, 0);
-      }
-
-    public:
-      template <typename KeyType, std::size_t L>
-      static KeyType elementOfRankK(int k, std::array<KeyType, L> &data, int start, int length) {
-        if (length <= 15) {
-          return elementOfRankKBySorting(k, data, start, length);
-        }
-        auto p = start, q = start;
-        KeyType pivot = findPivot(data, start);
-        for (auto i = start; i < start + length; i++) {
-          if (data[i] < pivot) {
-            std::swap(data[i], data[q]);
-            std::swap(data[p], data[q]);
-            q++; p++;
-          }
-          if (data[i] == pivot) {
-            std::swap(data[i], data[q]);
-            q++;
-          }
-        }
-        if (k < p) { return elementOfRankK(k, data, start, p - start); }
-        if (k >= q) { return elementOfRankK(k, data, q, length + start - q - 1); }
-
-        return pivot;
-      }
-
-  }; /* end class */
+}; /* end class */
 } /* end namespace dbis */
 
 #endif /* DBIS_ELEMENTOFRANKK_HPP */

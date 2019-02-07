@@ -29,6 +29,8 @@
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
 
+#include "config.h"
+
 #define BRANCH_PADDING  0
 #define LEAF_PADDING    0
 

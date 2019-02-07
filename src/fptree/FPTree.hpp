@@ -30,6 +30,7 @@
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
 
+#include "config.h"
 #include "utils/ElementOfRankK.hpp"
 
 #define BRANCH_PADDING  0
