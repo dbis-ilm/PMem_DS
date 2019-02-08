@@ -58,8 +58,6 @@ class FPTree {
   static_assert(N > 2, "number of branch keys has to be >2.");
   // we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
-  // there is a bug that for odd numbers the tree sometimes breaks (TODO)
-  static_assert(M % 2 == 0 && N % 2 == 0, "The number of keys should be even");
 
 #ifndef UNIT_TESTS
   private:
@@ -320,6 +318,8 @@ class FPTree {
     leafList = rootNode.leaf;
     depth = 0;
     PROFILE_INIT
+    LOG("created new FPTree with sizeof(BranchNode) = " << sizeof(BranchNode)
+                            <<  ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
 
   /**
@@ -438,7 +438,7 @@ class FPTree {
    */
   void recover(){
     LOG("Starting RECOVERY of FPTree");
-    persistent_ptr<LeafNode> currentLeaf=leafList;
+    persistent_ptr<LeafNode> currentLeaf = leafList;
     if(leafList == nullptr){
       LOG("No data to recover FPTree");
     }
@@ -481,7 +481,28 @@ class FPTree {
    * @param func the function called for each entry
    */
   void scan(ScanFunc func) const {
-    //TODO
+    // we traverse to the leftmost leaf node
+    auto node = rootNode;
+    auto d = depth;
+    while ( d > 1) {
+      // as long as we aren't at the leaf level we follow the path down
+      node = node.branch->children.get_ro()[0];
+      d--;
+    }
+    if (d == 1) {
+      node = node.lowestbranch->children.get_ro()[0];
+    }
+    auto leaf = node.leaf;
+    while (leaf != nullptr) {
+      // for each key-value pair call func
+      for (auto i = 0u; i < leaf->numKeys.get_ro(); i++) {
+        const auto &key = leaf->keys.get_ro()[i];
+        const auto &val = leaf->values.get_ro()[i];
+        func(key, val);
+      }
+      // move to the next leaf node
+      leaf = leaf->nextLeaf;
+    }
   }
 
   /**
@@ -493,7 +514,23 @@ class FPTree {
    * @param func the function called for each entry
    */
   void scan(const KeyType &minKey, const KeyType &maxKey, ScanFunc func) const {
-    //TODO
+    auto leaf = findLeafNode(minKey);
+
+    bool higherThanMax = false;
+    while (!higherThanMax && leaf != nullptr) {
+      // for each key-value pair within the range call func
+      for (auto i = 0u; i < M; i++) {
+        if (!leaf->search.get_ro().data.b.test(i)) continue;
+        auto &key = leaf->keys.get_ro()[i];
+        if (key < minKey) continue;
+        if (key > maxKey) { higherThanMax = true; continue; }
+
+        auto &val = leaf->values.get_ro()[i];
+        func(key, val);
+      }
+      // move to the next leaf node
+      leaf = leaf->nextLeaf;
+    }
   }
 
 #ifndef UNIT_TESTS
@@ -802,19 +839,19 @@ class FPTree {
   /**
    * Lookup the search key @c key in the given leaf node and return the
    * position.
-   * If the search key was not found, then @c numKeys is returned.
+   * If the search key was not found, then @c M is returned.
    *
    * @param node the leaf node where we search
    * @param key the search key
-   * @return the position of the key  (or @c numKey if not found)
+   * @return the position of the key  (or @c M if not found)
    */
   unsigned int lookupPositionInLeafNode(persistent_ptr<LeafNode> node,
       const KeyType &key) const {
     unsigned int pos = 0;
-
+    const auto hash = fpHash(key);
     for (; pos < M ; pos++) {
       if(node->search.get_ro().data.b.test(pos) && 
-         node->search.get_ro().data.fp[pos] == fpHash(key) && 
+         node->search.get_ro().data.fp[pos] == hash && 
          node->keys.get_ro()[pos] == key)
         break;
     }
@@ -822,7 +859,7 @@ class FPTree {
   }
 
   /**
-   * Lookup the search key @c key in the given lowesst branch node and return the
+   * Lookup the search key @c key in the given lowest branch node and return the
    * position which is the position in the list of keys + 1. in this way, the
    * position corresponds to the position of the child pointer in the
    * array @children.
@@ -837,11 +874,8 @@ class FPTree {
       const KeyType &key) const {
     // we perform a simple linear search, perhaps we should try a binary
     // search instead?
-    unsigned int pos = 0;
-    const unsigned int num = node->numKeys;
-    for (; pos < num && node->keys[pos] <= key; pos++) {
-
-    };
+    auto pos = 0u;
+    for (; pos < node->numKeys && node->keys[pos] <= key; pos++);
     return pos;
   }
 
@@ -861,11 +895,8 @@ class FPTree {
       const KeyType &key) const {
     // we perform a simple linear search, perhaps we should try a binary
     // search instead?
-    unsigned int pos = 0;
-    const unsigned int num = node->numKeys;
-    for (; pos < num && node->keys[pos] <= key; pos++) {
-
-    };
+    auto pos = 0u;
+    for (; pos < node->numKeys && node->keys[pos] <= key; pos++);
     return pos;
   }
 
@@ -1253,7 +1284,7 @@ class FPTree {
   }
   
   /**
-   * Find the minimum key in unsorted leaf
+   * Find position of the minimum key in unsorted leaf
 	 *
    * @param node the leaf node to find the minimum key in
    * @return position of the minimum key
@@ -1271,7 +1302,7 @@ class FPTree {
   }
 
   /**
-   * Find the maximum key in unsorted leaf
+   * Find position of the maximum key in unsorted leaf
 	 *
    * @param node the leaf node to find the maximmum key in
    * @return position of the maximum key
@@ -1538,11 +1569,11 @@ class FPTree {
    */
   void printLeafNode(unsigned int d, persistent_ptr<LeafNode> node) const {
     for (auto i = 0u; i < d; i++) std::cout << "  ";
-    std::cout << "[" << std::hex << node << std::dec << " : ";
-    for (auto i = 0u; i < node->numKeys; i++) {
+    std::cout << "[\033[1m" << std::hex << node << std::dec << "\033[0m : ";
+    for (auto i = 0u; i < M; i++) {
       if (i > 0) std::cout << ", ";
 
-      std::cout << "{" << node->keys.get_ro()[i] << "}";
+      std::cout << "{(" << node->search.get_ro().data.b[i] << ")" << node->keys.get_ro()[i] << "}";
     }
     std::cout << "]" << std::endl;
   }
@@ -1552,16 +1583,16 @@ class FPTree {
    * @param leaf the leaf to insert
    */
   void recoveryInsert(persistent_ptr<LeafNode> leaf){
-    assert(depth>0);
-    assert(leaf!= nullptr);
-    bool hassplit=false;
+    assert(depth > 0);
+    assert(leaf != nullptr);
+    bool hassplit = false;
     SplitInfo splitInfo;
-    if (depth==1){
+    if (depth == 1){
       //The root node is a lowest branch node
-      hassplit=recoveryInsertInLowestBranchNode(rootNode.lowestbranch, leaf, &splitInfo);
+      hassplit = recoveryInsertInLowestBranchNode(rootNode.lowestbranch, leaf, &splitInfo);
     } else{
       //The root node is a branch node
-      hassplit=recoveryInsertInBranchNode(rootNode.branch,depth, leaf,&splitInfo);
+      hassplit = recoveryInsertInBranchNode(rootNode.branch, depth, leaf, &splitInfo);
     }
 
     //Check for split
@@ -1587,7 +1618,7 @@ class FPTree {
    */
   bool recoveryInsertInLowestBranchNode(LowestBranchNode *node, persistent_ptr<LeafNode> leaf, SplitInfo *splitInfo){
 
-    if(node->numKeys==N){
+    if(node->numKeys == N){
       //We have to split the lowest branch node
       splitLowestBranchNode(node, leaf->keys.get_ro()[0], splitInfo);
       //we have to insert in the new right child, as the keys in the leafList are sorted
@@ -1595,9 +1626,9 @@ class FPTree {
       return true;
     }
     else{
-      node->keys[node->numKeys]=leaf->keys.get_ro()[0];
-      node->numKeys++;
-      node->children[node->numKeys]=leaf;
+      node->keys[node->numKeys] = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
+      ++node->numKeys;
+      node->children[node->numKeys] = leaf;
       return false;
     }
   }
