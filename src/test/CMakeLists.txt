@@ -12,6 +12,8 @@ if (BUILD_TEST_CASES)
     # FPTree
     do_test(PTreeTest)
     do_test(FPTreeTest)
+    # wBPTree
+    do_test(wBPTreeTest)
     # PTable
     do_test(VTableInfoTest ptable)
     do_test(BDCCInfoTest ptable)

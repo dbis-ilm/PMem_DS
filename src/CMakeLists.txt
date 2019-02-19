@@ -119,9 +119,10 @@ set(PROJECT_INCLUDE_DIR ${PROJECT_INSTALL_DIR}/include)
 # Including Data Structures #
 #############################
 #
-add_subdirectory(pbptree)   # Persistent version of B⁺-Tree
-add_subdirectory(fptree)    # Remake of the FPTree
-add_subdirectory(ptable)    # BDCC-based analytical table structure
+add_subdirectory(pbptree) # Persistent version of B⁺-Tree
+add_subdirectory(fptree)  # Remake of the FPTree
+add_subdirectory(wbtree)  # Remake of the wB+Tree
+add_subdirectory(ptable)  # BDCC-based analytical table structure
 
 #########################
 # Unit test using Catch #
