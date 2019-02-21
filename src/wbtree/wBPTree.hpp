@@ -111,9 +111,10 @@ class wBPTree {
     alignas(64) T data;
     char pad[ 64 > sizeof(T) ? 64 - sizeof(T) : 0];
   };
+  template<size_t E>
   struct Search {
-    std::array<uint8_t, M+1> slot; //< slot array for indirection, first = num
-    std::bitset<M> b;              //< bitset for valid entries
+    std::array<uint8_t, E+1> slot; //< slot array for indirection, first = num
+    std::bitset<E> b;              //< bitset for valid entries
 
     unsigned int getFreeZero() const {
       unsigned int idx = 0;
@@ -133,7 +134,7 @@ class wBPTree {
       search.get_rw().data.slot[0] = 0;
     }
 
-    p<CacheLineStorage<Search>> search; //< helper structure for faster searches
+    p<CacheLineStorage<Search<M>>> search; //< helper structure for faster searches
     persistent_ptr<LeafNode>  nextLeaf; //< pointer to the subsequent sibling
     persistent_ptr<LeafNode>  prevLeaf; //< pointer to the preceeding sibling
     p<std::array<KeyType, M>>     keys; //< the actual keys
@@ -149,7 +150,7 @@ class wBPTree {
      */
     BranchNode() { search.get_rw().data.slot[0] = 0; }
 
-    p<CacheLineStorage<Search>>              search; //< helper structure for faster searches
+    p<CacheLineStorage<Search<N>>>              search; //< helper structure for faster searches
     p<std::array<KeyType, N>>                  keys; //< the actual keys
     p<std::array<LeafOrBranchNode, N + 1>> children; //< pointers to child nodes (BranchNode or LeafNode)
   };
@@ -594,13 +595,14 @@ class wBPTree {
       host->children.get_rw()[u] = childSplitInfo.leftChild;
 
       /* adapt slot array */
-      if (pos < host->search.get_ro().data.slot[0]) {
-        host->children.get_rw()[host->search.get_ro().data.slot[pos+1]] = childSplitInfo.rightChild;
+      if (pos <= host->search.get_ro().data.slot[0]) {
         /* if the child isn't inserted at the rightmost position then we have to
          * make space for it */
-        for(auto j = host->search.get_ro().data.slot[0]; j >= pos; j++)
+        for(auto j = host->search.get_ro().data.slot[0]; j >= pos; j--)
           host->search.get_rw().data.slot[j+1] = host->search.get_ro().data.slot[j];
+        host->children.get_rw()[host->search.get_ro().data.slot[pos+1]] = childSplitInfo.rightChild;
       } else {
+        host->children.get_rw()[host->search.get_ro().data.slot[pos]] = host->children.get_ro()[N];
         host->children.get_rw()[N] = childSplitInfo.rightChild;
       }
       host->search.get_rw().data.slot[pos] = u;
@@ -634,21 +636,21 @@ class wBPTree {
       sibling->search.get_rw().data.b.set(i);       //< set bit
       /* set key and children */
       sibling->keys.get_rw()[i] =
-        node->keys.get_ro()[node->search.get_ro().data.slot[middle + i]];
+        node->keys.get_ro()[node->search.get_ro().data.slot[middle + i + 1]];
       sibling->children.get_rw()[i] =
-        node->children.get_ro()[node->search.get_ro().data.slot[middle + i]];
+        node->children.get_ro()[node->search.get_ro().data.slot[middle + i + 1]];
     }
-    for (auto i = middle-1; i < N; i++)
+    for (auto i = middle; i <= N; i++)
       node->search.get_rw().data.b.reset(node->search.get_ro().data.slot[i]);
     node->search.get_rw().data.slot[0] = middle-1;
 
     /* set new most right children */
     sibling->children.get_rw()[N] = node->children.get_ro()[N];
     node->children.get_rw()[N] =
-      node->children.get_ro()[node->search.get_ro().data.slot[middle-1]];
+      node->children.get_ro()[node->search.get_ro().data.slot[middle]];
 
     /* set split information */
-    splitInfo->key = node->keys.get_ro()[node->search.get_ro().data.slot[middle - 1]];
+    splitInfo->key = node->keys.get_ro()[node->search.get_ro().data.slot[middle]];
     splitInfo->leftChild = node;
     splitInfo->rightChild = sibling;
   }
@@ -1167,7 +1169,8 @@ class wBPTree {
    */
   void printLeafNode(unsigned int d, persistent_ptr<LeafNode> node) const {
     for (auto i = 0u; i < d; i++) std::cout << "  ";
-    std::cout << "[\033[1m" << std::hex << node << std::dec << "\033[0m : ";
+    std::cout << "[\033[1m" << std::hex << node << std::dec << "\033[0m #"
+      << (int)node->search.get_ro().data.slot[0] << ": ";
     for (auto i = 1u; i <= node->search.get_ro().data.slot[0]; i++) {
       if (i > 1) std::cout << ", ";
       std::cout << "{(" << node->search.get_ro().data.b[node->search.get_ro().data.slot[i]] << ")"
@@ -1185,7 +1188,7 @@ class wBPTree {
    */
   void printBranchNode(unsigned int d, persistent_ptr<BranchNode> node) const {
     for (auto i = 0u; i < d; i++) std::cout << "  ";
-    std::cout << d << " BN { ["<<node<<"] ";
+    std::cout << d << " BN { ["<<node<<"] #" << (int)node->search.get_ro().data.slot[0] << ": ";
     for (auto k = 1u; k <= node->search.get_ro().data.slot[0]; k++) {
       if (k > 1) std::cout << ", ";
       std::cout << "(" << node->search.get_ro().data.b[node->search.get_ro().data.slot[k]] << ")"
