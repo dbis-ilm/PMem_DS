@@ -118,7 +118,7 @@ class wBPTree {
 
     unsigned int getFreeZero() const {
       unsigned int idx = 0;
-      while (idx < M && b.test(idx)) ++idx;
+      while (idx < E && b.test(idx)) ++idx;
       return idx;
     }
   };
@@ -602,7 +602,7 @@ class wBPTree {
           host->search.get_rw().data.slot[j+1] = host->search.get_ro().data.slot[j];
         host->children.get_rw()[host->search.get_ro().data.slot[pos+1]] = childSplitInfo.rightChild;
       } else {
-        host->children.get_rw()[host->search.get_ro().data.slot[pos]] = host->children.get_ro()[N];
+        //host->children.get_rw()[host->search.get_ro().data.slot[pos]] = host->children.get_ro()[N];
         host->children.get_rw()[N] = childSplitInfo.rightChild;
       }
       host->search.get_rw().data.slot[pos] = u;
