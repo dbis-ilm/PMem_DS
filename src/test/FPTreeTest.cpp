@@ -788,14 +788,14 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     btree->depth = 2;
 
     btree->insertInLowestBranchNode(node, 12, 112, &splitInfo);
-    REQUIRE(leaf2->search.get_ro().data.b.count() == 2);
+    REQUIRE(leaf2->search.get_ro().data.b.count() == 3);
     REQUIRE(node->numKeys == 2);
 
-    std::array<int, 2> expectedKeys{{10, 12}};
+    std::array<int, 2> expectedKeys{{10, 13}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(node->keys)));
 
-    std::array<int, 3> expectedKeys2{{12, 13, 14}};
+    std::array<int, 2> expectedKeys2{{13, 14}};
     auto leaf3 = node->children[2];
     std::vector<int> actualKeys{};
     for(auto i = 0u; i < 4; i++)

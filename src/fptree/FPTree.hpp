@@ -576,7 +576,8 @@ class FPTree {
       }
 
       // insert the new entry
-      if (key < middle)
+      const auto rightMin = sibling->keys.get_ro()[findMinKeyAtLeafNode(sibling)];
+      if (key < rightMin)
         insertInLeafNodeAtPosition(node, node->search.get_ro().data.getFreeZero(), key, val);
       else
         insertInLeafNodeAtPosition(sibling, sibling->search.get_ro().data.getFreeZero(), key, val);
@@ -593,7 +594,7 @@ class FPTree {
       split = true;
       splitInfo->leftChild = node;
       splitInfo->rightChild = sibling;
-      splitInfo->key = sibling->keys.get_ro()[findMinKeyAtLeafNode(sibling)];
+      splitInfo->key = rightMin;
     } else {
       // otherwise, we can simply insert the new entry at the given position
       insertInLeafNodeAtPosition(node, pos, key, val);
@@ -1291,7 +1292,7 @@ class FPTree {
    */
   unsigned int findMinKeyAtLeafNode(const persistent_ptr<LeafNode> &node) {
     unsigned int pos = 0;
-    KeyType currMinKey = node->keys.get_ro()[0];
+    KeyType currMinKey = std::numeric_limits<KeyType>::max();
     for (auto i = 1u; i < M; i++) {
       if(node->search.get_ro().data.b.test(i)){ 
         KeyType key = node->keys.get_ro()[i];
@@ -1309,7 +1310,7 @@ class FPTree {
    */
   unsigned int findMaxKeyAtLeafNode(const persistent_ptr<LeafNode> &node) {
     unsigned int pos = 0;
-    KeyType currMaxKey = node->keys.get_ro()[0];
+    KeyType currMaxKey = 0;
     for (auto i = 1u; i < M; i++) {
       if(node->search.get_ro().data.b.test(i)){ 
         KeyType key = node->keys.get_ro()[i];
