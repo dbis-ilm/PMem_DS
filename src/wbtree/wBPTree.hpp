@@ -460,7 +460,7 @@ class wBPTree {
     bool split = false;
     const auto slotPos = lookupPositionInLeafNode(node, key);
     const auto slotArray = node->search.get_ro().data.slot;
-    if (slotPos < slotArray[0] && node->keys.get_ro()[slotArray[slotPos]] == key) {
+    if (slotPos <= slotArray[0] && node->keys.get_ro()[slotArray[slotPos]] == key) {
       // handle insert of duplicates
       node->values.get_rw()[slotArray[slotPos]] = val;
       return false;
@@ -486,7 +486,7 @@ class wBPTree {
       node->search.get_rw().data.slot[0] = middle;
 
       /* insert the new entry */
-      if (slotPos <= middle)
+      if (slotPos-1 <= middle)
         insertInLeafNodeAtPosition(node, slotPos, key, val);
       else
         insertInLeafNodeAtPosition(sibling, slotPos-middle, key, val);

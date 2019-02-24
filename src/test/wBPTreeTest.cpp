@@ -914,10 +914,10 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     btree->depth = 2;
 
     btree->insertInBranchNode(node, 1, 12, 112, &splitInfo);
-    REQUIRE(leaf2->search.get_ro().data.slot[0] == 2);
+    REQUIRE(leaf2->search.get_ro().data.slot[0] == 3);
     REQUIRE(node->search.get_ro().data.slot[0] == 2);
 
-    std::array<int, 2> expectedKeys{{10, 12}};
+    std::array<int, 2> expectedKeys{{10, 13}};
     std::vector<int> actualKeys{};
     for(auto i = 1u; i < 3; i++)
       if(node->search.get_ro().data.b.test(node->search.get_ro().data.slot[i]))
@@ -925,10 +925,10 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(actualKeys)));
 
-    std::array<int, 3> expectedKeys2{{12, 13, 14}};
+    std::array<int, 2> expectedKeys2{{13, 14}};
     auto leaf3 = node->children.get_ro()[4].leaf;
     actualKeys.clear();
-    for(auto i = 1u; i < 4; i++)
+    for(auto i = 1u; i < 3; i++)
       if(leaf3->search.get_ro().data.b.test(leaf3->search.get_ro().data.slot[i]))
         actualKeys.push_back(leaf3->keys.get_ro()[leaf3->search.get_ro().data.slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
