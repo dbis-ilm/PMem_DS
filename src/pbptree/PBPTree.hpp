@@ -57,7 +57,7 @@ class PBPTree {
   // we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
   // there is a bug that for odd numbers the tree sometimes breaks (TODO)
-  static_assert(M % 2 == 0 && N % 2 == 0, "The number of keys should be even");
+  // static_assert(M % 2 == 0 && N % 2 == 0, "The number of keys should be even");
 
 #ifndef UNIT_TESTS
  private:
@@ -774,7 +774,7 @@ class PBPTree {
     std::cout << "[" << std::hex << node << std::dec << " : ";
     for (auto i = 0u; i < node->numKeys; i++) {
       if (i > 0) std::cout << ", ";
-      std::cout << "{" << node->keys.get_ro()[i] << " -> " << node->values.get_ro()[i] << "}";
+      std::cout << "{" << node->keys.get_ro()[i] /*<< " -> " << node->values.get_ro()[i]*/ << "}";
     }
     std::cout << "]" << std::endl;
   }
@@ -995,13 +995,11 @@ class PBPTree {
    */
   unsigned int lookupPositionInBranchNode(persistent_ptr<BranchNode> node,
                                          const KeyType &key) const {
-    // we perform a simple linear search, perhaps we should try a binary
-    // search instead?
     unsigned int pos = 0;
     const unsigned int num = node->numKeys;
-    for (; pos < num && node->keys.get_ro()[pos] <= key; pos++)
-      ;
-    return pos;
+    //for (; pos < num && node->keys.get_ro()[pos] <= key; pos++);
+    //return pos;
+    return binarySearch(node, 0, num-1, key);
   }
 
   /**
@@ -1015,12 +1013,34 @@ class PBPTree {
    */
   unsigned int lookupPositionInLeafNode(persistent_ptr<LeafNode> node,
                                         const KeyType &key) const {
-    // we perform a simple linear search, perhaps we should try a binary
-    // search instead?
     unsigned int pos = 0;
     const unsigned int num = node->numKeys.get_ro();
-    for (; pos < num && node->keys.get_ro()[pos] < key; pos++)
-      ;
+    //for (; pos < num && node->keys.get_ro()[pos] < key; pos++);
+    //return pos;
+    return binarySearch(node, 0, num-1, key);
+  }
+
+  unsigned int binarySearch(persistent_ptr<BranchNode> node, int l, int r,
+      KeyType const &key) const {
+    auto pos = 0u;
+    while (l <= r) {
+      pos = (l + r) / 2;
+      if (node->keys.get_ro()[pos] == key) return ++pos;
+      if (node->keys.get_ro()[pos] < key) l = ++pos;
+      else r = pos - 1;
+    }
+    return pos;
+  }
+
+  unsigned int binarySearch(persistent_ptr<LeafNode> node, int l, int r,
+      KeyType const &key) const {
+    auto pos = 0u;
+    while (l <= r) {
+      pos = (l + r) / 2;
+      if (node->keys.get_ro()[pos] == key) return pos;
+      if (node->keys.get_ro()[pos] < key) l = ++pos;
+      else r = pos - 1;
+    }
     return pos;
   }
 
