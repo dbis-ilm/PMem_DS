@@ -13,9 +13,10 @@ macro( build_test name)
   target_link_libraries( ${name} ${DEPS})
 endmacro( build_test )
 
-macro( build_bench name )
+macro( build_bench path)
+  string(REGEX REPLACE ".*/([a-zA-Z0-9_]+)$" "\\1" name "${path}")
   include_directories(${TEST_INCLUDE_DIRS})
-  add_executable( ${name} "${name}.cpp")
+  add_executable( ${name} "${path}.cpp")
   add_dependencies(${name} benchmark_target)
   set(DEPS nvmDS_deps ${BENCHMARK_LIB})
   if (${ARGC} GREATER 1) # extra dependencies
@@ -41,15 +42,16 @@ macro (do_test name)
   endif()
 endmacro(do_test)
 
-macro (do_bench name)
+macro (do_bench path)
+  string(REGEX REPLACE ".*/([a-zA-Z0-9_]+)$" "\\1" name "${path}")
   add_test(
     NAME ${name}
-    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${name}"
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${path}"
     )
   if (${ARGC} GREATER 1) # extra dependencies
-    build_bench( ${name} ${ARGV1})
+    build_bench( ${path} ${ARGV1})
   else()
-    build_bench( ${name})
+    build_bench( ${path})
   endif()
 endmacro(do_bench)
 
