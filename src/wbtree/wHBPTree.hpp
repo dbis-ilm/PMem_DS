@@ -1256,7 +1256,7 @@ class wHBPTree {
         return false;
       }
     } else {
-      hassplit = recoveryInsertInBranchNode(node->children[nSlotArray[0]].branch, curr_depth-  1, leaf, &childSplitInfo);
+      hassplit = recoveryInsertInBranchNode(node->children[(nSlotArray[0]==0)?0:N].branch, curr_depth-  1, leaf, &childSplitInfo);
     }
     //Check for split
     if (hassplit) {
