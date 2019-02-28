@@ -894,7 +894,7 @@ class wBPTree {
       auto sibling = node->children.get_ro()[node->search.get_ro().data.slot[pos-1]].branch;
       balanceBranchNodes(sibling, child, node, pos-1);
       return newChild;
-    } else if (pos <= node->search.get_ro().data.slot[0] &&
+    } else if (pos < node->search.get_ro().data.slot[0] &&
         node->children.get_ro()[node->search.get_ro().data.slot[pos + 1]].branch->search.get_ro().data.slot[0] > middle) {
       /* we have a sibling at the right for rebalancing the keys */
       auto sibling = node->children.get_ro()[node->search.get_ro().data.slot[pos+1]].branch;
