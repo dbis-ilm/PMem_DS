@@ -22,6 +22,7 @@
 
 #include <array>
 #include <bitset>
+#include <cmath>
 #include <iostream>
 
 #include <libpmemobj++/make_persistent.hpp>
@@ -68,21 +69,17 @@ class FPTree {
   // Forward declarations
   struct LeafNode;
   struct BranchNode;
-  struct LowestBranchNode;
 
+  struct Node {
+    Node() : tag(BLANK) {};
 
-  struct LeafOrBranchNode {
-    LeafOrBranchNode() : tag(BLANK) {};
+    Node(persistent_ptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
 
-    LeafOrBranchNode(persistent_ptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
+    Node(BranchNode *branch_) : tag(BRANCH), branch(branch_) {};
 
-    LeafOrBranchNode(BranchNode *branch_) : tag(BRANCH), branch(branch_) {};
+    Node(const Node &other) { copy(other); };
 
-    LeafOrBranchNode(LowestBranchNode *lowestbranch_) : tag(LOWESTBRANCH), lowestbranch(lowestbranch_) {};
-
-    LeafOrBranchNode(const LeafOrBranchNode &other) { copy(other); };
-
-    void copy(const LeafOrBranchNode &other) throw() {
+    void copy(const Node &other) throw() {
       tag = other.tag;
 
       switch (tag) {
@@ -94,26 +91,21 @@ class FPTree {
           branch = other.branch;
           break;
         }
-        case LOWESTBRANCH: {
-          lowestbranch = other.lowestbranch;
-          break;
-        }
         default: break;
       }
     }
 
-    LeafOrBranchNode &operator=(LeafOrBranchNode other) {
+    Node &operator=(Node other) {
       copy(other);
       return *this;
     }
 
     enum NodeType {
-      BLANK, LEAF, BRANCH, LOWESTBRANCH
+      BLANK, LEAF, BRANCH
     } tag;
     union {
       persistent_ptr<LeafNode> leaf;
       BranchNode *branch;
-      LowestBranchNode *lowestbranch;
     };
   };
 
@@ -162,23 +154,7 @@ class FPTree {
 
     unsigned int numKeys;                         //< the number of currently stored keys
     std::array<KeyType, N> keys;                  //< the actual keys
-    std::array<LeafOrBranchNode, N + 1> children; //< pointers to child nodes (BranchNode or LeafNode)
-    unsigned char pad_[BRANCH_PADDING];           //<
-  };
-
-  /**
-   * A structure for representing a branch node of the last level before leaf level.
-   */
-  struct LowestBranchNode {
-    /**
-     * Constructor for creating a new empty lowest branch node.
-     */
-    LowestBranchNode() : numKeys(0) {}
-
-    unsigned int numKeys;                         //< the number of currently stored keys
-    std::array<KeyType, N> keys;                  //< the actual keys
-    std::array<persistent_ptr<LeafNode>,
-      N + 1> children;      //< pointers to child nodes (LeafNodes) in persistent mem
+    std::array<Node, N + 1> children; //< pointers to child nodes (BranchNode or LeafNode)
     unsigned char pad_[BRANCH_PADDING];           //<
   };
 
@@ -223,29 +199,18 @@ class FPTree {
   }
 
   /**
-   * Create a new empty lowest branch node
-   */
-  LowestBranchNode *newLowestBranchNode() {
-    return new LowestBranchNode();
-  }
-
-  void deleteLowestBranchNode(LowestBranchNode *node) {
-    delete node;
-  }
-
-  /**
    * A structure for passing information about a node split to
    * the caller.
    */
   struct SplitInfo {
     KeyType key;                 //< the key at which the node was split
-    LeafOrBranchNode leftChild;  //< the resulting lhs child node
-    LeafOrBranchNode rightChild; //< the resulting rhs child node
+    Node leftChild;  //< the resulting lhs child node
+    Node rightChild; //< the resulting rhs child node
   };
 
   unsigned int depth;         //< the depth of the tree, i.e. the number of levels (0 => rootNode is LeafNode)
 
-  LeafOrBranchNode rootNode;     //< pointer to the root node
+  Node rootNode;     //< pointer to the root node
   persistent_ptr<LeafNode> leafList; //<Pointer to the leaf at the most left position. Neccessary for recovery
 
   PROFILE_DECL
@@ -264,16 +229,12 @@ class FPTree {
 
     public:
     iterator() : currentNode(nullptr), currentPosition(0) {}
-    iterator(const LeafOrBranchNode &root, std::size_t d) {
+    iterator(const Node &root, std::size_t d) {
       // traverse to left-most key
       auto node = root;
       while (d-- > 0) {
         auto n = node.branch;
         node = n->children[0];
-        if (d == 0) {
-          auto n =node.lowestbranch;
-          node=n->children[0];
-        }
       }
       currentNode = node.leaf;
       currentPosition = 0;
@@ -346,10 +307,6 @@ class FPTree {
         // the root node is a leaf node
         auto n = rootNode.leaf;
         wasSplit = insertInLeafNode(n, key, val, &splitInfo);
-      } else if (depth == 1) {
-        //the root node is a lowest branch node
-        auto n = rootNode.lowestbranch;
-        wasSplit = insertInLowestBranchNode(n, key, val, &splitInfo);
       } else {
         // the root node is a branch node
         auto n = rootNode.branch;
@@ -357,25 +314,14 @@ class FPTree {
       }
       if (wasSplit) {
         // we had an overflow in the node and therefore the node is split
-        if (depth == 0) {
-        	auto root = newLowestBranchNode();
+        auto root = newBranchNode();
 
-        	root->keys[0] = splitInfo.key;
-        	root->children[0] = splitInfo.leftChild.leaf;
-        	root->children[1] = splitInfo.rightChild.leaf;
-        	root->numKeys = root->numKeys + 1;
-        	rootNode.lowestbranch = root;
-        	depth = depth + 1;
-        } else {
-          auto root = newBranchNode();
-
-          root->keys[0] = splitInfo.key;
-          root->children[0] = splitInfo.leftChild;
-          root->children[1] = splitInfo.rightChild;
-          root->numKeys = root->numKeys + 1;
-          rootNode.branch = root;
-          depth = depth + 1;
-				}
+        root->keys[0] = splitInfo.key;
+        root->children[0] = splitInfo.leftChild;
+        root->children[1] = splitInfo.rightChild;
+        ++root->numKeys;
+        rootNode.branch = root;
+        ++depth;
       }
     });
   }
@@ -413,43 +359,51 @@ class FPTree {
     auto pop = pmem::obj::pool_by_vptr(this);
     bool result;
     transaction::run(pop, [&] {
-        if (depth == 0) {
+      if (depth == 0) {
         // special case: the root node is a leaf node and
         // there is no need to handle underflow
         auto node = rootNode.leaf;
         assert(node != nullptr);
         result=eraseFromLeafNode(node, key);
-        } else if (depth == 1) {
-        // the root node is a lowest branch node
-        auto node = rootNode.lowestbranch;
-        assert(node != nullptr);
-        result=eraseFromLowestBranchNode(node, key);
-        } else {
+      } else {
         auto node = rootNode.branch;
         assert(node != nullptr);
         result=eraseFromBranchNode(node, depth, key);
 
-        }
-        });
+      }
+    });
     return result;
   }
   /**
    * Recover the FPTree by iterating over the LeafList and using the recoveryInsert method.
    */
-  void recover(){
+  void recover() {
     LOG("Starting RECOVERY of FPTree");
     persistent_ptr<LeafNode> currentLeaf = leafList;
-    if(leafList == nullptr){
+    if (leafList == nullptr) {
       LOG("No data to recover FPTree");
+      return;
     }
-    if(leafList->nextLeaf == nullptr){
+    /* counting leafs */
+    auto leafs = 0u;
+    while(currentLeaf != nullptr) {
+      ++leafs;
+      currentLeaf = currentLeaf->nextLeaf;
+    }
+    float x = std::log(leafs)/std::log(N+1);
+    assert(x == int(x) && "Not supported for this amount of leafs, yet");
+
+    /* actual recovery */
+    currentLeaf = leafList;
+    if (leafList->nextLeaf == nullptr) {
       // The index has only one node, so the leaf node becomes the root node
       rootNode = leafList;
       depth = 0;
     } else {
-      rootNode = newLowestBranchNode();
+      rootNode = newBranchNode();
       depth = 1;
-      rootNode.lowestbranch->children[0] = currentLeaf;
+      rootNode.branch->children[0] = currentLeaf;
+      currentLeaf = currentLeaf->nextLeaf;
       while (currentLeaf != nullptr) {
         recoveryInsert(currentLeaf);
         currentLeaf = currentLeaf->nextLeaf;
@@ -464,8 +418,6 @@ class FPTree {
   void print() const {
     if (depth == 0) {
       printLeafNode(0, rootNode.leaf);
-    } else if (depth == 1) {
-      printLowestBranchNode(0, rootNode.lowestbranch);
     } else {
       auto n = rootNode;
       printBranchNode(0u, n.branch);
@@ -484,18 +436,15 @@ class FPTree {
     // we traverse to the leftmost leaf node
     auto node = rootNode;
     auto d = depth;
-    while ( d > 1) {
+    while ( d-- > 0) {
       // as long as we aren't at the leaf level we follow the path down
-      node = node.branch->children.get_ro()[0];
-      d--;
-    }
-    if (d == 1) {
-      node = node.lowestbranch->children.get_ro()[0];
+      node = node.branch->children[0];
     }
     auto leaf = node.leaf;
     while (leaf != nullptr) {
       // for each key-value pair call func
       for (auto i = 0u; i < leaf->numKeys.get_ro(); i++) {
+        if (!leaf->search.get_ro().data.b.test(i)) continue;
         const auto &key = leaf->keys.get_ro()[i];
         const auto &val = leaf->values.get_ro()[i];
         func(key, val);
@@ -628,62 +577,6 @@ class FPTree {
 
   /**
    * Insert a (key, value) pair into the tree recursively by following the path
-   * down to the leaf level starting at a lowest branch node @c at depth @c depth 1.
-   *
-   * @param node the starting node for the insert
-   * @param key the key of the element
-   * @param val the actual value corresponding to the key
-   * @param splitInfo information about the split
-   * @return true if a split was performed
-   */
-  bool insertInLowestBranchNode(LowestBranchNode *node,
-      const KeyType &key, const ValueType &val,
-      SplitInfo *splitInfo) {
-    SplitInfo childSplitInfo;
-    bool split = false, hasSplit = false;
-
-    auto pos = lookupPositionInLowestBranchNode(node, key);
-
-    //our children are leaf nodes
-    auto child = node->children[pos];
-    hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
-
-    if (hasSplit) {
-      LowestBranchNode *host = node;
-      // the child node was split, thus we have to add a new entry
-      // to our lowest branch node
-
-      if (node->numKeys == N) {
-        splitLowestBranchNode(node, childSplitInfo.key, splitInfo);
-
-        host = (key < splitInfo->key ? splitInfo->leftChild
-            : splitInfo->rightChild).lowestbranch;
-        split = true;
-        pos = lookupPositionInLowestBranchNode(host, key);
-      }
-      if (pos < host->numKeys) {
-        // if the child isn't inserted at the rightmost position
-        // then we have to make space for it
-
-        host->children[host->numKeys + 1] = host->children[host->numKeys];
-        for (auto i = host->numKeys; i > pos; i--) {
-
-          host->children[i] = host->children[i - 1];
-          host->keys[i] = host->keys[i - 1];
-        }
-      }
-      // finally, add the new entry at the given position
-
-      host->keys[pos] = childSplitInfo.key;
-      host->children[pos] = childSplitInfo.leftChild.leaf;
-      host->children[pos + 1] = childSplitInfo.rightChild.leaf;
-      host->numKeys = host->numKeys + 1;
-    }
-    return split;
-  }
-
-  /**
-   * Insert a (key, value) pair into the tree recursively by following the path
    * down to the leaf level starting at node @c node at depth @c depth.
    *
    * @param node the starting node for the insert
@@ -700,13 +593,12 @@ class FPTree {
     bool split = false, hasSplit = false;
 
     auto pos = lookupPositionInBranchNode(node, key);
-    if (depth - 1 == 1) {
-      //case #1: our children are lowest branch nodes
-      auto child = node->children[pos].lowestbranch;
-      hasSplit = insertInLowestBranchNode(child, key, val, &childSplitInfo);
+    if (depth == 1) {
+      //case #1: our children are leaf nodes
+      auto child = node->children[pos].leaf;
+      hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
     } else {
       // case #2: our children are branch nodes
-
       auto child = node->children[pos].branch;
       hasSplit = insertInBranchNode(child, depth - 1, key, val, &childSplitInfo);
     }
@@ -714,8 +606,6 @@ class FPTree {
       BranchNode *host = node;
       // the child node was split, thus we have to add a new entry
       // to our branch node
-
-
       if (node->numKeys == N) {
         splitBranchNode(node, childSplitInfo.key, splitInfo);
 
@@ -727,54 +617,19 @@ class FPTree {
       if (pos < host->numKeys) {
         // if the child isn't inserted at the rightmost position
         // then we have to make space for it
-
         host->children[host->numKeys + 1] = host->children[host->numKeys];
         for (auto i = host->numKeys; i > pos; i--) {
-
           host->children[i] = host->children[i - 1];
           host->keys[i] = host->keys[i - 1];
         }
       }
       // finally, add the new entry at the given position
-
       host->keys[pos] = childSplitInfo.key;
       host->children[pos] = childSplitInfo.leftChild;
       host->children[pos + 1] = childSplitInfo.rightChild;
       host->numKeys = host->numKeys + 1;
     }
     return split;
-  }
-
-  /**
-   * Split the given lowest branch node @c node in the middle and move
-   * half of the keys/children to the new sibling node.
-   *
-   * @param node the branch node to be split
-   * @param splitKey the key on which the split of the child occured
-   * @param splitInfo information about the split
-   */
-  void splitLowestBranchNode(LowestBranchNode *node, const KeyType &splitKey,
-      SplitInfo *splitInfo) {
-    // we have an overflow at the lowest branch node, let's split it
-    // determine the split position
-    unsigned int middle = (N + 1) / 2;
-    // adjust the middle based on the key we have to insert
-
-    if (splitKey > node->keys[middle]) middle++;
-    // move all entries behind this position to a new sibling node
-    LowestBranchNode *sibling = newLowestBranchNode();
-    sibling->numKeys = node->numKeys - middle;
-    for (auto i = 0u; i < sibling->numKeys; i++) {
-
-      sibling->keys[i] = node->keys[middle + i];
-      sibling->children[i] = node->children[middle + i];
-    }
-
-    sibling->children[sibling->numKeys] = node->children[node->numKeys];
-    node->numKeys = middle - 1;
-    splitInfo->key = node->keys[middle - 1];
-    splitInfo->leftChild = node;
-    splitInfo->rightChild = sibling;
   }
 
   /**
@@ -791,19 +646,18 @@ class FPTree {
     // determine the split position
     unsigned int middle = (N + 1) / 2;
     // adjust the middle based on the key we have to insert
-
     if (splitKey > node->keys[middle]) middle++;
+
     // move all entries behind this position to a new sibling node
     BranchNode *sibling = newBranchNode();
     sibling->numKeys = node->numKeys - middle;
     for (auto i = 0u; i < sibling->numKeys; i++) {
-
       sibling->keys[i] = node->keys[middle + i];
       sibling->children[i] = node->children[middle + i];
     }
-
     sibling->children[sibling->numKeys] = node->children[node->numKeys];
     node->numKeys = middle - 1;
+
     splitInfo->key = node->keys[middle - 1];
     splitInfo->leftChild = node;
     splitInfo->rightChild = sibling;
@@ -821,19 +675,10 @@ class FPTree {
     auto node = rootNode;
 
     auto d = depth;
-    while (d > 1) {
-      // as long as we aren't at the lowest branch level we follow the path down
+    while (d-- > 0) {
       auto n = node.branch;
       auto pos = lookupPositionInBranchNode(n, key);
-
       node = n->children[pos];
-      d--;
-    }
-    if(d==1){
-      //after reaching the lowest leaf level, one more step is neccessary
-      auto n=node.lowestbranch;
-      auto pos=lookupPositionInLowestBranchNode(n, key);
-      node=n->children[pos];
     }
     return node.leaf;
   }
@@ -860,27 +705,6 @@ class FPTree {
   }
 
   /**
-   * Lookup the search key @c key in the given lowest branch node and return the
-   * position which is the position in the list of keys + 1. in this way, the
-   * position corresponds to the position of the child pointer in the
-   * array @children.
-   * If the search key is less than the smallest key, then @c 0 is returned.
-   * If the key is greater than the largest key, then @c numKeys is returned.
-   *
-   * @param node the lowest branch node where we search
-   * @param key the search key
-   * @return the position of the key + 1 (or 0 or @c numKey)
-   */
-  unsigned int lookupPositionInLowestBranchNode(LowestBranchNode *node,
-      const KeyType &key) const {
-    // we perform a simple linear search, perhaps we should try a binary
-    // search instead?
-    auto pos = 0u;
-    for (; pos < node->numKeys && node->keys[pos] <= key; pos++);
-    return pos;
-  }
-
-  /**
    * Lookup the search key @c key in the given branch node and return the
    * position which is the position in the list of keys + 1. in this way, the
    * position corresponds to the position of the child pointer in the
@@ -894,12 +718,25 @@ class FPTree {
    */
   unsigned int lookupPositionInBranchNode(BranchNode *node,
       const KeyType &key) const {
-    // we perform a simple linear search, perhaps we should try a binary
-    // search instead?
     auto pos = 0u;
     for (; pos < node->numKeys && node->keys[pos] <= key; pos++);
     return pos;
+    //return binarySearch(node, 0, node->numKeys-1, key);
   }
+
+  template<typename Node>
+  unsigned int binarySearch(Node *node, int l, int r,
+                            KeyType const &key) const {
+    auto pos = 0u;
+    while (l <= r) {
+      pos = (l + r) / 2;
+      if (node->keys[pos] == key) return ++pos;
+      if (node->keys[pos] < key) l = ++pos;
+      else r = pos - 1;
+    }
+    return pos;
+  }
+
 
   /**
    * Delete the element with the given key from the given leaf node.
@@ -921,32 +758,6 @@ class FPTree {
    * Delete an entry from the tree by recursively going down to the leaf level
    * and handling the underflows.
    *
-   * @param node the current lowest branch node
-   * @param key the key to be deleted
-   * @return true if the entry was deleted
-   */
-  bool eraseFromLowestBranchNode(LowestBranchNode *node, const KeyType &key) {
-    bool deleted = false;
-    // try to find the leaf
-    auto pos = lookupPositionInLowestBranchNode(node, key);
-
-    // the next level is the leaf level
-    auto leaf = node->children[pos];
-    assert(leaf != nullptr);
-    deleted = eraseFromLeafNode(leaf, key);
-    unsigned int middle = (M + 1) / 2;
-    if (leaf->search.get_ro().data.b.count() < middle) {
-      // handle underflow
-      underflowAtLeafLevel(node, pos, leaf);
-    }
-
-    return deleted;
-  }
-
-  /**
-   * Delete an entry from the tree by recursively going down to the leaf level
-   * and handling the underflows.
-   *
    * @param node the current branch node
    * @param d the current depth of the traversal
    * @param key the key to be deleted
@@ -957,25 +768,17 @@ class FPTree {
     bool deleted = false;
     // try to find the branch
     auto pos = lookupPositionInBranchNode(node, key);
-    if (d == 2) {
-      // the next level is the lowest branch level
-
-      auto lowestbranch = node->children[pos].lowestbranch;
-      assert(lowestbranch != nullptr);
-      deleted = eraseFromLowestBranchNode(lowestbranch, key);
+    if (d == 1) {
+      // the next level is the leaf level
+      auto leaf = node->children[pos].leaf;
+      assert(leaf != nullptr);
+      deleted = eraseFromLeafNode(leaf, key);
       unsigned int middle = (M + 1) / 2;
-      if (lowestbranch->numKeys < middle) {
+      if (leaf->search.get_ro().data.b.count() < middle) {
         // handle underflow
-
-        lowestbranch=underflowAtLowestBranchLevel(node, pos, lowestbranch);
-        if (d == depth && node->numKeys == 0) {
-          // special case: the root node is empty now
-          rootNode = lowestbranch;
-          depth = depth - 1;
-        }
+        underflowAtLeafLevel(node, pos, leaf);
       }
     } else {
-
       auto child = node->children[pos].branch;
       deleted = eraseFromBranchNode(child, d - 1, key);
 
@@ -983,12 +786,11 @@ class FPTree {
       unsigned int middle = (N + 1) / 2;
       if (child->numKeys < middle) {
         // handle underflow
-
         child = underflowAtBranchLevel(node, pos, child);
         if (d == depth && node->numKeys == 0) {
           // special case: the root node is empty now
           rootNode = child;
-          depth = depth - 1;
+          --depth;
         }
       }
     }
@@ -1006,7 +808,8 @@ class FPTree {
    * the lowest branch node
    * @param leaf the node at which the underflow occured
    */
-  void underflowAtLeafLevel(LowestBranchNode *node, unsigned int pos, persistent_ptr <LeafNode> leaf) {
+  void underflowAtLeafLevel(BranchNode *node, unsigned int pos,
+      persistent_ptr<LeafNode> leaf) {
       assert(pos <= node->numKeys);
       unsigned int middle = (M + 1) / 2;
       // 1. we check whether we can rebalance with one of the siblings
@@ -1042,111 +845,20 @@ class FPTree {
           if (pos > 0) pos--;
           // just remove the child node from the current lowest branch node
           for (auto i = pos; i < node->numKeys - 1; i++) {
-
             node->keys[i] = node->keys[i + 1];
             node->children[i + 1] = node->children[i + 2];
           }
-
           node->children[pos] = survivor;
-          node->numKeys--;
+          --node->numKeys;
         } else {
           // This is a special case that happens only if
           // the current node is the root node. Now, we have
-          // to replace the lowest branch root node by a leaf node.
+          // to replace the branch root node by a leaf node.
           rootNode = survivor;
-          depth = depth - 1;
+          --depth;
         }
       }
     }
-  /**
-   * Handle the case that during a delete operation a underflow at node @c child
-   * occured where @c node is the parent node. If possible this is handled
-   * (1) by rebalancing the elements among the node @c child and one of its
-   * siblings
-   * (2) if not possible by merging with one of its siblings.
-   *
-   * @param node the parent node of the node where the underflow occured
-   * @param pos the position of the child node @child in the @c children array
-   * of the lowest branch node
-   * @param child the node at which the underflow occured
-   * @return the (possibly new) child node (in case of a merge)
-   */
-  LowestBranchNode* underflowAtLowestBranchLevel(BranchNode *node, unsigned int pos,
-      LowestBranchNode* child) {
-    assert(node != nullptr);
-    assert(child != nullptr);
-
-    LowestBranchNode *newChild = child;
-    unsigned int middle = (N + 1) / 2;
-    // 1. we check whether we can rebalance with one of the siblings
-
-    if (pos > 0 &&
-        node->children[pos - 1].branch->numKeys >middle) {
-      // we have a sibling at the left for rebalancing the keys
-
-      LowestBranchNode *sibling = node->children[pos - 1].lowestbranch;
-      balanceLowestBranchNodes(sibling, child, node, pos - 1);
-      // node->keys.get_rw()[pos] = child->keys.get_ro()[0];
-      return newChild;
-    } else if (pos < node->numKeys && node->children[pos + 1].lowestbranch->numKeys > middle) {
-      // we have a sibling at the right for rebalancing the keys
-      auto sibling = node->children[pos + 1].lowestbranch;
-      balanceLowestBranchNodes(sibling, child, node, pos);
-
-      return newChild;
-    } else {
-
-      // 2. if this fails we have to merge two lowest branch nodes
-      LowestBranchNode *lSibling = nullptr, *rSibling = nullptr;
-      unsigned int prevKeys = 0, nextKeys = 0;
-
-      if (pos > 0) {
-
-        lSibling = node->children[pos - 1].lowestbranch;
-        prevKeys = lSibling->numKeys;
-      }
-      if (pos < node->numKeys) {
-
-        rSibling = node->children[pos + 1].lowestbranch;
-        nextKeys = rSibling->numKeys;
-      }
-
-      LowestBranchNode *witnessNode = nullptr;
-      auto ppos = pos;
-      if (prevKeys > 0) {
-
-        mergeLowestBranchNodes(lSibling, node->keys[pos - 1], child);
-        ppos = pos - 1;
-        witnessNode = child;
-        newChild = lSibling;
-        // pos -= 1;
-      } else if (nextKeys > 0) {
-
-        mergeLowestBranchNodes(child, node->keys[pos], rSibling);
-        witnessNode = rSibling;
-      } else
-        // shouldn't happen
-        assert(false);
-
-      // remove node->keys[pos] from node
-      for (auto i = ppos; i < node->numKeys - 1; i++) {
-
-        node->keys[i] = node->keys[i + 1];
-      }
-      if (pos == 0) pos++;
-      for (auto i = pos; i < node->numKeys; i++) {
-        if (i + 1 <= node->numKeys) {
-
-
-          node->children[i] = node->children[i + 1];
-        }
-      }
-      node->numKeys--;
-
-      deleteLowestBranchNode(witnessNode);
-      return newChild;
-    }
-  }
 
   /**
    * Handle the case that during a delete operation a underflow at node @c child
@@ -1162,7 +874,7 @@ class FPTree {
    * @return the (possibly new) child node (in case of a merge)
    */
   BranchNode* underflowAtBranchLevel(BranchNode *node, unsigned int pos,
-      BranchNode* child) {
+                                     BranchNode* child) {
     assert(node != nullptr);
     assert(child != nullptr);
 
@@ -1293,7 +1005,7 @@ class FPTree {
   unsigned int findMinKeyAtLeafNode(const persistent_ptr<LeafNode> &node) {
     unsigned int pos = 0;
     KeyType currMinKey = std::numeric_limits<KeyType>::max();
-    for (auto i = 1u; i < M; i++) {
+    for (auto i = 0u; i < M; i++) {
       if(node->search.get_ro().data.b.test(i)){ 
         KeyType key = node->keys.get_ro()[i];
         if (key < currMinKey) { currMinKey = key; pos = i;}
@@ -1311,93 +1023,13 @@ class FPTree {
   unsigned int findMaxKeyAtLeafNode(const persistent_ptr<LeafNode> &node) {
     unsigned int pos = 0;
     KeyType currMaxKey = 0;
-    for (auto i = 1u; i < M; i++) {
+    for (auto i = 0u; i < M; i++) {
       if(node->search.get_ro().data.b.test(i)){ 
         KeyType key = node->keys.get_ro()[i];
         if (key > currMaxKey) { currMaxKey = key; pos = i;}
       }
     }
     return pos;
-  }
-
-  /**
-   * Rebalance two lowest branch nodes by moving some key-children pairs from the node
-   * @c donor to the node @receiver via the parent node @parent. The position of
-   * the key between the two nodes is denoted by @c pos.
-   *
-   * @param donor the lowest branch node from which the elements are taken
-   * @param receiver the sibling lowest branch node getting the elements from @c donor
-   * @param parent the parent node of @c donor and @c receiver
-   * @param pos the position of the key in node @c parent that lies between
-   *      @c donor and @c receiver
-   */
-  void balanceLowestBranchNodes(LowestBranchNode *donor, LowestBranchNode *receiver,
-      BranchNode *parent, unsigned int pos) {
-    assert(donor->numKeys > receiver->numKeys);
-
-    unsigned int balancedNum = (donor->numKeys + receiver->numKeys) / 2;
-    unsigned int toMove = donor->numKeys - balancedNum;
-    if (toMove == 0) return;
-
-    if (donor->keys[0] < receiver->keys[0]) {
-      // move from one node to a node with larger keys
-      unsigned int i = 0;
-
-      // 1. make room
-      receiver->children[receiver->numKeys + toMove] =
-        receiver->children[receiver->numKeys];
-      for (i = receiver->numKeys; i > 0; i--) {
-        // reserve space on receiver side
-
-        receiver->keys[i + toMove - 1] = receiver->keys[i - 1];
-        receiver->children[i + toMove - 1] = receiver->children[i - 1];
-      }
-      // 2. move toMove keys/children from donor to receiver
-      for (i = 0; i < toMove; i++) {
-
-        receiver->children[i] =
-          donor->children[donor->numKeys - toMove + 1 + i];
-      }
-      for (i = 0; i < toMove - 1; i++) {
-
-        receiver->keys[i] = donor->keys[donor->numKeys - toMove + 1 + i];
-      }
-
-      receiver->keys[toMove - 1] = parent->keys[pos];
-      assert(parent->numKeys > pos);
-      parent->keys[pos] = donor->keys[donor->numKeys - toMove];
-      receiver->numKeys += toMove;
-    } else {
-      // mode from one node to a node with smaller keys
-      unsigned int i = 0, n = receiver->numKeys;
-
-      // 1. move toMove keys/children from donor to receiver
-      for (i = 0; i < toMove; i++) {
-
-        receiver->children[n + 1 + i] = donor->children[i];
-        receiver->keys[n + 1 + i] = donor->keys[i];
-      }
-      // 2. we have to move via the parent node: take the key from
-      // parent->keys.get_ro()[pos]
-
-      receiver->keys[n] = parent->keys[pos];
-      receiver->numKeys += toMove;
-      KeyType key = donor->keys[toMove - 1];
-
-      // 3. on donor node move all keys and values to the left
-      for (i = 0; i < donor->numKeys - toMove; i++) {
-
-        donor->keys[i] = donor->keys[toMove + i];
-        donor->children[i] = donor->children[toMove + i];
-      }
-
-      donor->children[donor->numKeys - toMove] =
-        donor->children[donor->numKeys];
-      // and replace this key by donor->keys.get_ro()[0]
-      assert(parent->numKeys > pos);
-      parent->keys[pos] = key;
-    }
-    donor->numKeys -= toMove;
   }
 
   /**
@@ -1512,32 +1144,6 @@ class FPTree {
   }
 
   /**
-   * Merge two lowest branch nodes my moving all keys/children from @c node to @c
-   * sibling and put the key @c key from the parent node in the middle. The node
-   * @c node should be deleted by the caller.
-   *
-   * @param sibling the left sibling node which receives all keys/children
-   * @param key the key from the parent node that is between sibling and node
-   * @param node the node from which we move all keys/children
-   */
-  void mergeLowestBranchNodes(LowestBranchNode *sibling, const KeyType &key,
-      LowestBranchNode *node) {
-    assert(key <= node->keys[0]);
-    assert(sibling != nullptr);
-    assert(node != nullptr);
-    assert(sibling->keys[sibling->numKeys - 1] < key);
-
-    sibling->keys[sibling->numKeys] = key;
-    sibling->children[sibling->numKeys + 1] = node->children[0];
-    for (auto i = 0u; i < node->numKeys; i++) {
-
-      sibling->keys[sibling->numKeys + i + 1] = node->keys[i];
-      sibling->children[sibling->numKeys + i + 2] = node->children[i + 1];
-    }
-    sibling->numKeys += node->numKeys + 1;
-  }
-
-  /**
    * Merge two branch nodes my moving all keys/children from @c node to @c
    * sibling and put the key @c key from the parent node in the middle. The node
    * @c node should be deleted by the caller.
@@ -1547,7 +1153,7 @@ class FPTree {
    * @param node the node from which we move all keys/children
    */
   void mergeBranchNodes(BranchNode *sibling, const KeyType &key,
-      BranchNode *node) {
+                        BranchNode *node) {
     assert(key <= node->keys[0]);
     assert(sibling != nullptr);
     assert(node != nullptr);
@@ -1562,6 +1168,7 @@ class FPTree {
     }
     sibling->numKeys += node->numKeys + 1;
   }
+
   /**
    * Print the given leaf node @c node to standard output.
    *
@@ -1586,59 +1193,29 @@ class FPTree {
   void recoveryInsert(persistent_ptr<LeafNode> leaf){
     assert(depth > 0);
     assert(leaf != nullptr);
-    bool hassplit = false;
+    
     SplitInfo splitInfo;
-    if (depth == 1){
-      //The root node is a lowest branch node
-      hassplit = recoveryInsertInLowestBranchNode(rootNode.lowestbranch, leaf, &splitInfo);
-    } else{
-      //The root node is a branch node
-      hassplit = recoveryInsertInBranchNode(rootNode.branch, depth, leaf, &splitInfo);
-    }
+    auto hassplit = recoveryInsertInBranchNode(rootNode.branch, depth, leaf, &splitInfo);
 
     //Check for split
-    if(hassplit){
+    if (hassplit) {
       //The root node was splitted
-      auto newRoot=newBranchNode();
-      newRoot->keys[0]=splitInfo.key;
-      newRoot->children[0]=splitInfo.leftChild;
-      newRoot->children[1]=splitInfo.rightChild;
-      newRoot->numKeys=1;
-      rootNode=newRoot;
-      depth++;
+      auto newRoot = newBranchNode();
+      newRoot->keys[0] = splitInfo.key;
+      newRoot->children[0] = splitInfo.leftChild;
+      newRoot->children[1] = splitInfo.rightChild;
+      newRoot->numKeys = 1;
+      rootNode = newRoot;
+      ++depth;
     }
   }
-  /**
-   * Insert a leaf node into the tree recursively by following the path
-   * down to the leaf level starting at a lowest branch node @c at depth @c depth 1.
-   *
-   * @param node the starting node for the insert
-   * @param leaf the leaf node to insert
-   * @param splitInfo information about the split
-   * @return true if a split was performed
-   */
-  bool recoveryInsertInLowestBranchNode(LowestBranchNode *node, persistent_ptr<LeafNode> leaf, SplitInfo *splitInfo){
-
-    if(node->numKeys == N){
-      //We have to split the lowest branch node
-      splitLowestBranchNode(node, leaf->keys.get_ro()[0], splitInfo);
-      //we have to insert in the new right child, as the keys in the leafList are sorted
-      auto done=recoveryInsertInLowestBranchNode(splitInfo->rightChild.lowestbranch,leaf,splitInfo );
-      return true;
-    }
-    else{
-      node->keys[node->numKeys] = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
-      ++node->numKeys;
-      node->children[node->numKeys] = leaf;
-      return false;
-    }
-  }
+  
   /**
    * Insert a leaf node into the tree recursively by following the path
    * down to the leaf level starting at node @c node at depth @c depth.
    *
    * @param node the starting node for the insert
-   * @param depth the current depth of the tree (0 == leaf level, 1 == lowestbranch level)
+   * @param depth the current depth of the tree (0 == leaf level)
    * @param leaf the leaf node to insert
    * @param splitInfo information about the split
    * @return true if a split was performed
@@ -1646,30 +1223,37 @@ class FPTree {
   bool recoveryInsertInBranchNode(BranchNode *node, int curr_depth, persistent_ptr<LeafNode> leaf, SplitInfo *splitInfo){
     bool hassplit=false;
     SplitInfo childSplitInfo;
-    if(curr_depth==2){
-      //The next level is the lowest branch level
-      //We can go down the rightmost way
-      hassplit=recoveryInsertInLowestBranchNode(node->children[node->numKeys].lowestbranch, leaf,&childSplitInfo);
-    }else{
-      hassplit=recoveryInsertInBranchNode(node->children[node->numKeys].branch,curr_depth-1,leaf,&childSplitInfo);
-    }
 
-    //Check for split
-    if(hassplit){
-      if(node->numKeys==N){
-        //We have to split the branch node
-        splitBranchNode(node, childSplitInfo.key,splitInfo);
-        BranchNode *newNode = splitInfo->rightChild.branch;
-        //Insert the new child into the new branch at the rightmost position
-        newNode->keys[newNode->numKeys]=childSplitInfo.key;
-        newNode->children[newNode->numKeys]=childSplitInfo.leftChild;
-        newNode->numKeys++;
-        newNode->children[newNode->numKeys]=childSplitInfo.rightChild;
+    if (curr_depth == 1) {
+      if (node->numKeys == N) {
+        /* we have to insert a new right child, as the keys in the leafList are sorted */
+        BranchNode *newNode = newBranchNode();
+        newNode->children[0] = leaf;
+        splitInfo->key = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
+        splitInfo->leftChild = node;
+        splitInfo->rightChild = newNode;
         return true;
+      } else {
+        node->keys[node->numKeys] = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
+        ++node->numKeys;
+        node->children[node->numKeys] = leaf;
+        return false;
       }
-      else{
-        node->keys[node->numKeys]=childSplitInfo.key;
-        node->numKeys++;
+    } else {
+      hassplit = recoveryInsertInBranchNode(node->children[node->numKeys].branch, curr_depth-1, leaf, &childSplitInfo);
+    }
+    //Check for split
+    if (hassplit) {
+      if (node->numKeys == N) {
+        BranchNode *newNode = newBranchNode();
+        newNode->children[0] = childSplitInfo.rightChild;
+        splitInfo->key = childSplitInfo.key;
+        splitInfo->leftChild = node;
+        splitInfo->rightChild = newNode;
+        return true;
+      } else {
+        node->keys[node->numKeys] = childSplitInfo.key;
+        ++node->numKeys;
         node->children[node->numKeys]=childSplitInfo.rightChild;
         return false;
       }
@@ -1694,36 +1278,14 @@ class FPTree {
     }
     std::cout << " }" << std::endl;
     for (auto k = 0u; k <= node->numKeys; k++) {
-      if (d + 1 < depth - 1) {
+      if (d + 1 < depth) {
         auto child = node->children[k].branch;
         if (child != nullptr) printBranchNode(d + 1, child);
       } else {
-        auto child = node->children[k].lowestbranch;
-        if (child != nullptr) printLowestBranchNode(d + 1, child);
+        auto child = node->children[k].leaf;
+        if (child != nullptr) printLeafNode(d + 1, child);
       }
 
-    }
-  }
-
-  /**
-   * Print the given lowest branch node @c node and all its children
-   * to standard output.
-   *
-   * @param d the current depth used for indention
-   * @param node the tree node to print
-   */
-  void printLowestBranchNode(unsigned int d, LowestBranchNode *node) const {
-    for (auto i = 0u; i < d; i++) std::cout << "  ";
-    std::cout << d << " LBN { ";
-    for (auto k = 0u; k < node->numKeys; k++) {
-      if (k > 0) std::cout << ", ";
-
-      std::cout << node->keys[k];
-    }
-    std::cout << " }" << std::endl;
-    for (auto k = 0u; k <= node->numKeys; k++) {
-      auto leaf = node->children[k];
-      printLeafNode(d + 1, leaf);
     }
   }
 
