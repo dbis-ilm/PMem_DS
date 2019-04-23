@@ -27,9 +27,9 @@
 
 #define UNIT_TESTS
 #include "benchmark/benchmark.h"
-#include "FPTree.hpp"
+#include "PBPTree.hpp"
 
-using namespace dbis::fptree;
+using namespace dbis::pbptree;
 
 using pmem::obj::pool;
 
@@ -38,7 +38,7 @@ using pmem::obj::pool;
 using MyTuple = std::tuple <int, int, double>;
 using MyKey = unsigned long long;
 constexpr auto TARGET_BRANCH_SIZE = 512;
-constexpr auto TARGET_LEAF_SIZE = 1024; //< 512B best performance
+constexpr auto TARGET_LEAF_SIZE = 512; //< 512B best performance
 constexpr auto TARGET_DEPTH = 1;
 const std::string path = dbis::gPmemPath + "tree_bench.data";
 constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull; //< 4GB
@@ -104,12 +104,12 @@ constexpr uint64_t ipow(uint64_t base, int exp, uint64_t result = 1) {
 }
 
 /* Tree relevant calculated parameters*/
-constexpr auto LEAFKEYS = getLeafKeysFPTree<5>(); //< 5 iterations should be enough
-constexpr auto BRANCHKEYS = getBranchKeysFPTree<5>();
+constexpr auto LEAFKEYS = getLeafKeysPBPTree<5>(); //< 5 iterations should be enough
+constexpr auto BRANCHKEYS = getBranchKeysPBPTree<5>();
 constexpr auto ELEMENTS = LEAFKEYS*ipow(BRANCHKEYS+1, TARGET_DEPTH);
-constexpr auto KEYPOS = ELEMENTS/1;
+constexpr auto KEYPOS = ELEMENTS/2;
 
-using TreeType = FPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
+using TreeType = PBPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
 
 /*=== Insert Function ===*/
 void insert(persistent_ptr<TreeType> &tree) {

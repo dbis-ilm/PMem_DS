@@ -1,25 +1,24 @@
 #!/bin/bash
 
 ### LOCATIONS ###
-REPO_ROOT=$PWD
-BUILD_DIR=build
-DATA=/mnt/mem/test/tree_bench.data
-OUTPUT_FILE=$REPO_ROOT/results/writes.csv
+REPO_ROOT=$PWD/..
+BUILD_DIR=$REPO_ROOT/build
+DATA=/mnt/pmem/test/tree_bench.data
+OUTPUT_FILE=$PWD/results/testing.csv
 
 ### CUSTOMIZABLE PARAMETERS ###
 bsize=512
-depth=0
-keypos=('first' 'middle' 'last')
+depth=1
 LEAF_SIZES=( 256 512 1024 2048 4096 )
-TREE="wBP" #FP/PBP/wBP
-TREE_BASE="wBP" # for namespace and numKeys determination
+TREE="PBP" #FP/PBP/Unsorted/wBP
+TREE_BASE="PBP" #FP/PBP/wBP
 SUFFIX="" # in case of binary vs. linear
 
 ### Do not change anything following here!!! ###
 
 ### needs manual adaption ###
 fillratio=1.0
-lat=75
+keypos="last" #first/middle/last
 
 ### adapting Tree usage ###
 sed -i'' -e 's/\(.*BRANCH_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$bsize"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
@@ -31,29 +30,20 @@ sed -i'' -e 's/\(.*BRANCHKEYS = getBranchKeys\).*\(Tree.*\)/\1'"$TREE_BASE"'\2/'
 sed -i'' -e 's/\(.*TreeType = \).*\(Tree.*\)/\1'"$TREE"'\2/' $REPO_ROOT/src/bench/trees/common.hpp #type
 
 echo -n "Running benchmarks for ${Tree}Tree..."
-for pos in "${keypos[@]}"
+for lsize in "${LEAF_SIZES[@]}"
 do
-  echo -en "\nKey Position: $pos - "
-  KEYPOS='2'
-  if [ $pos == "first" ];then
-    KEYPOS='ELEMENTS'
-  elif [ $pos == "last" ]; then
-    KEYPOS='1'
-  fi
-  sed -i'' -e 's/\(.*KEYPOS = ELEMENTS\/\)\(.\+\)\(;.*\)/\1'"$KEYPOS"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
-  for lsize in "${LEAF_SIZES[@]}"
+  echo -en "\nLeaf size: $lsize"
+  sed -i'' -e 's/\(.*LEAF_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$lsize"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
+  rm -rf $DATA
+  pushd $BUILD_DIR > /dev/null
+  make tree_get > /dev/null
+  for r in {1..3}
   do
-    echo -n "$lsize "
-    sed -i'' -e 's/\(.*LEAF_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$lsize"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
-    pushd $BUILD_DIR > /dev/null
-    make tree_insert > /dev/null
-    rm -rf $DATA
-    OUTPUT="$(sh -c 'bench/tree_insert --benchmark_format=csv --benchmark_min_time=0.005' 2> /dev/null | tail -4)"
-    writes="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
-    elements="$(echo "$OUTPUT" | head -2 | tail -1 | cut -d ':' -f2)"
+    OUTPUT="$(sh -c 'bench/tree_get --benchmark_format=csv' 2> /dev/null | tail -3)"
+    elements="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
     time="$(echo "$OUTPUT" | tail -1 | cut -d ',' -f4)"
-    echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$pos,$time,$writes" >> $OUTPUT_FILE
-    popd > /dev/null
+    echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$keypos,$time" >> $OUTPUT_FILE
   done
+  popd > /dev/null
 done
 echo -e "\nFinished. Results in $OUTPUT_FILE"

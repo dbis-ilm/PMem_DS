@@ -1,25 +1,25 @@
 #!/bin/bash
 
 ### LOCATIONS ###
-REPO_ROOT=$PWD
-BUILD_DIR=build
-DATA=/mnt/mem/test/tree_bench.data
-OUTPUT_FILE=$REPO_ROOT/results/bytesWritten.csv
+REPO_ROOT=$PWD/..
+BUILD_DIR=$REPO_ROOT/build
+DATA=/mnt/pmem/test/tree_bench.data
+OUTPUT_FILE=$PWD/results/writes.csv
 
 ### CUSTOMIZABLE PARAMETERS ###
 bsize=512
 depth=0
 keypos=('first' 'middle' 'last')
 LEAF_SIZES=( 256 512 1024 2048 4096 )
-TREE="UnsortedPBP" #FP/PBP/wBP
-TREE_BASE="PBP" # for namespace and numKeys determination
+TREE="wBP" #FP/PBP/wBP
+TREE_BASE="wBP" # for namespace and numKeys determination
 SUFFIX="" # in case of binary vs. linear
 
 ### Do not change anything following here!!! ###
 
 ### needs manual adaption ###
 fillratio=1.0
-lat=750
+lat=75
 
 ### adapting Tree usage ###
 sed -i'' -e 's/\(.*BRANCH_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$bsize"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
@@ -47,15 +47,12 @@ do
     sed -i'' -e 's/\(.*LEAF_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$lsize"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
     pushd $BUILD_DIR > /dev/null
     make tree_insert > /dev/null
-    for r in {1..5}
-    do
-      rm -rf $DATA
-      OUTPUT="$(sh -c 'bench/tree_insert --benchmark_format=csv --benchmark_min_time=0.005' 2> /dev/null | tail -4)"
-      writes="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
-      elements="$(echo "$OUTPUT" | tail -3 | head -1 | cut -d ':' -f2)"
-      time="$(echo "$OUTPUT" | tail -1 | cut -d ',' -f4)"
-      echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$pos,$time,$writes,$lat" >> $OUTPUT_FILE
-    done
+    rm -rf $DATA
+    OUTPUT="$(sh -c 'bench/tree_insert --benchmark_format=csv --benchmark_min_time=0.005' 2> /dev/null | tail -4)"
+    writes="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
+    elements="$(echo "$OUTPUT" | head -2 | tail -1 | cut -d ':' -f2)"
+    time="$(echo "$OUTPUT" | tail -1 | cut -d ',' -f4)"
+    echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$pos,$time,$writes" >> $OUTPUT_FILE
     popd > /dev/null
   done
 done

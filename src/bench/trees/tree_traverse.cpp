@@ -65,7 +65,6 @@ static void BM_TreeTraverse(benchmark::State &state) {
   }
   //tree->printBranchNode(0, tree->rootNode.branch);
   std::cout << "Elements:" << ELEMENTS << "\n";
-  std::cout << "Size" << sizeof(*tree) << "\n";
   pop.close();
 }
 BENCHMARK(BM_TreeTraverse);

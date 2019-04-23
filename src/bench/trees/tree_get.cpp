@@ -39,7 +39,7 @@ static void BM_TreeGet(benchmark::State &state) {
   } else {
     LOG("Warning: " << path << " already exists");
     pop = pool<root>::open(path, LAYOUT);
-    pop.root()->tree->recover(); //< hybrids only
+    //pop.root()->tree->recover(); //< hybrids only
   }
   auto tree = pop.root()->tree;
   //tree->printBranchNode(0, tree->rootNode.branch);
@@ -48,12 +48,12 @@ static void BM_TreeGet(benchmark::State &state) {
   auto node = tree->rootNode;
 
   /* hybrid versions */
-  auto d = tree->depth;
-  while ( d-- > 0) node = node.branch->children[0];
+  //auto d = tree->depth;
+  //while ( d-- > 0) node = node.branch->children[0];
 
   /* nvm-only trees */
-  //auto d = tree->depth.get_ro();
-  //while ( d-- > 0) node = node.branch->children.get_ro()[0];
+  auto d = tree->depth.get_ro();
+  while ( d-- > 0) node = node.branch->children.get_ro()[0];
 
   auto leaf = node.leaf;
 

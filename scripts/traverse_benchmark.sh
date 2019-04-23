@@ -1,18 +1,18 @@
 #!/bin/bash
 
 ### LOCATIONS ###
-REPO_ROOT=$PWD
-BUILD_DIR=build
-DATA=/mnt/mem/test/tree_bench.data
-OUTPUT_FILE=$REPO_ROOT/results/traverseMemory.csv
+REPO_ROOT=$PWD/..
+BUILD_DIR=$REPO_ROOT/build
+DATA=/mnt/pmem/test/tree_bench.data
+OUTPUT_FILE=$PWD/results/traverseMemory.csv
 
 ### CUSTOMIZABLE PARAMETERS ###
 keypos="middle" #first/middle/last
 lsize=512
 BRANCH_SIZES=( 256 512 1024 2048 4096 )
 DEPTHS=(1 2 3 4)
-TREE="FP" #FP/PBP/wBP/wHBP
-TREE_BASE="FP" # for namespace and numKeys determination
+TREE="PBP" #FP/PBP/wBP/wHBP
+TREE_BASE="PBP" # for namespace and numKeys determination
 SUFFIX="_b" # in case of binary vs. linear
 
 ### Do not change anything following here!!! ###
@@ -53,7 +53,7 @@ do
       OUTPUT="$(sh -c 'bench/tree_traverse --benchmark_format=csv' 2> /dev/null | tail -3)"
       elements="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
       time="$(echo "$OUTPUT" | tail -1 | cut -d ',' -f4)"
-      echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$keypos,$memory" >> $OUTPUT_FILE
+      echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$keypos,$time" >> $OUTPUT_FILE
     done
     popd > /dev/null
   done
