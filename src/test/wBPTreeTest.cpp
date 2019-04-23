@@ -84,10 +84,10 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto node = q->btree1->newBranchNode();
     for (auto i = 0; i < 10; i++) {
       node->keys.get_rw()[i] = i + 1;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.slot[i+1] = i;
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().slot[i+1] = i;
     }
-    node->search.get_rw().data.slot[0] = 10;
+    node->search.get_rw().slot[0] = 10;
 
     REQUIRE(q->btree1->lookupPositionInBranchNode(node, 0) == 1);
     REQUIRE(q->btree1->lookupPositionInBranchNode(node, 1) == 2);
@@ -103,10 +103,10 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto node = q->btree1->newLeafNode();
     for (auto i = 0; i < 10; i++) { 
       node->keys.get_rw()[i] = i + 1;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.slot[i+1] = i;
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().slot[i+1] = i;
     }
-    node->search.get_rw().data.slot[0] = 10;
+    node->search.get_rw().slot[0] = 10;
 
     REQUIRE(q->btree1->lookupPositionInLeafNode(node, 1) == 1);
     REQUIRE(q->btree1->lookupPositionInLeafNode(node, 10) == 10);
@@ -130,11 +130,11 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node1->keys.get_rw()[1] = 20;
     node1->children.get_rw()[0] = node2;
     node1->children.get_rw()[1] = node3;
-    node1->search.get_rw().data.b.set(0);
-    node1->search.get_rw().data.b.set(1);
-    node1->search.get_rw().data.slot[1] = 0;
-    node1->search.get_rw().data.slot[2] = 1;
-    node1->search.get_rw().data.slot[0] = 2;
+    node1->search.get_rw().b.set(0);
+    node1->search.get_rw().b.set(1);
+    node1->search.get_rw().slot[1] = 0;
+    node1->search.get_rw().slot[2] = 1;
+    node1->search.get_rw().slot[0] = 2;
 
     node2->keys.get_rw()[0] = 3;
     node2->keys.get_rw()[1] = 4;
@@ -145,31 +145,31 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node2->children.get_rw()[2] = leafNodes[2];
     node2->children.get_rw()[3] = leafNodes[3];
     node2->children.get_rw()[4] = leafNodes[4];
-    node2->search.get_rw().data.b.set(0);
-    node2->search.get_rw().data.b.set(1);
-    node2->search.get_rw().data.b.set(2);
-    node2->search.get_rw().data.b.set(3);
-    node2->search.get_rw().data.slot[1] = 0;
-    node2->search.get_rw().data.slot[2] = 1;
-    node2->search.get_rw().data.slot[3] = 2;
-    node2->search.get_rw().data.slot[4] = 3;
-    node2->search.get_rw().data.slot[0] = 4;
+    node2->search.get_rw().b.set(0);
+    node2->search.get_rw().b.set(1);
+    node2->search.get_rw().b.set(2);
+    node2->search.get_rw().b.set(3);
+    node2->search.get_rw().slot[1] = 0;
+    node2->search.get_rw().slot[2] = 1;
+    node2->search.get_rw().slot[3] = 2;
+    node2->search.get_rw().slot[4] = 3;
+    node2->search.get_rw().slot[0] = 4;
 
     node3->keys.get_rw()[0] = 10;
     node3->children.get_rw()[0] = leafNodes[5];
     node3->children.get_rw()[4] = leafNodes[6];
-    node3->search.get_rw().data.b.set(0);
-    node3->search.get_rw().data.slot[1] = 0;
-    node3->search.get_rw().data.slot[0] = 1;
+    node3->search.get_rw().b.set(0);
+    node3->search.get_rw().slot[1] = 0;
+    node3->search.get_rw().slot[0] = 1;
 
     btree->rootNode = node1;
     btree->depth = 2;
 
     btree->balanceBranchNodes(node2, node3, node1, 1);
 
-    REQUIRE(node1->search.get_ro().data.slot[0] == 2);
-    REQUIRE(node2->search.get_ro().data.slot[0] == 2);
-    REQUIRE(node3->search.get_ro().data.slot[0] == 3);
+    REQUIRE(node1->search.get_ro().slot[0] == 2);
+    REQUIRE(node2->search.get_ro().slot[0] == 2);
+    REQUIRE(node3->search.get_ro().slot[0] == 3);
 
     std::array<int, 2> expectedKeys1{{5, 20}};
     std::array<int, 2> expectedKeys2{{3, 4}};
@@ -180,32 +180,32 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
 
     std::vector<int> actualKeys{};
     for(auto i = 1u; i < 5; i++)
-      if(node1->search.get_ro().data.b.test(node1->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().data.slot[i]]);
+      if(node1->search.get_ro().b.test(node1->search.get_ro().slot[i]))
+        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
                        std::begin(actualKeys)));
     actualKeys.clear();
     for(auto i = 1u; i < 5; i++)
-      if(node2->search.get_ro().data.b.test(node2->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node2->keys.get_ro()[node2->search.get_ro().data.slot[i]]);
+      if(node2->search.get_ro().b.test(node2->search.get_ro().slot[i]))
+        actualKeys.push_back(node2->keys.get_ro()[node2->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
                        std::begin(actualKeys)));
     actualKeys.clear();
     for(auto i = 1u; i < 5; i++)
-      if(node3->search.get_ro().data.b.test(node3->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node3->keys.get_ro()[node3->search.get_ro().data.slot[i]]);
+      if(node3->search.get_ro().b.test(node3->search.get_ro().slot[i]))
+        actualKeys.push_back(node3->keys.get_ro()[node3->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
                        std::begin(actualKeys)));
 
     std::array<persistent_ptr<wBPTreeType2::LeafNode>, 3> node2Children;
     for (auto i = 1; i < 3; i++)
-      node2Children[i-1] = node2->children.get_ro()[node2->search.get_ro().data.slot[i]].leaf;
+      node2Children[i-1] = node2->children.get_ro()[node2->search.get_ro().slot[i]].leaf;
     node2Children[2] = node2->children.get_ro()[4].leaf;
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
     std::array<persistent_ptr<wBPTreeType2::LeafNode>, 4> node3Children;
     for (auto i = 1; i < 4; i++)
-      node3Children[i-1] = node3->children.get_ro()[node3->search.get_ro().data.slot[i]].leaf;
+      node3Children[i-1] = node3->children.get_ro()[node3->search.get_ro().slot[i]].leaf;
     node3Children[3] = node3->children.get_ro()[4].leaf;
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
@@ -225,18 +225,18 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node1->keys.get_rw()[1] = 20;
     node1->children.get_rw()[0] = node2;
     node1->children.get_rw()[4] = node3;
-    node1->search.get_rw().data.b.set(0);
-    node1->search.get_rw().data.b.set(1);
-    node1->search.get_rw().data.slot[1] = 0;
-    node1->search.get_rw().data.slot[2] = 1;
-    node1->search.get_rw().data.slot[0] = 2;
+    node1->search.get_rw().b.set(0);
+    node1->search.get_rw().b.set(1);
+    node1->search.get_rw().slot[1] = 0;
+    node1->search.get_rw().slot[2] = 1;
+    node1->search.get_rw().slot[0] = 2;
 
     node2->keys.get_rw()[0] = 3;
     node2->children.get_rw()[0] = leafNodes[0];
     node2->children.get_rw()[4] = leafNodes[1];
-    node2->search.get_rw().data.b.set(0);
-    node2->search.get_rw().data.slot[1] = 0;
-    node2->search.get_rw().data.slot[0] = 1;
+    node2->search.get_rw().b.set(0);
+    node2->search.get_rw().slot[1] = 0;
+    node2->search.get_rw().slot[0] = 1;
 
     node3->keys.get_rw()[0] = 5;
     node3->keys.get_rw()[1] = 6;
@@ -247,24 +247,24 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node3->children.get_rw()[2] = leafNodes[4];
     node3->children.get_rw()[3] = leafNodes[5];
     node3->children.get_rw()[4] = leafNodes[6];
-    node3->search.get_rw().data.b.set(0);
-    node3->search.get_rw().data.b.set(1);
-    node3->search.get_rw().data.b.set(2);
-    node3->search.get_rw().data.b.set(3);
-    node3->search.get_rw().data.slot[1] = 0;
-    node3->search.get_rw().data.slot[2] = 1;
-    node3->search.get_rw().data.slot[3] = 2;
-    node3->search.get_rw().data.slot[4] = 3;
-    node3->search.get_rw().data.slot[0] = 4;
+    node3->search.get_rw().b.set(0);
+    node3->search.get_rw().b.set(1);
+    node3->search.get_rw().b.set(2);
+    node3->search.get_rw().b.set(3);
+    node3->search.get_rw().slot[1] = 0;
+    node3->search.get_rw().slot[2] = 1;
+    node3->search.get_rw().slot[3] = 2;
+    node3->search.get_rw().slot[4] = 3;
+    node3->search.get_rw().slot[0] = 4;
 
     btree->rootNode = node1;
     btree->depth = 2;
 
     btree->balanceBranchNodes(node3, node2, node1, 1);
 
-    REQUIRE(node1->search.get_ro().data.slot[0] == 2);
-    REQUIRE(node2->search.get_ro().data.slot[0] == 3);
-    REQUIRE(node3->search.get_ro().data.slot[0] == 2);
+    REQUIRE(node1->search.get_ro().slot[0] == 2);
+    REQUIRE(node2->search.get_ro().slot[0] == 3);
+    REQUIRE(node3->search.get_ro().slot[0] == 2);
 
     std::array<int, 2> expectedKeys1{{6, 20}};
     std::array<int, 3> expectedKeys2{{3, 4, 5}};
@@ -275,32 +275,32 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
 
     std::vector<int> actualKeys{};
     for(auto i = 1u; i < 5; i++)
-      if(node1->search.get_ro().data.b.test(node1->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().data.slot[i]]);
+      if(node1->search.get_ro().b.test(node1->search.get_ro().slot[i]))
+        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
                        std::begin(actualKeys)));
     actualKeys.clear();
     for(auto i = 1u; i < 5; i++)
-      if(node2->search.get_ro().data.b.test(node2->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node2->keys.get_ro()[node2->search.get_ro().data.slot[i]]);
+      if(node2->search.get_ro().b.test(node2->search.get_ro().slot[i]))
+        actualKeys.push_back(node2->keys.get_ro()[node2->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
                        std::begin(actualKeys)));
     actualKeys.clear();
     for(auto i = 1u; i < 5; i++)
-      if(node3->search.get_ro().data.b.test(node3->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node3->keys.get_ro()[node3->search.get_ro().data.slot[i]]);
+      if(node3->search.get_ro().b.test(node3->search.get_ro().slot[i]))
+        actualKeys.push_back(node3->keys.get_ro()[node3->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
                        std::begin(actualKeys)));
     
     std::array<persistent_ptr<wBPTreeType2::LeafNode>, 4> node2Children;
     for (auto i = 1; i < 4; i++)
-      node2Children[i-1] = node2->children.get_ro()[node2->search.get_ro().data.slot[i]].leaf;
+      node2Children[i-1] = node2->children.get_ro()[node2->search.get_ro().slot[i]].leaf;
     node2Children[3] = node2->children.get_ro()[4].leaf;
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
     std::array<persistent_ptr<wBPTreeType2::LeafNode>, 3> node3Children;
     for (auto i = 1; i < 3; i++)
-      node3Children[i-1] = node3->children.get_ro()[node3->search.get_ro().data.slot[i]].leaf;
+      node3Children[i-1] = node3->children.get_ro()[node3->search.get_ro().slot[i]].leaf;
     node3Children[2] = node3->children.get_ro()[4].leaf;
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
@@ -342,18 +342,18 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
       n->keys.get_rw()[0] = 7;
       n->children.get_rw()[0] = innerNodes[1];
       n->children.get_rw()[4] = innerNodes[2];
-      n->search.get_rw().data.b.set(0);
-      n->search.get_rw().data.slot[1] = 0;
-      n->search.get_rw().data.slot[0] = 1;
+      n->search.get_rw().b.set(0);
+      n->search.get_rw().slot[1] = 0;
+      n->search.get_rw().slot[0] = 1;
     }
     {
       auto n = innerNodes[1];
       n->keys.get_rw()[0] = 5;
       n->children.get_rw()[0] = leafNodes[0];
       n->children.get_rw()[4] = leafNodes[1];
-      n->search.get_rw().data.b.set(0);
-      n->search.get_rw().data.slot[1] = 0;
-      n->search.get_rw().data.slot[0] = 1;
+      n->search.get_rw().b.set(0);
+      n->search.get_rw().slot[1] = 0;
+      n->search.get_rw().slot[0] = 1;
     }
     {
       auto n = innerNodes[2];
@@ -364,22 +364,22 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
       n->children.get_rw()[1] = leafNodes[3];
       n->children.get_rw()[2] = leafNodes[4];
       n->children.get_rw()[4] = leafNodes[5];
-      n->search.get_rw().data.b.set(0);
-      n->search.get_rw().data.b.set(1);
-      n->search.get_rw().data.b.set(2);
-      n->search.get_rw().data.slot[1] = 0;
-      n->search.get_rw().data.slot[2] = 1;
-      n->search.get_rw().data.slot[3] = 2;
-      n->search.get_rw().data.slot[0] = 3;
+      n->search.get_rw().b.set(0);
+      n->search.get_rw().b.set(1);
+      n->search.get_rw().b.set(2);
+      n->search.get_rw().slot[1] = 0;
+      n->search.get_rw().slot[2] = 1;
+      n->search.get_rw().slot[3] = 2;
+      n->search.get_rw().slot[0] = 3;
     }
 
     btree->underflowAtBranchLevel(innerNodes[0], 1, innerNodes[1]);
 
-    REQUIRE(innerNodes[0]->search.get_ro().data.slot[0] == 1);
+    REQUIRE(innerNodes[0]->search.get_ro().slot[0] == 1);
     REQUIRE(innerNodes[0]->keys.get_ro()[0] == 9);
 
-    REQUIRE(innerNodes[1]->search.get_ro().data.slot[0] == 2);
-    REQUIRE(innerNodes[2]->search.get_ro().data.slot[0] == 2);
+    REQUIRE(innerNodes[1]->search.get_ro().slot[0] == 2);
+    REQUIRE(innerNodes[2]->search.get_ro().slot[0] == 2);
 
     std::array<int, 2> expectedKeys1{{5, 7}};
     std::array<int, 2> expectedKeys2{{11, 13}};
@@ -389,8 +389,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
 
     std::vector<int> actualKeys{};
     for(auto i = 1u; i < 5; i++)
-      if(innerNodes[2]->search.get_ro().data.b.test(innerNodes[2]->search.get_ro().data.slot[i]))
-        actualKeys.push_back(innerNodes[2]->keys.get_ro()[innerNodes[2]->search.get_ro().data.slot[i]]);
+      if(innerNodes[2]->search.get_ro().b.test(innerNodes[2]->search.get_ro().slot[i]))
+        actualKeys.push_back(innerNodes[2]->keys.get_ro()[innerNodes[2]->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
                        std::begin(actualKeys)));
 
@@ -408,41 +408,41 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node1->keys.get_rw()[0] = 5;
     node1->children.get_rw()[0] = leafNodes[0];
     node1->children.get_rw()[4] = leafNodes[1];
-    node1->search.get_rw().data.b.set(0);
-    node1->search.get_rw().data.slot[1] = 0;
-    node1->search.get_rw().data.slot[0] = 1;
+    node1->search.get_rw().b.set(0);
+    node1->search.get_rw().slot[1] = 0;
+    node1->search.get_rw().slot[0] = 1;
 
     node2->keys.get_rw()[0] = 20;
     node2->keys.get_rw()[1] = 30;
     node2->children.get_rw()[0] = leafNodes[2];
     node2->children.get_rw()[1] = leafNodes[3];
     node2->children.get_rw()[4] = leafNodes[4];
-    node2->search.get_rw().data.b.set(0);
-    node2->search.get_rw().data.b.set(1);
-    node2->search.get_rw().data.slot[1] = 0;
-    node2->search.get_rw().data.slot[2] = 1;
-    node2->search.get_rw().data.slot[0] = 2;
+    node2->search.get_rw().b.set(0);
+    node2->search.get_rw().b.set(1);
+    node2->search.get_rw().slot[1] = 0;
+    node2->search.get_rw().slot[2] = 1;
+    node2->search.get_rw().slot[0] = 2;
 
     auto root = btree->newBranchNode();
     root->keys.get_rw()[0] = 15;
     root->children.get_rw()[0] = node1;
     root->children.get_rw()[4] = node2;
-    root->search.get_rw().data.b.set(0);
-    root->search.get_rw().data.slot[1] = 0;
-    root->search.get_rw().data.slot[0] = 1;
+    root->search.get_rw().b.set(0);
+    root->search.get_rw().slot[1] = 0;
+    root->search.get_rw().slot[0] = 1;
 
     btree->rootNode = root;
     btree->depth = 2;
 
     btree->mergeBranchNodes(node1, root->keys.get_ro()[0], node2);
 
-    REQUIRE(node1->search.get_ro().data.slot[0] == 4);
+    REQUIRE(node1->search.get_ro().slot[0] == 4);
 
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
     std::vector<int> actualKeys{};
     for(auto i = 1u; i < 5; i++)
-      if(node1->search.get_ro().data.b.test(node1->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().data.slot[i]]);
+      if(node1->search.get_ro().b.test(node1->search.get_ro().slot[i]))
+        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(actualKeys)));
     std::array<persistent_ptr<wBPTreeType2::LeafNode>, 5> node1Children;
@@ -462,31 +462,31 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     for (auto i = 0; i < 4; i++) {
       node1->keys.get_rw()[i] = i;
       node1->values.get_rw()[i] = i + 100;
-      node1->search.get_rw().data.slot[i+1] = i;
-      node1->search.get_rw().data.b.set(i);
+      node1->search.get_rw().slot[i+1] = i;
+      node1->search.get_rw().b.set(i);
     }
-    node1->search.get_rw().data.slot[0] = 4;
+    node1->search.get_rw().slot[0] = 4;
 
     for (auto i = 0; i < 4; i++) {
       node2->keys.get_rw()[i] = i + 10;
       node2->values.get_rw()[i] = i + 200;
-      node2->search.get_rw().data.slot[i+1] = i;
-      node2->search.get_rw().data.b.set(i);
+      node2->search.get_rw().slot[i+1] = i;
+      node2->search.get_rw().b.set(i);
     }
-    node2->search.get_rw().data.slot[0] = 4;
+    node2->search.get_rw().slot[0] = 4;
     node1->nextLeaf = node2;
 
     btree->mergeLeafNodes(node1, node2);
 
     REQUIRE(node1->nextLeaf == nullptr);
-    REQUIRE(node1->search.get_ro().data.slot[0] == 8);
+    REQUIRE(node1->search.get_ro().slot[0] == 8);
 
     std::array<int, 8> expectedKeys{{0, 1, 2, 3, 10, 11, 12, 13}};
     std::array<int, 8> expectedValues{{100, 101, 102, 103, 200, 201, 202, 203}};
     std::vector<int> actualKeys{};
     for(auto i = 1u; i < 9; i++)
-      if(node1->search.get_ro().data.b.test(node1->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().data.slot[i]]);
+      if(node1->search.get_ro().b.test(node1->search.get_ro().slot[i]))
+        actualKeys.push_back(node1->keys.get_ro()[node1->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(actualKeys)));
     REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
@@ -504,22 +504,22 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     for (auto i = 0; i < 8; i++) {
       node1->keys.get_rw()[i] = i + 1;
       node1->values.get_rw()[i] = i * 100;
-      node1->search.get_rw().data.slot[i+1] = i;
-      node1->search.get_rw().data.b.set(i);
+      node1->search.get_rw().slot[i+1] = i;
+      node1->search.get_rw().b.set(i);
     }
-    node1->search.get_rw().data.slot[0] = 8;
+    node1->search.get_rw().slot[0] = 8;
 
     for (auto i = 0; i < 4; i++) {
       node2->keys.get_rw()[i] = i + 11;
       node2->values.get_rw()[i] = i * 200;
-      node2->search.get_rw().data.slot[i+1] = i;
-      node2->search.get_rw().data.b.set(i);
+      node2->search.get_rw().slot[i+1] = i;
+      node2->search.get_rw().b.set(i);
     }
-    node2->search.get_rw().data.slot[0] = 4;
+    node2->search.get_rw().slot[0] = 4;
 
     btree->balanceLeafNodes(node1, node2);
-    REQUIRE(node2->search.get_ro().data.slot[0] == 6);
-    REQUIRE(node1->search.get_ro().data.slot[0] == 6);
+    REQUIRE(node2->search.get_ro().slot[0] == 6);
+    REQUIRE(node1->search.get_ro().slot[0] == 6);
 
     std::array<int, 6> expectedKeys1{{1, 2, 3, 4, 5, 6}};
     std::array<int, 6> expectedValues1{{0, 100, 200, 300, 400, 500}};
@@ -532,14 +532,14 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     std::array<int, 6> expectedValues2{{600, 700, 0, 200, 400, 600}};
     std::vector<int> actualKeys2{};
     for(auto i = 1u; i < 7; i++)
-      if(node2->search.get_ro().data.b.test(node2->search.get_ro().data.slot[i]))
-        actualKeys2.push_back(node2->keys.get_ro()[node2->search.get_ro().data.slot[i]]);
+      if(node2->search.get_ro().b.test(node2->search.get_ro().slot[i]))
+        actualKeys2.push_back(node2->keys.get_ro()[node2->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys2), std::begin(expectedKeys2)+6,
                        std::begin(actualKeys2)));
     std::vector<int> actualVals2{};
     for(auto i = 1u; i < 7; i++)
-      if(node2->search.get_ro().data.b.test(node2->search.get_ro().data.slot[i]))
-        actualVals2.push_back(node2->values.get_ro()[node2->search.get_ro().data.slot[i]]);
+      if(node2->search.get_ro().b.test(node2->search.get_ro().slot[i]))
+        actualVals2.push_back(node2->values.get_ro()[node2->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedValues2), std::begin(expectedValues2)+6,
                        std::begin(actualVals2)));
 
@@ -565,14 +565,14 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     parent->keys.get_rw()[0] = 4;
     parent->children.get_rw()[0] = leaf1;
     parent->children.get_rw()[6] = leaf2;
-    parent->search.get_rw().data.b.set(0);
-    parent->search.get_rw().data.slot[1] = 0;
-    parent->search.get_rw().data.slot[0] = 1;
+    parent->search.get_rw().b.set(0);
+    parent->search.get_rw().slot[1] = 0;
+    parent->search.get_rw().slot[0] = 1;
     btree->rootNode = parent;
     btree->depth = 1;
 
     btree->underflowAtLeafLevel(parent, 2, leaf2);
-    REQUIRE(leaf1->search.get_ro().data.slot[0] == 5);
+    REQUIRE(leaf1->search.get_ro().slot[0] == 5);
     REQUIRE(btree->rootNode.leaf == leaf1);
 
     std::array<int, 5> expectedKeys{{1, 2, 3, 4, 5}};
@@ -613,17 +613,17 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     parent->children.get_rw()[0] = leaf1;
     parent->children.get_rw()[1] = leaf2;
     parent->children.get_rw()[6] = leaf3;
-    parent->search.get_rw().data.b.set(0);
-    parent->search.get_rw().data.b.set(1);
-    parent->search.get_rw().data.slot[1] = 0;
-    parent->search.get_rw().data.slot[2] = 1;
-    parent->search.get_rw().data.slot[0] = 2;
+    parent->search.get_rw().b.set(0);
+    parent->search.get_rw().b.set(1);
+    parent->search.get_rw().slot[1] = 0;
+    parent->search.get_rw().slot[2] = 1;
+    parent->search.get_rw().slot[0] = 2;
     btree->rootNode = parent;
 
     btree->underflowAtLeafLevel(parent, 2, leaf2);
-    REQUIRE(leaf1->search.get_ro().data.slot[0] == 5);
+    REQUIRE(leaf1->search.get_ro().slot[0] == 5);
     REQUIRE(btree->rootNode.branch == parent);
-    REQUIRE(parent->search.get_ro().data.slot[0] == 1);
+    REQUIRE(parent->search.get_ro().slot[0] == 1);
 
   }
 
@@ -648,13 +648,13 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     parent->keys.get_rw()[0] = 5;
     parent->children.get_rw()[0] = leaf1;
     parent->children.get_rw()[6] = leaf2;
-    parent->search.get_rw().data.b.set(0);
-    parent->search.get_rw().data.slot[1] = 0;
-    parent->search.get_rw().data.slot[0] = 1;
+    parent->search.get_rw().b.set(0);
+    parent->search.get_rw().slot[1] = 0;
+    parent->search.get_rw().slot[0] = 1;
 
     btree->underflowAtLeafLevel(parent, 2, leaf2);
-    REQUIRE(leaf1->search.get_ro().data.slot[0] == 3);
-    REQUIRE(leaf2->search.get_ro().data.slot[0] == 3);
+    REQUIRE(leaf1->search.get_ro().slot[0] == 3);
+    REQUIRE(leaf2->search.get_ro().slot[0] == 3);
 
     std::array<int, 3> expectedKeys1{{1, 2, 3}};
     std::array<int, 3> expectedValues1{{10, 20, 30}};
@@ -726,11 +726,11 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     inner1->children.get_rw()[0] = leaf1;
     inner1->children.get_rw()[1] = leaf2;
     inner1->children.get_rw()[4] = leaf3;
-    inner1->search.get_rw().data.b.set(0);
-    inner1->search.get_rw().data.b.set(1);
-    inner1->search.get_rw().data.slot[1] = 0;
-    inner1->search.get_rw().data.slot[2] = 1;
-    inner1->search.get_rw().data.slot[0] = 2;
+    inner1->search.get_rw().b.set(0);
+    inner1->search.get_rw().b.set(1);
+    inner1->search.get_rw().slot[1] = 0;
+    inner1->search.get_rw().slot[2] = 1;
+    inner1->search.get_rw().slot[0] = 2;
 
     auto inner2 = btree->newBranchNode();
     inner2->keys.get_rw()[0] = 20;
@@ -738,19 +738,19 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     inner2->children.get_rw()[0] = leaf4;
     inner2->children.get_rw()[1] = leaf5;
     inner2->children.get_rw()[4] = leaf6;
-    inner2->search.get_rw().data.b.set(0);
-    inner2->search.get_rw().data.b.set(1);
-    inner2->search.get_rw().data.slot[1] = 0;
-    inner2->search.get_rw().data.slot[2] = 1;
-    inner2->search.get_rw().data.slot[0] = 2;
+    inner2->search.get_rw().b.set(0);
+    inner2->search.get_rw().b.set(1);
+    inner2->search.get_rw().slot[1] = 0;
+    inner2->search.get_rw().slot[2] = 1;
+    inner2->search.get_rw().slot[0] = 2;
 
     auto root = btree->newBranchNode();
     root->keys.get_rw()[0] = 15;
     root->children.get_rw()[0] = inner1;
     root->children.get_rw()[4] = inner2;
-    root->search.get_rw().data.b.set(0);
-    root->search.get_rw().data.slot[1] = 0;
-    root->search.get_rw().data.slot[0] = 1;
+    root->search.get_rw().b.set(0);
+    root->search.get_rw().slot[1] = 0;
+    root->search.get_rw().slot[0] = 1;
 
     btree->rootNode = root;
     btree->depth = 2;
@@ -758,7 +758,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     REQUIRE(btree->rootNode.branch != root);
     REQUIRE(btree->depth < 2);
 
-    REQUIRE(inner1->search.get_ro().data.slot[0] == 4);
+    REQUIRE(inner1->search.get_ro().slot[0] == 4);
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
     std::array<persistent_ptr<wBPTreeType2::LeafNode>, 5> expectedChildren{{leaf1, leaf2, leaf4, leaf5, leaf6}};
 
@@ -781,23 +781,23 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     for (auto i = 0; i < 9; i++) {
       node->keys.get_rw()[i] = (i + 1) * 2;
       node->values.get_rw()[i] = (i * 2) + 100;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.slot[i+1] = i;
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().slot[i+1] = i;
     }
-    node->search.get_rw().data.slot[0] = 9;
+    node->search.get_rw().slot[0] = 9;
 
 
     res = btree->insertInLeafNode(node, 5, 5000, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(node->search.get_ro().data.slot[0] == 10);
+    REQUIRE(node->search.get_ro().slot[0] == 10);
 
     res = btree->insertInLeafNode(node, 1, 1, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(node->search.get_ro().data.slot[0] == 11);
+    REQUIRE(node->search.get_ro().slot[0] == 11);
 
     res = btree->insertInLeafNode(node, 2, 1000, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(node->search.get_ro().data.slot[0] == 11);
+    REQUIRE(node->search.get_ro().slot[0] == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
     std::array<int, 11> expectedValues{
@@ -830,15 +830,15 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     for (auto i = 0; i < 9; i++) {
       node->keys.get_rw()[i] = (i + 1) * 2;
       node->values.get_rw()[i] = (i * 2) + 100;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.slot[i+1] = i;
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().slot[i+1] = i;
     }
-    node->search.get_rw().data.slot[0] = 9;
+    node->search.get_rw().slot[0] = 9;
 
     btree->insertInLeafNodeAtPosition(node, 9, 5, 5000);
-    REQUIRE(node->search.get_ro().data.slot[0] == 10);
+    REQUIRE(node->search.get_ro().slot[0] == 10);
     btree->insertInLeafNodeAtPosition(node, 10, 1, 1);
-    REQUIRE(node->search.get_ro().data.slot[0] == 11);
+    REQUIRE(node->search.get_ro().slot[0] == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
     std::array<int, 11> expectedValues{
@@ -874,15 +874,15 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node->keys.get_rw()[0] = 10;
     node->children.get_rw()[0] = leaf1;
     node->children.get_rw()[4] = leaf2;
-    node->search.get_rw().data.b.set(0);
-    node->search.get_rw().data.slot[1] = 0;
-    node->search.get_rw().data.slot[0] = 1;
+    node->search.get_rw().b.set(0);
+    node->search.get_rw().slot[1] = 0;
+    node->search.get_rw().slot[0] = 1;
 
     btree->rootNode = node;
     btree->depth = 2;
 
     btree->insertInBranchNode(node, 1, 11, 112, &splitInfo);
-    REQUIRE(leaf2->search.get_ro().data.slot[0] == 3);
+    REQUIRE(leaf2->search.get_ro().slot[0] == 3);
 
   }
 
@@ -906,22 +906,22 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node->keys.get_rw()[0] = 10;
     node->children.get_rw()[0] = leaf1;
     node->children.get_rw()[4] = leaf2;
-    node->search.get_rw().data.b.set(0);
-    node->search.get_rw().data.slot[1] = 0;
-    node->search.get_rw().data.slot[0] = 1;
+    node->search.get_rw().b.set(0);
+    node->search.get_rw().slot[1] = 0;
+    node->search.get_rw().slot[0] = 1;
 
     btree->rootNode = node;
     btree->depth = 2;
 
     btree->insertInBranchNode(node, 1, 12, 112, &splitInfo);
-    REQUIRE(leaf2->search.get_ro().data.slot[0] == 3);
-    REQUIRE(node->search.get_ro().data.slot[0] == 2);
+    REQUIRE(leaf2->search.get_ro().slot[0] == 3);
+    REQUIRE(node->search.get_ro().slot[0] == 2);
 
     std::array<int, 2> expectedKeys{{10, 13}};
     std::vector<int> actualKeys{};
     for(auto i = 1u; i < 3; i++)
-      if(node->search.get_ro().data.b.test(node->search.get_ro().data.slot[i]))
-        actualKeys.push_back(node->keys.get_ro()[node->search.get_ro().data.slot[i]]);
+      if(node->search.get_ro().b.test(node->search.get_ro().slot[i]))
+        actualKeys.push_back(node->keys.get_ro()[node->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(actualKeys)));
 
@@ -929,8 +929,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto leaf3 = node->children.get_ro()[4].leaf;
     actualKeys.clear();
     for(auto i = 1u; i < 3; i++)
-      if(leaf3->search.get_ro().data.b.test(leaf3->search.get_ro().data.slot[i]))
-        actualKeys.push_back(leaf3->keys.get_ro()[leaf3->search.get_ro().data.slot[i]]);
+      if(leaf3->search.get_ro().b.test(leaf3->search.get_ro().slot[i]))
+        actualKeys.push_back(leaf3->keys.get_ro()[leaf3->search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
                        std::begin(actualKeys)));
 
@@ -945,15 +945,15 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     for (auto i = 0; i < 9; i++) {
       node->keys.get_rw()[i] = i + 1;
       node->values.get_rw()[i] = i + 100;
-      node->search.get_rw().data.slot[i+1] = i;
-      node->search.get_rw().data.b.set(i);
+      node->search.get_rw().slot[i+1] = i;
+      node->search.get_rw().b.set(i);
     }
-    node->search.get_rw().data.slot[0] = 9;
+    node->search.get_rw().slot[0] = 9;
 
     REQUIRE(btree->eraseFromLeafNode(node, 5) == true);
-    REQUIRE(node->search.get_ro().data.slot[0] == 8);
+    REQUIRE(node->search.get_ro().slot[0] == 8);
     REQUIRE(btree->eraseFromLeafNode(node, 15) == false);
-    REQUIRE(node->search.get_ro().data.slot[0] == 8);
+    REQUIRE(node->search.get_ro().slot[0] == 8);
 
     std::array<int, 8> expectedKeys{{1, 2, 3, 4, 6, 7, 8, 9 }};
     std::array<int, 8> expectedValues{

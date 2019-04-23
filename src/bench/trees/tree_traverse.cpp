@@ -39,35 +39,33 @@ static void BM_TreeTraverse(benchmark::State &state) {
   } else {
     LOG("Warning: " << path << " already exists");
     pop = pool<root>::open(path, LAYOUT);
-    pop.root()->tree->recover(); //< FPTree only
+    //pop.root()->tree->recover(); //< Hybrids only
   }
   auto tree = pop.root()->tree;
 
+  persistent_ptr<TreeType::LeafNode> leaf;
   /* BENCHMARKING */
   for (auto _ : state) {
     /* Getting a leaf node */
     auto node = tree->rootNode;
 
-    /* FPTree version */
+    /* hybrid versions */
     auto d = tree->depth;
-    while ( d > 1) {
-      node = node.branch->children[tree->lookupPositionInBranchNode(node.branch, 1)];
-      --d;
-    }
-    if(d == 1) node = node.lowestbranch->children[0];
+    while ( --d > 0)
+      node = node.branch->children[tree->lookupPositionInBranchNode(node.branch, KEYPOS)];
+    /* NVM-only versions */
+    //auto d = tree->depth.get_ro();
+    //while ( --d > 0)
+    //  node = node.branch->children.get_ro()[tree->lookupPositionInBranchNode(node.branch, KEYPOS)];
 
-    /* other trees */
-    /*
-       auto d = tree->depth.get_ro();
-       while ( --d > 0)
-       node = node.branch->children.get_ro()[tree->lookupPositionInBranchNode(node.branch, 1)];
-    */
-
-    auto leaf = node.leaf;
+    benchmark::DoNotOptimize(
+      leaf = node.leaf
+    );
     //auto p = tree->lookupPositionInLeafNode(leaf, 1);
   }
   //tree->printBranchNode(0, tree->rootNode.branch);
   std::cout << "Elements:" << ELEMENTS << "\n";
+  std::cout << "Size" << sizeof(*tree) << "\n";
   pop.close();
 }
 BENCHMARK(BM_TreeTraverse);

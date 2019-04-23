@@ -724,12 +724,13 @@ class wHBPTree {
       const KeyType &key) const {
     auto pos = 1u;
     const auto &slotArray = node->search.get_ro().data.slot;
+    const auto &keys = node->keys.get_ro();
     auto l = 1;
     auto r = slotArray[0]; //< num keys
     while (l <= r) {
       pos = (l + r) / 2;
-      if (node->keys.get_ro()[slotArray[pos]] == key) return pos;
-      if (node->keys.get_ro()[slotArray[pos]] < key) l = ++pos;
+      if (keys[slotArray[pos]] == key) return pos;
+      if (keys[slotArray[pos]] < key) l = ++pos;
       else r = pos - 1;
     }
     return pos;
@@ -751,12 +752,13 @@ class wHBPTree {
                                           const KeyType &key) const {
     auto pos = 1u;
     const auto &slotArray = node->search.data.slot;
+    const auto &keys = node->keys;
     auto l = 1;
     auto r = slotArray[0]; //< num keys
     while (l <= r) {
       pos = (l + r) / 2;
-      if (node->keys[slotArray[pos]] == key) return ++pos;
-      if (node->keys[slotArray[pos]] < key) l = ++pos;
+      if (keys[slotArray[pos]] == key) return ++pos;
+      if (keys[slotArray[pos]] < key) l = ++pos;
       else r = pos - 1;
     }
     return pos;

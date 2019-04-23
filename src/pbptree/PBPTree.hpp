@@ -796,24 +796,31 @@ class PBPTree {
   bool insertInLeafNode(persistent_ptr<LeafNode> node, const KeyType &key,
                         const ValueType &val, SplitInfo *splitInfo) {
     bool split = false;
+    const auto &numKeys = node->numKeys.get_ro();
     auto pos = lookupPositionInLeafNode(node, key);
-    if (pos < node->numKeys && node->keys.get_ro()[pos] == key) {
+    if (pos < numKeys && node->keys.get_ro()[pos] == key) {
       // handle insert of duplicates
+      std::cout << "FORBIDDEN" << std::endl;
       node->values.get_rw()[pos] = val;
       return false;
     }
-    if (node->numKeys == M) {
+    if (numKeys == M) {
       // the node is full, so we must split it
       // determine the split position
       unsigned int middle = (M + 1) / 2;
       // move all entries behind this position to a new sibling node
       persistent_ptr<LeafNode> sibling = newLeafNode();
-      sibling->numKeys = node->numKeys - middle;
-      for (auto i = 0u; i < sibling->numKeys; i++) {
-        sibling->keys.get_rw()[i] = node->keys.get_ro()[i + middle];
-        sibling->values.get_rw()[i] = node->values.get_ro()[i + middle];
+      sibling->numKeys = numKeys - middle;
+      const auto &sNumKeys = sibling->numKeys;
+      const auto &nKeys = node->keys.get_ro();
+      const auto &nValues = node->values.get_ro();
+      auto &sKeys = sibling->keys.get_rw();
+      auto &sValues = sibling->values.get_rw();
+      for (auto i = 0u; i < sNumKeys; i++) {
+        sKeys[i] = nKeys[i + middle];
+        sValues[i] = nValues[i + middle];
       }
-      node->numKeys = middle;
+      node->numKeys.get_rw() = middle;
 
       // insert the new entry
       if (pos < middle)
@@ -831,9 +838,10 @@ class PBPTree {
 
       // and inform the caller about the split
       split = true;
-      splitInfo->leftChild = node;
-      splitInfo->rightChild = sibling;
-      splitInfo->key = sibling->keys.get_ro()[0];
+      auto &splitInfoRef = *splitInfo;
+      splitInfoRef.leftChild = node;
+      splitInfoRef.rightChild = sibling;
+      splitInfoRef.key = sibling->keys.get_ro()[0];
     } else {
       // otherwise, we can simply insert the new entry at the given position
       insertInLeafNodeAtPosition(node, pos, key, val);
@@ -855,18 +863,19 @@ class PBPTree {
    */
   void insertInLeafNodeAtPosition(persistent_ptr<LeafNode> node, unsigned int pos,
                                   const KeyType &key, const ValueType &val) {
+    const auto &numKeys = node->numKeys.get_ro();
     assert(pos < M);
-    assert(pos <= node->numKeys);
-    assert(node->numKeys < M);
+    assert(pos <= numKeys);
+    assert(numKeys < M);
     // we move all entries behind pos by one position
-    for (unsigned int i = node->numKeys; i > pos; i--) {
+    for (unsigned int i = numKeys; i > pos; i--) {
       node->keys.get_rw()[i] = node->keys.get_ro()[i - 1];
       node->values.get_rw()[i] = node->values.get_ro()[i - 1];
     }
     // and then insert the new entry at the given position
     node->keys.get_rw()[pos] = key;
     node->values.get_rw()[pos] = val;
-    node->numKeys = node->numKeys + 1;
+    node->numKeys.get_rw() = numKeys + 1;
   }
 
   /**
@@ -997,7 +1006,8 @@ class PBPTree {
                                          const KeyType &key) const {
     unsigned int pos = 0;
     const unsigned int num = node->numKeys;
-    //for (; pos < num && node->keys.get_ro()[pos] <= key; pos++);
+    //const auto &keys = node->keys.get_ro();
+    //for (; pos < num && keys[pos] <= key; pos++);
     //return pos;
     return binarySearch(node, 0, num-1, key);
   }
@@ -1015,7 +1025,8 @@ class PBPTree {
                                         const KeyType &key) const {
     unsigned int pos = 0;
     const unsigned int num = node->numKeys.get_ro();
-    //for (; pos < num && node->keys.get_ro()[pos] < key; pos++);
+    //const auto &keys = node->keys.get_ro();
+    //for (; pos < num && keys[pos] < key; pos++);
     //return pos;
     return binarySearch(node, 0, num-1, key);
   }
@@ -1023,10 +1034,11 @@ class PBPTree {
   unsigned int binarySearch(persistent_ptr<BranchNode> node, int l, int r,
       KeyType const &key) const {
     auto pos = 0u;
+    const auto &keys = node->keys.get_ro();
     while (l <= r) {
       pos = (l + r) / 2;
-      if (node->keys.get_ro()[pos] == key) return ++pos;
-      if (node->keys.get_ro()[pos] < key) l = ++pos;
+      if (keys[pos] == key) return ++pos;
+      if (keys[pos] < key) l = ++pos;
       else r = pos - 1;
     }
     return pos;
@@ -1035,10 +1047,11 @@ class PBPTree {
   unsigned int binarySearch(persistent_ptr<LeafNode> node, int l, int r,
       KeyType const &key) const {
     auto pos = 0u;
+    const auto &keys = node->keys.get_ro();
     while (l <= r) {
       pos = (l + r) / 2;
-      if (node->keys.get_ro()[pos] == key) return pos;
-      if (node->keys.get_ro()[pos] < key) l = ++pos;
+      if (keys[pos] == key) return pos;
+      if (keys[pos] < key) l = ++pos;
       else r = pos - 1;
     }
     return pos;
