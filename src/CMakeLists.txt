@@ -17,7 +17,7 @@ option(ENABLE_LOG         "enables log output for e.g. debugging"        OFF)
 option(ENABLE_PROFILING   "enables profiling for some of the structures" OFF)
 option(BUILD_TEST_CASES   "build tests for functionality of structures"  ON )
 option(BUILD_GOOGLE_BENCH "build google benchmark"                       OFF)
-option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
+option(BUILD_BENCHMARKS   "build benchmarks for structures"              OFF)
 
 ################################################################################
 # End of customization section                                                 #
@@ -99,7 +99,7 @@ include_directories(${PROJECT_SOURCE_DIR}
                     ${THIRD_PARTY_DIR}/pmdk/include)
 add_library(nvmDS_deps STATIC ${THIRD_PARTY_DIR}/pmdk)
 add_dependencies(nvmDS_deps fmt_target catch_target pmdk_target) #< executes custom commands
-target_link_libraries(nvmDS_deps ${PMDK_LIBRARIES} stdc++fs ndctl daxctl)
+target_link_libraries(nvmDS_deps ${PMDK_LIBRARIES} ndctl daxctl)
 set_target_properties(nvmDS_deps PROPERTIES LINKER_LANGUAGE CXX)
 
 #################

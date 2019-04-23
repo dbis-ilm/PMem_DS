@@ -39,32 +39,37 @@ static void BM_TreeGet(benchmark::State &state) {
   } else {
     LOG("Warning: " << path << " already exists");
     pop = pool<root>::open(path, LAYOUT);
-    pop.root()->tree->recover(); //< hybrids only
+    pop.root()->tree->recover(); //< FPTree only
   }
   auto tree = pop.root()->tree;
-  //tree->printBranchNode(0, tree->rootNode.branch);
 
   /* Getting a leaf node */
   auto node = tree->rootNode;
 
-  /* hybrid versions */
+  /* FPTree version */
   auto d = tree->depth;
-  while ( d-- > 0) node = node.branch->children[0];
+  while ( d > 1) {
+    node = node.branch->children[0];
+    --d;
+  }
+  if(d == 1) node = node.lowestbranch->children[0];
 
-  /* nvm-only trees */
-  //auto d = tree->depth.get_ro();
-  //while ( d-- > 0) node = node.branch->children.get_ro()[0];
-
+  /* other trees */
+/*
+  auto d = tree->depth.get_ro();
+  while ( --d > 0) node = node.branch->children.get_ro()[0];
+*/
   auto leaf = node.leaf;
 
   /* BENCHMARKING */
-  unsigned int p;
   for (auto _ : state) {
-   benchmark::DoNotOptimize(
-        p = tree->lookupPositionInLeafNode(leaf, LEAFKEYS)
-   );
+    //MyTuple tp;
+    //auto c = 0u;
+    //auto func = [&](MyKey const &key, MyTuple const &val) { c++; };
+    //tree->scan(ELEMENTS/2, ELEMENTS/2 + 99, func);
+    //tree->lookup(ELEMENTS/2, &tp);
+    auto p = tree->lookupPositionInLeafNode(leaf, 1);
   }
-
   //tree->printBranchNode(0, tree->rootNode.branch);
   std::cout << "Elements:" << ELEMENTS << '\n';
   pop.close();
