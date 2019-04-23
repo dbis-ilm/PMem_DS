@@ -37,11 +37,11 @@ using pmem::obj::pool;
 /* Customization section */
 using MyTuple = std::tuple <int, int, double>;
 using MyKey = unsigned long long;
-constexpr auto TARGET_BRANCH_SIZE = 2048;
-constexpr auto TARGET_LEAF_SIZE = 512; //< 512B best performance
-constexpr auto TARGET_DEPTH = 4;
+constexpr auto TARGET_BRANCH_SIZE = 512;
+constexpr auto TARGET_LEAF_SIZE = 1024; //< 512B best performance
+constexpr auto TARGET_DEPTH = 1;
 const std::string path = dbis::gPmemPath + "tree_bench.data";
-constexpr auto POOL_SIZE = 1024 * 1024 * 1024; //< 128MB
+constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull; //< 4GB
 constexpr auto LAYOUT = "Tree";
 
 /* wBPTree pre-calculations */
@@ -105,8 +105,9 @@ constexpr uint64_t ipow(uint64_t base, int exp, uint64_t result = 1) {
 
 /* Tree relevant calculated parameters*/
 constexpr auto LEAFKEYS = getLeafKeysFPTree<5>(); //< 5 iterations should be enough
-constexpr auto BRANCHKEYS = getBranchKeyswBPTree<5>();
+constexpr auto BRANCHKEYS = getBranchKeysFPTree<5>();
 constexpr auto ELEMENTS = LEAFKEYS*ipow(BRANCHKEYS+1, TARGET_DEPTH);
+constexpr auto KEYPOS = ELEMENTS/1;
 
 using TreeType = FPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
 
@@ -145,12 +146,17 @@ void insert(persistent_ptr<TreeType> &tree) {
   };
 
   std::function<void(int)> insertLoopOtherHalf = [&](int depth) {
+    //tree->printBranchNode(0, tree->rootNode.branch);
     if (depth == 0) {
       auto otherHalf = (LEAFKEYS + 1) / 2;
       for(auto i = 0; i < ipow(BRANCHKEYS+1,TARGET_DEPTH-depth); ++i)
         insertLoopLeaf(otherHalf + i * LEAFKEYS);
     } else {
-      auto otherHalf = (LEAFKEYS * ipow(BRANCHKEYS+1, depth) + 1) / 2 + LEAFKEYS * ipow(BRANCHKEYS+1, depth-1);
+      auto nodeRange = LEAFKEYS * ipow(BRANCHKEYS+1, depth);
+      auto lowerRange = LEAFKEYS * ipow(BRANCHKEYS+1, depth-1);
+      auto middle = (nodeRange + 1) / 2;
+      auto seen = middle + lowerRange;
+      auto otherHalf = (BRANCHKEYS%2==0)? seen - (lowerRange+1)/2 : seen;
       for(auto i = 0; i < ipow(BRANCHKEYS+1,TARGET_DEPTH-depth); ++i)
         insertLoopBranch(otherHalf + i * LEAFKEYS * ipow(BRANCHKEYS+1, depth), depth, true);
       insertLoopOtherHalf(depth-1);
@@ -159,7 +165,6 @@ void insert(persistent_ptr<TreeType> &tree) {
 
   insertLoopBranch(0, TARGET_DEPTH, false);
   insertLoopOtherHalf(TARGET_DEPTH);
-  //tree->printBranchNode(0, tree->rootNode.branch);
 
   auto avg = std::accumulate(measures.begin(), measures.end(), 0) / measures.size();
   auto minmax = std::minmax_element(std::begin(measures), std::end(measures));

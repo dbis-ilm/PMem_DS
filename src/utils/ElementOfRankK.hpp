@@ -21,6 +21,7 @@
 #define DBIS_ELEMENTOFRANKK_HPP
 
 #include <cstdlib> //< rand()
+#include <bitset>
 
 namespace dbis {
 
@@ -59,6 +60,19 @@ class ElementOfRankK {
 
 
 }; /* end class */
+
+  template<typename KeyType, size_t M>
+  std::pair<std::bitset<M>, KeyType> 
+  findSplitKey(std::array<KeyType, M> &data) {
+    auto repData = data;
+    std::bitset<M> b{};
+    auto splitKey = ElementOfRankK::elementOfRankK((M+1)/2, data, 0, M);
+    for(auto i = 0u; i < M; i++)
+      if(repData[i] <= splitKey)
+        b.set(i);
+    return std::make_pair(b, splitKey);
+  }
+
 } /* end namespace dbis */
 
 #endif /* DBIS_ELEMENTOFRANKK_HPP */

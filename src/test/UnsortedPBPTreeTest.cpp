@@ -164,12 +164,12 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
                        std::begin(node3->keys.get_ro())));
 
     std::array<persistent_ptr<PBPTreeType2::LeafNode>, 3> node2Children;
-    std::transform(std::begin(node2->children.get_rw()), std::end(node2->children.get_rw()), std::begin(node2Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node2->children.get_rw()), std::end(node2->children.get_rw()), std::begin(node2Children), [](PBPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
 
     std::array<persistent_ptr<PBPTreeType2::LeafNode>, 4> node3Children;
-    std::transform(std::begin(node3->children.get_rw()), std::end(node3->children.get_rw()), std::begin(node3Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node3->children.get_rw()), std::end(node3->children.get_rw()), std::begin(node3Children), [](PBPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -231,11 +231,11 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
                        std::begin(node3->keys.get_ro())));
     std::array<persistent_ptr<PBPTreeType2::LeafNode>, 4> node2Children;
-    std::transform(std::begin(node2->children.get_rw()), std::end(node2->children.get_rw()), std::begin(node2Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node2->children.get_rw()), std::end(node2->children.get_rw()), std::begin(node2Children), [](PBPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
     std::array<persistent_ptr<PBPTreeType2::LeafNode>, 3> node3Children;
-    std::transform(std::begin(node3->children.get_rw()), std::end(node3->children.get_rw()), std::begin(node3Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node3->children.get_rw()), std::end(node3->children.get_rw()), std::begin(node3Children), [](PBPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -353,7 +353,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(node1->keys.get_ro())));
     std::array<persistent_ptr<PBPTreeType2::LeafNode>, 5> node1Children;
-    std::transform(std::begin(node1->children.get_rw()), std::end(node1->children.get_rw()), std::begin(node1Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node1->children.get_rw()), std::end(node1->children.get_rw()), std::begin(node1Children), [](PBPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(leafNodes), std::end(leafNodes),
                        std::begin(node1Children)));
 
@@ -638,7 +638,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(inner1->keys.get_ro())));
     std::array<persistent_ptr<PBPTreeType2::LeafNode>, 5> inner1Children;
-    std::transform(std::begin(inner1->children.get_ro()), std::end(inner1->children.get_ro()), std::begin(inner1Children), [](PBPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(inner1->children.get_ro()), std::end(inner1->children.get_ro()), std::begin(inner1Children), [](PBPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren), std::end(expectedChildren),
                        std::begin(inner1Children)));
 

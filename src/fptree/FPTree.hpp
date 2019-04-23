@@ -33,9 +33,7 @@
 
 #include "config.h"
 #include "utils/ElementOfRankK.hpp"
-
-#define BRANCH_PADDING  0
-#define LEAF_PADDING    0
+#include "utils/PersistEmulation.hpp"
 
 namespace dbis::fptree {
 
@@ -109,15 +107,9 @@ class FPTree {
     };
   };
 
-  /* By Herb Sutter */
-  template<typename T>
-  struct CacheLineStorage {
-    alignas(64) T data;
-    char pad[ 64 > sizeof(T) ? 64 - sizeof(T) : 0];
-  };
-  struct LeafSearch {
-    std::bitset<M> b;            //< bitset for valid entries
-    std::array<std::byte, M> fp; //< fingerprint array (n & 0xFF)
+  struct alignas(64) LeafSearch {
+    std::bitset<M> b;          //< bitset for valid entries
+    std::array<uint8_t, M> fp; //< fingerprint array (n & 0xFF)
 
     unsigned int getFreeZero() const {
       unsigned int idx = 0;
@@ -135,12 +127,11 @@ class FPTree {
      */
     LeafNode() : nextLeaf(nullptr), prevLeaf(nullptr) {}
 
-    p<CacheLineStorage<LeafSearch>> search;//< helper structure for faster searches
-    persistent_ptr<LeafNode> nextLeaf;     //< pointer to the subsequent sibling
-    persistent_ptr<LeafNode> prevLeaf;     //< pointer to the preceeding sibling
+    p<LeafSearch> search;                  //< helper structure for faster searches
     p<std::array<KeyType, M>> keys;        //< the actual keys
     p<std::array<ValueType, M>> values;    //< the actual values
-    p<unsigned char> pad_[LEAF_PADDING];   //<
+    persistent_ptr<LeafNode> nextLeaf;     //< pointer to the subsequent sibling
+    persistent_ptr<LeafNode> prevLeaf;     //< pointer to the preceeding sibling
   };
 
   /**
@@ -155,7 +146,6 @@ class FPTree {
     unsigned int numKeys;                         //< the number of currently stored keys
     std::array<KeyType, N> keys;                  //< the actual keys
     std::array<Node, N + 1> children; //< pointers to child nodes (BranchNode or LeafNode)
-    unsigned char pad_[BRANCH_PADDING];           //<
   };
 
   /**
@@ -239,7 +229,7 @@ class FPTree {
       currentNode = node.leaf;
       currentPosition = 0;
       // Can not overflow as there are at least M/2 entries
-      while(!currentNode->search.get_ro().data.b.test(currentPosition)) ++currentPosition;
+      while(!currentNode->search.get_ro().b.test(currentPosition)) ++currentPosition;
     }
 
     iterator& operator++() {
@@ -247,8 +237,8 @@ class FPTree {
         currentNode = currentNode->nextLeaf;
         currentPosition = 0;
         if (currentNode == nullptr) return *this;
-        while(!currentNode->search.get_ro().data.b.test(currentPosition)) ++currentPosition;
-      } else if (!currentNode->search.get_ro().data.b.test(++currentPosition)) ++(*this);
+        while(!currentNode->search.get_ro().b.test(currentPosition)) ++currentPosition;
+      } else if (!currentNode->search.get_ro().b.test(++currentPosition)) ++(*this);
       return *this;
     }
     iterator operator++(int) {iterator retval = *this; ++(*this); return retval;}
@@ -300,7 +290,7 @@ class FPTree {
   void insert(const KeyType &key, const ValueType &val) {
     auto pop = pmem::obj::pool_by_vptr(this);
     transaction::run(pop, [&] {
-			SplitInfo splitInfo;
+      SplitInfo splitInfo;
 
       bool wasSplit = false;
       if (depth == 0) {
@@ -444,7 +434,7 @@ class FPTree {
     while (leaf != nullptr) {
       // for each key-value pair call func
       for (auto i = 0u; i < leaf->numKeys.get_ro(); i++) {
-        if (!leaf->search.get_ro().data.b.test(i)) continue;
+        if (!leaf->search.get_ro().b.test(i)) continue;
         const auto &key = leaf->keys.get_ro()[i];
         const auto &val = leaf->values.get_ro()[i];
         func(key, val);
@@ -469,7 +459,7 @@ class FPTree {
     while (!higherThanMax && leaf != nullptr) {
       // for each key-value pair within the range call func
       for (auto i = 0u; i < M; i++) {
-        if (!leaf->search.get_ro().data.b.test(i)) continue;
+        if (!leaf->search.get_ro().b.test(i)) continue;
         auto &key = leaf->keys.get_ro()[i];
         if (key < minKey) continue;
         if (key > maxKey) { higherThanMax = true; continue; }
@@ -498,58 +488,89 @@ class FPTree {
    */
   bool insertInLeafNode(persistent_ptr<LeafNode> node, const KeyType &key,
       const ValueType &val, SplitInfo *splitInfo) {
+    auto &nodeRef = *node;
     bool split = false;
     auto pos = lookupPositionInLeafNode(node, key);
 
     if (pos < M) {
       // handle insert of duplicates
-      node->values.get_rw()[pos] = val;
+      nodeRef.values.get_rw()[pos] = val;
       return false;
-    } 
-
-    pos = node->search.get_ro().data.getFreeZero();
+    }
+    pos = nodeRef.search.get_ro().getFreeZero();
     if (pos == M) {
-      // the node is full, so we must split it
-      // determine the split position by finding median in unsorted array of keys
-      auto data = node->keys.get_ro();
-      KeyType middle = ElementOfRankK::elementOfRankK((M + 1) / 2, data, 0, M);
-      
-      // copy leaf
-      persistent_ptr<LeafNode> sibling = newLeafNode(node);
-      for (auto i = 0u; i < M; i++) {
-        KeyType currkey = node->keys.get_ro()[i];
-        if (currkey > middle) 
-					node->search.get_rw().data.b.reset(i);
-        else
-					sibling->search.get_rw().data.b.reset(i);
-      }
+      /* split the node */
+      splitLeafNode(node, splitInfo);
+      auto &splitRef = *splitInfo;
+      auto sibling= splitRef.rightChild.leaf;
+      auto &sibRef= *sibling;
 
-      // insert the new entry
-      const auto rightMin = sibling->keys.get_ro()[findMinKeyAtLeafNode(sibling)];
-      if (key < rightMin)
-        insertInLeafNodeAtPosition(node, node->search.get_ro().data.getFreeZero(), key, val);
+      /* insert the new entry */
+      if (key < splitRef.key)
+        insertInLeafNodeAtPosition(node, nodeRef.search.get_ro().getFreeZero(), key, val);
       else
-        insertInLeafNodeAtPosition(sibling, sibling->search.get_ro().data.getFreeZero(), key, val);
+        insertInLeafNodeAtPosition(sibling, sibRef.search.get_ro().getFreeZero(), key, val);
 
-      // setup the list of leaf nodes
-      if (node->nextLeaf != nullptr) {
-        sibling->nextLeaf = node->nextLeaf;
-        node->nextLeaf->prevLeaf = sibling;
-      }
-      node->nextLeaf = sibling;
-      sibling->prevLeaf = node;
 
-      // and inform the caller about the split
+      /* inform the caller about the split */
+      splitRef.key = sibRef.keys.get_ro()[findMinKeyAtLeafNode(sibling)];
       split = true;
-      splitInfo->leftChild = node;
-      splitInfo->rightChild = sibling;
-      splitInfo->key = rightMin;
     } else {
-      // otherwise, we can simply insert the new entry at the given position
+      /* otherwise, we can simply insert the new entry at the given position */
       insertInLeafNodeAtPosition(node, pos, key, val);
     }
     return split;
   }
+
+  void splitLeafNode(persistent_ptr<LeafNode> node, SplitInfo *splitInfo) {
+      auto &nodeRef = *node;
+
+      /* determine the split position by finding median in unsorted array of keys*/
+      auto data = nodeRef.keys.get_ro();
+      auto bAndKey = findSplitKey(data);
+      auto &splitKey = bAndKey.second;
+
+      // copy leaf
+      persistent_ptr<LeafNode> sibling = newLeafNode(node);
+      auto &sibRef = *sibling;
+      nodeRef.search.get_rw().b = bAndKey.first;
+      sibRef.search.get_rw().b = bAndKey.first.flip();
+      //PersistEmulation::writeBytes(sizeof(LeafNode) + ((2*M+7)>>3)); // copy leaf + 2 bitmaps
+
+      /* Alternative: move instead of complete copy *//*
+      auto data = nodeRef.keys.get_ro();
+      auto splitKey = ElementOfRankK::elementOfRankK((M+1)/2, data, 0, M);
+      persistent_ptr<LeafNode> sibling = newLeafNode();
+      auto &sibRef = *sibling;
+      auto j = 0u;
+      for(auto i = 0u; i < M; i++) {
+        if(nodeRef.keys.get_ro()[i] > splitKey) {
+          sibRef.keys.get_rw()[j] = nodeRef.keys.get_ro()[i];
+          sibRef.values.get_rw()[j] = nodeRef.values.get_ro()[i];
+          sibRef.search.get_rw().fp[j] = nodeRef.search.get_ro().fp[i];
+          sibRef.search.get_rw().b.set(j);
+          nodeRef.search.get_rw().b.reset(i);
+          j++;
+        }
+      }
+      PersistEmulation::writeBytes(j * (sizeof(KeyType) + sizeof(ValueType) + 1) + ((j*2+7)>>3)); // j entries/hashes + j*2 bits*/
+
+      /* setup the list of leaf nodes */
+      if (nodeRef.nextLeaf != nullptr) {
+        sibRef.nextLeaf = nodeRef.nextLeaf;
+        nodeRef.nextLeaf->prevLeaf = sibling;
+      }
+      nodeRef.nextLeaf = sibling;
+      sibRef.prevLeaf = node;
+      //PersistEmulation::writeBytes(16*2);
+
+      /* set split information */
+      auto &splitRef = *splitInfo;
+      splitRef.leftChild = node;
+      splitRef.rightChild = sibling;
+      splitRef.key = splitKey;
+  }
+
 
   /**
    * Insert a (key, value) pair at the given position @c pos into the leaf node
@@ -566,13 +587,18 @@ class FPTree {
   void insertInLeafNodeAtPosition(persistent_ptr<LeafNode> node, unsigned int pos,
       const KeyType &key, const ValueType &val) {
     assert(pos < M);
-    // set bit and hash
-    node->search.get_rw().data.b.set(pos);
-    node->search.get_rw().data.fp[pos] = fpHash(key);
 
-    // insert the new entry at the given position
+    /* insert the new entry at the given position */
     node->keys.get_rw()[pos] = key;
     node->values.get_rw()[pos] = val;
+    //PersistEmulation::persistStall();
+
+    /* set bit and hash */
+    node->search.get_rw().b.set(pos);
+    node->search.get_rw().fp[pos] = fpHash(key);
+    //PersistEmulation::persistStall();
+    if(sizeof(LeafSearch) > 64) PersistEmulation::persistStall();
+    //PersistEmulation::writeBytes(sizeof(KeyType) + sizeof(ValueType) + 2);
   }
 
   /**
@@ -691,14 +717,16 @@ class FPTree {
    * @param key the search key
    * @return the position of the key  (or @c M if not found)
    */
-  unsigned int lookupPositionInLeafNode(persistent_ptr<LeafNode> node,
+  unsigned int lookupPositionInLeafNode(const persistent_ptr<LeafNode> node,
       const KeyType &key) const {
-    unsigned int pos = 0;
+    unsigned int pos = 0u;
     const auto hash = fpHash(key);
+    const auto &keys = node->keys.get_ro();
+    const auto &search = node->search.get_ro();
     for (; pos < M ; pos++) {
-      if(node->search.get_ro().data.b.test(pos) && 
-         node->search.get_ro().data.fp[pos] == hash && 
-         node->keys.get_ro()[pos] == key)
+      if(search.fp[pos] == hash &&
+         search.b.test(pos) &&
+         keys[pos] == key)
         break;
     }
     return pos;
@@ -719,19 +747,21 @@ class FPTree {
   unsigned int lookupPositionInBranchNode(BranchNode *node,
       const KeyType &key) const {
     auto pos = 0u;
-    for (; pos < node->numKeys && node->keys[pos] <= key; pos++);
-    return pos;
-    //return binarySearch(node, 0, node->numKeys-1, key);
+    const auto &num = node->numKeys;
+    //const auto &keys = node->keys;
+    //for (; pos < num && keys[pos] <= key; pos++);
+    //return pos;
+    return binarySearch(node, 0, num-1, key);
   }
 
-  template<typename Node>
-  unsigned int binarySearch(Node *node, int l, int r,
+  unsigned int binarySearch(BranchNode *node, int l, int r,
                             KeyType const &key) const {
     auto pos = 0u;
+    const auto &keys = node->keys;
     while (l <= r) {
       pos = (l + r) / 2;
-      if (node->keys[pos] == key) return ++pos;
-      if (node->keys[pos] < key) l = ++pos;
+      if (keys[pos] == key) return ++pos;
+      if (keys[pos] < key) l = ++pos;
       else r = pos - 1;
     }
     return pos;
@@ -748,7 +778,7 @@ class FPTree {
   bool eraseFromLeafNode(persistent_ptr <LeafNode> node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
     if (pos < M) {
-      node->search.get_rw().data.b.reset(pos);
+      node->search.get_rw().b.reset(pos);
       return true;
     }
     return false;
@@ -774,7 +804,7 @@ class FPTree {
       assert(leaf != nullptr);
       deleted = eraseFromLeafNode(leaf, key);
       unsigned int middle = (M + 1) / 2;
-      if (leaf->search.get_ro().data.b.count() < middle) {
+      if (leaf->search.get_ro().b.count() < middle) {
         // handle underflow
         underflowAtLeafLevel(node, pos, leaf);
       }
@@ -810,55 +840,55 @@ class FPTree {
    */
   void underflowAtLeafLevel(BranchNode *node, unsigned int pos,
       persistent_ptr<LeafNode> leaf) {
-      assert(pos <= node->numKeys);
-      unsigned int middle = (M + 1) / 2;
-      // 1. we check whether we can rebalance with one of the siblings
+    assert(pos <= node->numKeys);
+    unsigned int middle = (M + 1) / 2;
+    // 1. we check whether we can rebalance with one of the siblings
+    // but only if both nodes have the same direct parent
+    if (pos > 0 && leaf->prevLeaf->search.get_ro().b.count() > middle) {
+      // we have a sibling at the left for rebalancing the keys
+      balanceLeafNodes(leaf->prevLeaf, leaf);
+
+      node->keys[pos - 1] = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
+    } else if (pos < node->numKeys && leaf->nextLeaf->search.get_ro().b.count() > middle) {
+      // we have a sibling at the right for rebalancing the keys
+      balanceLeafNodes(leaf->nextLeaf, leaf);
+
+      node->keys[pos] = leaf->nextLeaf->keys.get_ro()[findMinKeyAtLeafNode(leaf->nextLeaf)];
+    } else {
+      // 2. if this fails we have to merge two leaf nodes
       // but only if both nodes have the same direct parent
-      if (pos > 0 && leaf->prevLeaf->search.get_ro().data.b.count() > middle) {
-        // we have a sibling at the left for rebalancing the keys
-        balanceLeafNodes(leaf->prevLeaf, leaf);
-
-        node->keys[pos - 1] = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
-      } else if (pos < node->numKeys && leaf->nextLeaf->search.get_ro().data.b.count() > middle) {
-        // we have a sibling at the right for rebalancing the keys
-        balanceLeafNodes(leaf->nextLeaf, leaf);
-
-        node->keys[pos] = leaf->nextLeaf->keys.get_ro()[findMinKeyAtLeafNode(leaf->nextLeaf)];
+      persistent_ptr <LeafNode> survivor = nullptr;
+      if (pos > 0 && leaf->prevLeaf->search.get_ro().b.count() <= middle) {
+        survivor = mergeLeafNodes(leaf->prevLeaf, leaf);
+        deleteLeafNode(leaf);
+      } else if (pos < node->numKeys && leaf->nextLeaf->search.get_ro().b.count() <= middle) {
+        // because we update the pointers in mergeLeafNodes
+        // we keep it here
+        auto l = leaf->nextLeaf;
+        survivor = mergeLeafNodes(leaf, l);
+        deleteLeafNode(l);
       } else {
-        // 2. if this fails we have to merge two leaf nodes
-        // but only if both nodes have the same direct parent
-        persistent_ptr <LeafNode> survivor = nullptr;
-        if (pos > 0 && leaf->prevLeaf->search.get_ro().data.b.count() <= middle) {
-          survivor = mergeLeafNodes(leaf->prevLeaf, leaf);
-          deleteLeafNode(leaf);
-        } else if (pos < node->numKeys && leaf->nextLeaf->search.get_ro().data.b.count() <= middle) {
-          // because we update the pointers in mergeLeafNodes
-          // we keep it here
-          auto l = leaf->nextLeaf;
-          survivor = mergeLeafNodes(leaf, l);
-          deleteLeafNode(l);
-        } else {
-          // this shouldn't happen?!
-          assert(false);
+        // this shouldn't happen?!
+        assert(false);
+      }
+      if (node->numKeys > 1) {
+        if (pos > 0) pos--;
+        // just remove the child node from the current lowest branch node
+        for (auto i = pos; i < node->numKeys - 1; i++) {
+          node->keys[i] = node->keys[i + 1];
+          node->children[i + 1] = node->children[i + 2];
         }
-        if (node->numKeys > 1) {
-          if (pos > 0) pos--;
-          // just remove the child node from the current lowest branch node
-          for (auto i = pos; i < node->numKeys - 1; i++) {
-            node->keys[i] = node->keys[i + 1];
-            node->children[i + 1] = node->children[i + 2];
-          }
-          node->children[pos] = survivor;
-          --node->numKeys;
-        } else {
-          // This is a special case that happens only if
-          // the current node is the root node. Now, we have
-          // to replace the branch root node by a leaf node.
-          rootNode = survivor;
-          --depth;
-        }
+        node->children[pos] = survivor;
+        --node->numKeys;
+      } else {
+        // This is a special case that happens only if
+        // the current node is the root node. Now, we have
+        // to replace the branch root node by a leaf node.
+        rootNode = survivor;
+        --depth;
       }
     }
+  }
 
   /**
    * Handle the case that during a delete operation a underflow at node @c child
@@ -960,8 +990,8 @@ class FPTree {
    * @param receiver the sibling leaf node getting the elements from @c donor
    */
   void balanceLeafNodes(persistent_ptr <LeafNode> donor, persistent_ptr <LeafNode> receiver) {
-		const auto dNumKeys = donor->search.get_ro().data.b.count();
-		const auto rNumKeys = receiver->search.get_ro().data.b.count();
+    const auto dNumKeys = donor->search.get_ro().b.count();
+    const auto rNumKeys = receiver->search.get_ro().b.count();
     assert(dNumKeys > rNumKeys);
     unsigned int balancedNum = (dNumKeys + rNumKeys) / 2;
     unsigned int toMove = dNumKeys - balancedNum;
@@ -969,36 +999,36 @@ class FPTree {
 
     if (donor->keys.get_ro()[0] < receiver->keys.get_ro()[0]) {
       // move to a node with larger keys
-			// move toMove keys/values from donor to receiver
-			for (auto i = 0u; i < toMove; i++) {
-				const auto max = findMaxKeyAtLeafNode(donor);
-				const auto pos = receiver->search.get_ro().data.getFreeZero();
-				
-				receiver->search.get_rw().data.b.set(pos);
-				receiver->search.get_rw().data.fp[pos] = fpHash(donor->keys.get_ro()[max]);
-				receiver->keys.get_rw()[pos] = donor->keys.get_ro()[max];
-				receiver->values.get_rw()[pos] = donor->values.get_ro()[max];
-        donor->search.get_rw().data.b.reset(max);
+      // move toMove keys/values from donor to receiver
+      for (auto i = 0u; i < toMove; i++) {
+        const auto max = findMaxKeyAtLeafNode(donor);
+        const auto pos = receiver->search.get_ro().getFreeZero();
+
+        receiver->search.get_rw().b.set(pos);
+        receiver->search.get_rw().fp[pos] = fpHash(donor->keys.get_ro()[max]);
+        receiver->keys.get_rw()[pos] = donor->keys.get_ro()[max];
+        receiver->values.get_rw()[pos] = donor->values.get_ro()[max];
+        donor->search.get_rw().b.reset(max);
       }
     } else {
       // move to a node with smaller keys
       // move toMove keys/values from donor to receiver
-			for (auto i = 0u; i < toMove; i++) {
-				const auto min = findMinKeyAtLeafNode(donor);
-				const auto pos = receiver->search.get_ro().data.getFreeZero();
-				
-				receiver->search.get_rw().data.b.set(pos);
-				receiver->search.get_rw().data.fp[pos] = fpHash(donor->keys.get_ro()[min]);
-				receiver->keys.get_rw()[pos] = donor->keys.get_ro()[min];
-				receiver->values.get_rw()[pos] = donor->values.get_ro()[min];
-        donor->search.get_rw().data.b.reset(min);
+      for (auto i = 0u; i < toMove; i++) {
+        const auto min = findMinKeyAtLeafNode(donor);
+        const auto pos = receiver->search.get_ro().getFreeZero();
+
+        receiver->search.get_rw().b.set(pos);
+        receiver->search.get_rw().fp[pos] = fpHash(donor->keys.get_ro()[min]);
+        receiver->keys.get_rw()[pos] = donor->keys.get_ro()[min];
+        receiver->values.get_rw()[pos] = donor->values.get_ro()[min];
+        donor->search.get_rw().b.reset(min);
       }
-		}
+    }
   }
-  
+
   /**
    * Find position of the minimum key in unsorted leaf
-	 *
+   *
    * @param node the leaf node to find the minimum key in
    * @return position of the minimum key
    */
@@ -1006,7 +1036,7 @@ class FPTree {
     unsigned int pos = 0;
     KeyType currMinKey = std::numeric_limits<KeyType>::max();
     for (auto i = 0u; i < M; i++) {
-      if(node->search.get_ro().data.b.test(i)){ 
+      if(node->search.get_ro().b.test(i)){
         KeyType key = node->keys.get_ro()[i];
         if (key < currMinKey) { currMinKey = key; pos = i;}
       }
@@ -1016,7 +1046,7 @@ class FPTree {
 
   /**
    * Find position of the maximum key in unsorted leaf
-	 *
+   *
    * @param node the leaf node to find the maximmum key in
    * @return position of the maximum key
    */
@@ -1024,7 +1054,7 @@ class FPTree {
     unsigned int pos = 0;
     KeyType currMaxKey = 0;
     for (auto i = 0u; i < M; i++) {
-      if(node->search.get_ro().data.b.test(i)){ 
+      if(node->search.get_ro().b.test(i)){
         KeyType key = node->keys.get_ro()[i];
         if (key > currMaxKey) { currMaxKey = key; pos = i;}
       }
@@ -1123,20 +1153,20 @@ class FPTree {
   persistent_ptr <LeafNode> mergeLeafNodes(persistent_ptr <LeafNode> node1, persistent_ptr <LeafNode> node2) {
     assert(node1 != nullptr);
     assert(node2 != nullptr);
-		const auto n1NumKeys = node1->search.get_ro().data.b.count();
-		const auto n2NumKeys = node2->search.get_ro().data.b.count();
+    const auto n1NumKeys = node1->search.get_ro().b.count();
+    const auto n2NumKeys = node2->search.get_ro().b.count();
     assert(n1NumKeys + n2NumKeys <= M);
 
     // we move all keys/values from node2 to node1
     for (auto i = 0u; i < M; i++) {
-			if (node2->search.get_ro().data.b.test(i)) {
-				const auto pos = node1->search.get_ro().data.getFreeZero();
-			
-				node1->search.get_rw().data.b.set(pos);
-				node1->search.get_rw().data.fp[pos] = node2->search.get_ro().data.fp[i];
-				node1->keys.get_rw()[pos] = node2->keys.get_ro()[i];
-				node1->values.get_rw()[pos] = node2->values.get_ro()[i];
-			}
+      if (node2->search.get_ro().b.test(i)) {
+        const auto pos = node1->search.get_ro().getFreeZero();
+
+        node1->search.get_rw().b.set(pos);
+        node1->search.get_rw().fp[pos] = node2->search.get_ro().fp[i];
+        node1->keys.get_rw()[pos] = node2->keys.get_ro()[i];
+        node1->values.get_rw()[pos] = node2->values.get_ro()[i];
+      }
     }
     node1->nextLeaf = node2->nextLeaf;
     if (node2->nextLeaf != nullptr) node2->nextLeaf->prevLeaf = node1;
@@ -1181,7 +1211,7 @@ class FPTree {
     for (auto i = 0u; i < M; i++) {
       if (i > 0) std::cout << ", ";
 
-      std::cout << "{(" << node->search.get_ro().data.b[i] << ")" << node->keys.get_ro()[i] << "}";
+      std::cout << "{(" << node->search.get_ro().b[i] << ")" << node->keys.get_ro()[i] << "}";
     }
     std::cout << "]" << std::endl;
   }
@@ -1193,7 +1223,7 @@ class FPTree {
   void recoveryInsert(persistent_ptr<LeafNode> leaf){
     assert(depth > 0);
     assert(leaf != nullptr);
-    
+
     SplitInfo splitInfo;
     auto hassplit = recoveryInsertInBranchNode(rootNode.branch, depth, leaf, &splitInfo);
 
@@ -1209,7 +1239,7 @@ class FPTree {
       ++depth;
     }
   }
-  
+
   /**
    * Insert a leaf node into the tree recursively by following the path
    * down to the leaf level starting at node @c node at depth @c depth.
@@ -1297,8 +1327,8 @@ class FPTree {
     }
   }
 
-  inline std::byte fpHash(const KeyType &k) const {
-    return (std::byte)(k & 0xFF);
+  inline uint8_t fpHash(const KeyType &k) const {
+    return (uint8_t)(k & 0xFF);
   }
 };//end class FPTree
 }//end namespace dbis::fptree

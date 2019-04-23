@@ -99,8 +99,8 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     auto node = q->btree1->newLeafNode();
     for (auto i = 0; i < 10; i++) { 
       node->keys.get_rw()[i] = i + 1;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.fp[i] = q->btree1->fpHash(i + 1);
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().fp[i] = q->btree1->fpHash(i + 1);
     }
 
     REQUIRE(q->btree1->lookupPositionInLeafNode(node, 1) == 0);
@@ -167,12 +167,12 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
                        std::begin(node3->keys)));
 
     std::array<persistent_ptr<FPTreeType2::LeafNode>, 3> node2Children;
-    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](FPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](FPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
 
     std::array<persistent_ptr<FPTreeType2::LeafNode>, 4> node3Children;
-    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](FPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](FPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -234,11 +234,11 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
                        std::begin(node3->keys)));
     std::array<persistent_ptr<FPTreeType2::LeafNode>, 4> node2Children;
-    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](FPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](FPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
     std::array<persistent_ptr<FPTreeType2::LeafNode>, 3> node3Children;
-    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](FPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](FPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -356,7 +356,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(node1->keys)));
     std::array<persistent_ptr<FPTreeType2::LeafNode>, 5> node1Children;
-    std::transform(std::begin(node1->children), std::end(node1->children), std::begin(node1Children), [](FPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node1->children), std::end(node1->children), std::begin(node1Children), [](FPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(leafNodes), std::end(leafNodes),
                        std::begin(node1Children)));
 
@@ -372,22 +372,22 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     for (auto i = 0; i < 4; i++) {
       node1->keys.get_rw()[i] = i;
       node1->values.get_rw()[i] = i + 100;
-      node1->search.get_rw().data.b.set(i);
-      node1->search.get_rw().data.fp[i] = btree->fpHash(i);
+      node1->search.get_rw().b.set(i);
+      node1->search.get_rw().fp[i] = btree->fpHash(i);
     }
 
     for (auto i = 0; i < 4; i++) {
       node2->keys.get_rw()[i] = i + 10;
       node2->values.get_rw()[i] = i + 200;
-      node2->search.get_rw().data.b.set(i);
-      node2->search.get_rw().data.fp[i] = btree->fpHash(i + 10);
+      node2->search.get_rw().b.set(i);
+      node2->search.get_rw().fp[i] = btree->fpHash(i + 10);
     }
     node1->nextLeaf = node2;
 
     btree->mergeLeafNodes(node1, node2);
 
     REQUIRE(node1->nextLeaf == nullptr);
-    REQUIRE(node1->search.get_ro().data.b.count() == 8);
+    REQUIRE(node1->search.get_ro().b.count() == 8);
 
     std::array<int, 8> expectedKeys{{0, 1, 2, 3, 10, 11, 12, 13}};
     std::array<int, 8> expectedValues{{100, 101, 102, 103, 200, 201, 202, 203}};
@@ -408,20 +408,20 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     for (auto i = 0; i < 8; i++) {
       node1->keys.get_rw()[i] = i + 1;
       node1->values.get_rw()[i] = i * 100;
-      node1->search.get_rw().data.b.set(i);
-      node1->search.get_rw().data.fp[i] = btree->fpHash(i+1);
+      node1->search.get_rw().b.set(i);
+      node1->search.get_rw().fp[i] = btree->fpHash(i+1);
     }
 
     for (auto i = 0; i < 4; i++) {
       node2->keys.get_rw()[i] = i + 11;
       node2->values.get_rw()[i] = i * 200;
-      node2->search.get_rw().data.b.set(i);
-      node2->search.get_rw().data.fp[i] = btree->fpHash(i+11);
+      node2->search.get_rw().b.set(i);
+      node2->search.get_rw().fp[i] = btree->fpHash(i+11);
     }
 
     btree->balanceLeafNodes(node1, node2);
-    REQUIRE(node2->search.get_ro().data.b.count() == 6);
-    REQUIRE(node1->search.get_ro().data.b.count() == 6);
+    REQUIRE(node2->search.get_ro().b.count() == 6);
+    REQUIRE(node1->search.get_ro().b.count() == 6);
 
     std::array<int, 6> expectedKeys1{{1, 2, 3, 4, 5, 6}};
     std::array<int, 6> expectedValues1{{0, 100, 200, 300, 400, 500}};
@@ -451,7 +451,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     auto leaf2 = btree->newLeafNode();
     leaf1->nextLeaf = leaf2;
     leaf2->prevLeaf = leaf1;
-    auto parent = btree->newLowestBranchNode();
+    auto parent = btree->newBranchNode();
 
     FPTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -468,7 +468,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     btree->depth = 1;
 
     btree->underflowAtLeafLevel(parent, 1, leaf2);
-    REQUIRE(leaf1->search.get_ro().data.b.count() == 5);
+    REQUIRE(leaf1->search.get_ro().b.count() == 5);
     REQUIRE(btree->rootNode.leaf == leaf1);
 
     std::array<int, 5> expectedKeys{{1, 2, 3, 4, 5}};
@@ -492,7 +492,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     leaf2->prevLeaf = leaf1;
     leaf2->nextLeaf = leaf3;
     leaf3->prevLeaf = leaf2;
-    auto parent = btree->newLowestBranchNode();
+    auto parent = btree->newBranchNode();
 
     FPTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -513,8 +513,8 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     btree->rootNode = parent;
 
     btree->underflowAtLeafLevel(parent, 1, leaf2);
-    REQUIRE(leaf1->search.get_ro().data.b.count() == 5);
-    REQUIRE(btree->rootNode.lowestbranch == parent);
+    REQUIRE(leaf1->search.get_ro().b.count() == 5);
+    REQUIRE(btree->rootNode.branch == parent);
     REQUIRE(parent->numKeys == 1);
 
   }
@@ -527,7 +527,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     auto leaf2 = btree->newLeafNode();
     leaf1->nextLeaf = leaf2;
     leaf2->prevLeaf = leaf1;
-    auto parent = btree->newLowestBranchNode();
+    auto parent = btree->newBranchNode();
 
     FPTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -543,8 +543,8 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     parent->children[1] = leaf2;
 
     btree->underflowAtLeafLevel(parent, 1, leaf2);
-    REQUIRE(leaf1->search.get_ro().data.b.count() == 3);
-    REQUIRE(leaf2->search.get_ro().data.b.count() == 3);
+    REQUIRE(leaf1->search.get_ro().b.count() == 3);
+    REQUIRE(leaf2->search.get_ro().b.count() == 3);
 
     std::array<int, 3> expectedKeys1{{1, 2, 3}};
     std::array<int, 3> expectedValues1{{10, 20, 30}};
@@ -610,7 +610,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     leaf5->nextLeaf = leaf6;
     leaf6->prevLeaf = leaf5;
 
-    auto inner1 = btree->newLowestBranchNode();
+    auto inner1 = btree->newBranchNode();
     inner1->keys[0] = 5;
     inner1->keys[1] = 10;
     inner1->children[0] = leaf1;
@@ -618,7 +618,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     inner1->children[2] = leaf3;
     inner1->numKeys = 2;
 
-    auto inner2 = btree->newLowestBranchNode();
+    auto inner2 = btree->newBranchNode();
     inner2->keys[0] = 20;
     inner2->keys[1] = 30;
     inner2->children[0] = leaf4;
@@ -645,7 +645,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(inner1->keys)));
     std::array<persistent_ptr<FPTreeType2::LeafNode>, 5> inner1Children;
-    std::transform(std::begin(inner1->children), std::end(inner1->children), std::begin(inner1Children), [](FPTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(inner1->children), std::end(inner1->children), std::begin(inner1Children), [](FPTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren), std::end(expectedChildren),
                        std::begin(inner1Children)));
 
@@ -661,22 +661,22 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     for (auto i = 0; i < 9; i++) {
       node->keys.get_rw()[i] = (i + 1) * 2;
       node->values.get_rw()[i] = (i * 2) + 100;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.fp[i] = btree->fpHash((i + 1) * 2);
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().fp[i] = btree->fpHash((i + 1) * 2);
     }
 
 
     res = btree->insertInLeafNode(node, 5, 5000, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(node->search.get_ro().data.b.count() == 10);
+    REQUIRE(node->search.get_ro().b.count() == 10);
 
     res = btree->insertInLeafNode(node, 1, 1, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(node->search.get_ro().data.b.count() == 11);
+    REQUIRE(node->search.get_ro().b.count() == 11);
 
     res = btree->insertInLeafNode(node, 2, 1000, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(node->search.get_ro().data.b.count() == 11);
+    REQUIRE(node->search.get_ro().b.count() == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
     std::array<int, 11> expectedValues{
@@ -709,14 +709,14 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     for (auto i = 0; i < 9; i++) {
       node->keys.get_rw()[i] = (i + 1) * 2;
       node->values.get_rw()[i] = (i * 2) + 100;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.fp[i] = btree->fpHash((i + 1) * 2);
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().fp[i] = btree->fpHash((i + 1) * 2);
     }
 
     btree->insertInLeafNodeAtPosition(node, 9, 5, 5000);
-    REQUIRE(node->search.get_ro().data.b.count() == 10);
+    REQUIRE(node->search.get_ro().b.count() == 10);
     btree->insertInLeafNodeAtPosition(node, 10, 1, 1);
-    REQUIRE(node->search.get_ro().data.b.count() == 11);
+    REQUIRE(node->search.get_ro().b.count() == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
     std::array<int, 11> expectedValues{
@@ -748,7 +748,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     btree->insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree->insertInLeafNode(leaf2, 12, 120, &splitInfo);
 
-    auto node = btree->newLowestBranchNode();
+    auto node = btree->newBranchNode();
     node->keys[0] = 10;
     node->children[0] = leaf1;
     node->children[1] = leaf2;
@@ -757,8 +757,8 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     btree->rootNode = node;
     btree->depth = 2;
 
-    btree->insertInLowestBranchNode(node, 11, 112, &splitInfo);
-    REQUIRE(leaf2->search.get_ro().data.b.count() == 3);
+    btree->insertInBranchNode(node, 1, 11, 112, &splitInfo);
+    REQUIRE(leaf2->search.get_ro().b.count() == 3);
 
   }
 
@@ -778,7 +778,7 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     btree->insertInLeafNode(leaf2, 13, 130, &splitInfo);
     btree->insertInLeafNode(leaf2, 14, 140, &splitInfo);
 
-    auto node = btree->newLowestBranchNode();
+    auto node = btree->newBranchNode();
     node->keys[0] = 10;
     node->children[0] = leaf1;
     node->children[1] = leaf2;
@@ -787,20 +787,21 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     btree->rootNode = node;
     btree->depth = 2;
 
-    btree->insertInLowestBranchNode(node, 12, 112, &splitInfo);
-    REQUIRE(leaf2->search.get_ro().data.b.count() == 3);
+    btree->insertInBranchNode(node, 1, 12, 112, &splitInfo);
+    REQUIRE(leaf2->search.get_ro().b.count() == 2);
     REQUIRE(node->numKeys == 2);
 
-    std::array<int, 2> expectedKeys{{10, 13}};
+    std::array<int, 2> expectedKeys{{10, 12}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(node->keys)));
 
-    std::array<int, 2> expectedKeys2{{13, 14}};
-    auto leaf3 = node->children[2];
+    std::array<int, 3> expectedKeys2{{12, 13, 14}};
+    auto leaf3 = node->children[2].leaf;
     std::vector<int> actualKeys{};
     for(auto i = 0u; i < 4; i++)
-      if(leaf3->search.get_ro().data.b.test(i))
+      if(leaf3->search.get_ro().b.test(i))
         actualKeys.push_back(leaf3->keys.get_ro()[i]);
+    std::sort(std::begin(actualKeys), std::end(actualKeys));
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
                        std::begin(actualKeys)));
 
@@ -815,14 +816,14 @@ TEST_CASE("Finding the leaf node containing a key", "[FPTree]") {
     for (auto i = 0; i < 9; i++) {
       node->keys.get_rw()[i] = i + 1;
       node->values.get_rw()[i] = i + 100;
-      node->search.get_rw().data.b.set(i);
-      node->search.get_rw().data.fp[i] = btree->fpHash(i + 1);
+      node->search.get_rw().b.set(i);
+      node->search.get_rw().fp[i] = btree->fpHash(i + 1);
     }
 
     REQUIRE(btree->eraseFromLeafNode(node, 5) == true);
-    REQUIRE(node->search.get_ro().data.b.count() == 8);
+    REQUIRE(node->search.get_ro().b.count() == 8);
     REQUIRE(btree->eraseFromLeafNode(node, 15) == false);
-    REQUIRE(node->search.get_ro().data.b.count() == 8);
+    REQUIRE(node->search.get_ro().b.count() == 8);
 
     std::array<int, 8> expectedKeys{{1, 2, 3, 4, 6, 7, 8, 9 }};
     std::array<int, 8> expectedValues{

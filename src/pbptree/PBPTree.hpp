@@ -29,10 +29,8 @@
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
 
+#include "utils/PersistEmulation.hpp"
 #include "config.h"
-
-#define BRANCH_PADDING  0
-#define LEAF_PADDING    0
 
 namespace dbis::pbptree {
 
@@ -56,8 +54,6 @@ class PBPTree {
   static_assert(N > 2, "number of branch keys has to be >2.");
   // we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
-  // there is a bug that for odd numbers the tree sometimes breaks (TODO)
-  // static_assert(M % 2 == 0 && N % 2 == 0, "The number of keys should be even");
 
 #ifndef UNIT_TESTS
  private:
@@ -68,13 +64,13 @@ class PBPTree {
   // Forward declarations
   struct LeafNode;
   struct BranchNode;
-  struct LeafOrBranchNode {
-    LeafOrBranchNode() : tag(BLANK){};
-    LeafOrBranchNode(persistent_ptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
-    LeafOrBranchNode(persistent_ptr<BranchNode> branch_) : tag(BRANCH), branch(branch_) {};
-    LeafOrBranchNode(const LeafOrBranchNode& other) { copy(other); };
+  struct Node {
+    Node() : tag(BLANK){};
+    Node(persistent_ptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
+    Node(persistent_ptr<BranchNode> branch_) : tag(BRANCH), branch(branch_) {};
+    Node(const Node& other) { copy(other); };
 
-    void copy (const LeafOrBranchNode& other) throw() {
+    void copy (const Node& other) throw() {
       tag = other.tag;
 
       switch (tag) {
@@ -90,7 +86,7 @@ class PBPTree {
       }
     }
 
-    LeafOrBranchNode& operator=(LeafOrBranchNode other) {
+    Node& operator=(Node other) {
       copy(other);
       return *this;
     }
@@ -108,13 +104,13 @@ class PBPTree {
    */
   struct SplitInfo {
     KeyType key;                 //< the key at which the node was split
-    LeafOrBranchNode leftChild;  //< the resulting lhs child node
-    LeafOrBranchNode rightChild; //< the resulting rhs child node
+    Node leftChild;  //< the resulting lhs child node
+    Node rightChild; //< the resulting rhs child node
   };
 
   p<unsigned int> depth;         //< the depth of the tree, i.e. the number of levels (0 => rootNode is LeafNode)
 
-  LeafOrBranchNode rootNode;     //< pointer to the root node (an instance of @c LeafNode or
+  Node rootNode;     //< pointer to the root node (an instance of @c LeafNode or
                                  //< @c BranchNode). This pointer is never @c nullptr.
 
  public:
@@ -127,7 +123,7 @@ class PBPTree {
 
     public:
     iterator() : currentNode(nullptr), currentPosition(0) {}
-    iterator(const LeafOrBranchNode &root, std::size_t d) {
+    iterator(const Node &root, std::size_t d) {
       // traverse to left-most key
       auto node = root;
       while (d-- > 0) {
@@ -796,49 +792,67 @@ class PBPTree {
   bool insertInLeafNode(persistent_ptr<LeafNode> node, const KeyType &key,
                         const ValueType &val, SplitInfo *splitInfo) {
     bool split = false;
+    auto &nodeRef = *node; 
+    const auto &numKeys = nodeRef.numKeys.get_ro();
     auto pos = lookupPositionInLeafNode(node, key);
-    if (pos < node->numKeys && node->keys.get_ro()[pos] == key) {
-      // handle insert of duplicates
-      node->values.get_rw()[pos] = val;
+    if (pos < numKeys && nodeRef.keys.get_ro()[pos] == key) {
+      /* handle insert of duplicates */
+      nodeRef.values.get_rw()[pos] = val;
       return false;
     }
-    if (node->numKeys == M) {
-      // the node is full, so we must split it
-      // determine the split position
-      unsigned int middle = (M + 1) / 2;
-      // move all entries behind this position to a new sibling node
-      persistent_ptr<LeafNode> sibling = newLeafNode();
-      sibling->numKeys = node->numKeys - middle;
-      for (auto i = 0u; i < sibling->numKeys; i++) {
-        sibling->keys.get_rw()[i] = node->keys.get_ro()[i + middle];
-        sibling->values.get_rw()[i] = node->values.get_ro()[i + middle];
-      }
-      node->numKeys = middle;
+    if (numKeys == M) {
+      /* split the node */
+      splitLeafNode(node, splitInfo);
+      auto &splitRef = *splitInfo;
 
-      // insert the new entry
+      /* insert the new entry */
+      constexpr auto middle = (M + 1) / 2;
       if (pos < middle)
         insertInLeafNodeAtPosition(node, pos, key, val);
       else
-        insertInLeafNodeAtPosition(sibling, pos - middle, key, val);
+        insertInLeafNodeAtPosition(splitRef.rightChild.leaf, pos - middle, key, val);
 
-      // setup the list of leaf nodes
-      if(node->nextLeaf != nullptr) {
-        sibling->nextLeaf = node->nextLeaf;
-        node->nextLeaf->prevLeaf = sibling;
-      }
-      node->nextLeaf = sibling;
-      sibling->prevLeaf = node;
-
-      // and inform the caller about the split
+      /* inform the caller about the split */
+      splitRef.key = splitRef.rightChild.leaf->keys.get_ro()[0];
       split = true;
-      splitInfo->leftChild = node;
-      splitInfo->rightChild = sibling;
-      splitInfo->key = sibling->keys.get_ro()[0];
     } else {
-      // otherwise, we can simply insert the new entry at the given position
+      /* otherwise, we can simply insert the new entry at the given position */
       insertInLeafNodeAtPosition(node, pos, key, val);
     }
     return split;
+  }
+
+  void splitLeafNode(persistent_ptr<LeafNode> node, SplitInfo *splitInfo) {
+    auto &nodeRef = *node;
+
+    /* determine the split position*/
+    constexpr auto middle = (M + 1) / 2;
+
+    /* move all entries behind this position to a new sibling node */
+    persistent_ptr<LeafNode> sibling = newLeafNode();
+    auto &sibRef = *sibling;
+    sibRef.numKeys.get_rw() = nodeRef.numKeys.get_ro() - middle;
+    const auto &nKeys = nodeRef.keys.get_ro();
+    const auto &nValues = nodeRef.values.get_ro();
+    for (auto i = 0u; i < sibRef.numKeys.get_ro(); i++) {
+      sibRef.keys.get_rw()[i] = nKeys[i + middle];
+      sibRef.values.get_rw()[i] = nValues[i + middle];
+    }
+    nodeRef.numKeys.get_rw() = middle;
+      
+    /* setup the list of leaf nodes */
+    if(nodeRef.nextLeaf != nullptr) {
+      sibRef.nextLeaf = nodeRef.nextLeaf;
+      nodeRef.nextLeaf->prevLeaf = sibling;
+    }
+    nodeRef.nextLeaf = sibling;
+    sibRef.prevLeaf = node;
+    //PersistEmulation::writeBytes(2*4 + sibRef.numKeys*(sizeof(KeyType) + sizeof(ValueType)) + 2*16); // 2 numKeys + half entries + pointers
+    
+    auto &splitInfoRef = *splitInfo;
+    splitInfoRef.leftChild = node;
+    splitInfoRef.rightChild = sibling;
+    splitInfoRef.key = sibling->keys.get_ro()[0];
   }
 
   /**
@@ -855,18 +869,24 @@ class PBPTree {
    */
   void insertInLeafNodeAtPosition(persistent_ptr<LeafNode> node, unsigned int pos,
                                   const KeyType &key, const ValueType &val) {
+    const auto &numKeys = node->numKeys.get_ro();
     assert(pos < M);
-    assert(pos <= node->numKeys);
-    assert(node->numKeys < M);
+    assert(pos <= numKeys);
+    assert(numKeys < M);
     // we move all entries behind pos by one position
-    for (unsigned int i = node->numKeys; i > pos; i--) {
+    for (unsigned int i = numKeys; i > pos; i--) {
       node->keys.get_rw()[i] = node->keys.get_ro()[i - 1];
       node->values.get_rw()[i] = node->values.get_ro()[i - 1];
+      //PersistEmulation::persistStall();
     }
+
     // and then insert the new entry at the given position
     node->keys.get_rw()[pos] = key;
     node->values.get_rw()[pos] = val;
-    node->numKeys = node->numKeys + 1;
+    //PersistEmulation::persistStall();
+    node->numKeys.get_rw() = numKeys + 1;
+    //PersistEmulation::persistStall();
+    //PersistEmulation::writeBytes((numKeys-pos+1)*(sizeof(KeyType) + sizeof(ValueType)) + sizeof(unsigned int));
   }
 
   /**
@@ -997,7 +1017,8 @@ class PBPTree {
                                          const KeyType &key) const {
     unsigned int pos = 0;
     const unsigned int num = node->numKeys;
-    //for (; pos < num && node->keys.get_ro()[pos] <= key; pos++);
+    //const auto &keys = node->keys.get_ro();
+    //for (; pos < num && keys[pos] <= key; pos++);
     //return pos;
     return binarySearch(node, 0, num-1, key);
   }
@@ -1015,7 +1036,8 @@ class PBPTree {
                                         const KeyType &key) const {
     unsigned int pos = 0;
     const unsigned int num = node->numKeys.get_ro();
-    //for (; pos < num && node->keys.get_ro()[pos] < key; pos++);
+    //const auto &keys = node->keys.get_ro();
+    //for (; pos < num && keys[pos] < key; pos++);
     //return pos;
     return binarySearch(node, 0, num-1, key);
   }
@@ -1023,10 +1045,11 @@ class PBPTree {
   unsigned int binarySearch(persistent_ptr<BranchNode> node, int l, int r,
       KeyType const &key) const {
     auto pos = 0u;
+    const auto &keys = node->keys.get_ro();
     while (l <= r) {
       pos = (l + r) / 2;
-      if (node->keys.get_ro()[pos] == key) return ++pos;
-      if (node->keys.get_ro()[pos] < key) l = ++pos;
+      if (keys[pos] == key) return ++pos;
+      if (keys[pos] < key) l = ++pos;
       else r = pos - 1;
     }
     return pos;
@@ -1035,10 +1058,11 @@ class PBPTree {
   unsigned int binarySearch(persistent_ptr<LeafNode> node, int l, int r,
       KeyType const &key) const {
     auto pos = 0u;
+    const auto &keys = node->keys.get_ro();
     while (l <= r) {
       pos = (l + r) / 2;
-      if (node->keys.get_ro()[pos] == key) return pos;
-      if (node->keys.get_ro()[pos] < key) l = ++pos;
+      if (keys[pos] == key) return pos;
+      if (keys[pos] < key) l = ++pos;
       else r = pos - 1;
     }
     return pos;
@@ -1089,7 +1113,7 @@ class PBPTree {
   /**
    * A structure for representing a leaf node of a B+ tree.
    */
-  struct LeafNode {
+  struct alignas(64) LeafNode {
     /**
      * Constructor for creating a new empty leaf node.
      */
@@ -1100,7 +1124,6 @@ class PBPTree {
     p<std::array<ValueType, M>> values;  //< the actual values
     persistent_ptr<LeafNode> nextLeaf;   //< pointer to the subsequent sibling
     persistent_ptr<LeafNode> prevLeaf;   //< pointer to the preceding sibling
-    p<unsigned char> pad_[LEAF_PADDING]; //<
   };
 
   /**
@@ -1114,8 +1137,7 @@ class PBPTree {
 
     p<unsigned int> numKeys;                         //< the number of currently stored keys
     p<std::array<KeyType, N>> keys;                  //< the actual keys
-    p<std::array<LeafOrBranchNode, N + 1>> children; //< pointers to child nodes (BranchNode or LeafNode)
-    p<unsigned char> pad_[BRANCH_PADDING];           //<
+    p<std::array<Node, N + 1>> children; //< pointers to child nodes (BranchNode or LeafNode)
   };
 
 }; /* end class PBPTree */
