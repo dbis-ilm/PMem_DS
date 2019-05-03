@@ -25,52 +25,68 @@
 
 namespace dbis {
 
-/* Based on: https://www.geeksforgeeks.org/kth-smallestlargest-element-unsorted-array-set-2-expected-linear-time/
+/* Based on: https://www.geeksforgeeks.org/kth-smallestlargest-element-unsorted-array-set-3-worst-case-linear-time/
  * · Extension of QuickSelect
  */
 class ElementOfRankK {
-  public:
-    template <typename KeyType, size_t L>
-    static KeyType elementOfRankK(int const k, std::array<KeyType, L> &data, int const start, int const length) {
-      assert(k > 0 && k <= length);
+ public:
+ 	template <typename KeyType>
+  static size_t elementOfRankK(const size_t k, KeyType data[], const size_t start,
+                             const size_t length) {
+		const size_t end = start + length - 1;
+		size_t i;
+    const auto parts = (length  + 4) / 5;
+		KeyType median[parts];
+		for (i = 0; i < length / 5; i++) median[i] = findMedian(data + start + i * 5, 5);
+		if (i * 5 < length) {
+			median[i] = findMedian(data + start + i * 5, length % 5);
+			i++;
+		}
+		const KeyType medOfMed = (i == 1)? median[i - 1]: elementOfRankK(i / 2, median, 0, i);
+		const size_t pos = partition(data, start, end, medOfMed);
+		if (pos - start == k - 1) return data[pos];
+		if (pos - start  > k - 1) return elementOfRankK(k, data, start, pos - start);
+		return elementOfRankK(k - pos + start - 1, data, pos + 1, end - pos);
+	}
 
-      auto const end = start + length - 1;
-      int pos = setPivot(data, start, start + length - 1);
-      if (pos - start == k-1) return data[pos];
-      if (pos - start > k-1) return elementOfRankK(k, data, start, pos-start+1);
-      return elementOfRankK(k-pos+start-1, data, pos+1, length-(pos+1-start));
-    }
+
   private:
-			template <typename KeyType, size_t L>
-			static int quickPartition(std::array<KeyType, L> &data, int const start, int const end) {
-				int x = data[end], i = start;
-				for (int j = start; j < end; j++)
-					if (data[j] <= x)
-          std::swap(data[i++], data[j]);
-				std::swap(data[i], data[end]);
-				return i;
-			}
+    template <typename KeyType>
+    static inline KeyType findMedian(KeyType data[], const size_t length) {
+      std::sort(data, data + length); 
+      return data[length / 2];
+    }
 
-			template <typename KeyType, size_t L>
-			static int setPivot(std::array<KeyType, L> &data, int const start, int const end) {
-				auto const pivot = rand()/((RAND_MAX + 1u)/(end-start+1));
-				std::swap(data[start + pivot], data[end]);
-				return quickPartition(data, start, end);
-			}
+    template <typename KeyType>
+		static auto partition(KeyType data[], const size_t start,	const size_t end, const KeyType &x) {
+			size_t i;
+			for (i = start; i < end; i++) if (data[i] == x) break;
+			std::swap(data[i], data[end]);
 
+			/// quick partition algorithm
+			i = start;
+			for (int j = start; j < end; j++)
+				if (data[j] <= x)	std::swap(data[i++], data[j]);
+			std::swap(data[i], data[end]);
+			return i;
+		}
 
 }; /* end class */
 
   template<typename KeyType, size_t M>
-  std::pair<std::bitset<M>, KeyType> 
-  findSplitKey(std::array<KeyType, M> &data) {
+  std::pair<std::bitset<M>, size_t>
+  findSplitKey(const std::array<KeyType, M> &data) {
     auto repData = data;
     std::bitset<M> b{};
-    auto splitKey = ElementOfRankK::elementOfRankK((M+1)/2, data, 0, M);
-    for(auto i = 0u; i < M; i++)
-      if(repData[i] <= splitKey)
+    const auto splitKey = ElementOfRankK::elementOfRankK((M+1)/2, repData.data(), 0, M);
+    size_t splitPos;
+    for(auto i = 0u; i < M; i++) {
+      if(data[i] <= splitKey) {
         b.set(i);
-    return std::make_pair(b, splitKey);
+        if(data[i] == splitKey) splitPos = i;
+      }
+    }
+    return std::make_pair(b, splitPos);
   }
 
 } /* end namespace dbis */

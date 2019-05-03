@@ -990,7 +990,8 @@ class UnsortedPBPTree {
 		PROFILE_SPLIT
 		PROFILE_READ(M)
 		auto data = node->keys.get_ro();
-		auto splitKey = ElementOfRankK::elementOfRankK((M + 1) / 2, data, 0, M);
+    const auto [__unused__, splitPos] = findSplitKey(data);
+    const auto splitKey = data[splitPos];
 
 		/* move all entries with greater or equal keys to a new sibling node */
 		persistent_ptr<LeafNode> sibling = newLeafNode();
