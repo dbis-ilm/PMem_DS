@@ -720,9 +720,10 @@ class FPTree {
   unsigned int lookupPositionInLeafNode(const persistent_ptr<LeafNode> node,
       const KeyType &key) const {
     unsigned int pos = 0u;
+    const auto &nodeRef = *node;
     const auto hash = fpHash(key);
-    const auto &keys = node->keys.get_ro();
-    const auto &search = node->search.get_ro();
+    const auto &keys = nodeRef.keys.get_ro();
+    const auto &search = nodeRef.search.get_ro();
     for (; pos < M ; pos++) {
       if(search.fp[pos] == hash &&
          search.b.test(pos) &&

@@ -49,15 +49,15 @@ static void BM_TreeInsert(benchmark::State &state) {
     });
   }
   auto tree = pop.root()->tree;
- 
+
   /* Getting the leaf node */
   auto leaf = tree->rootNode.leaf;
-	//tree->printLeafNode(0, leaf);
+  //tree->printLeafNode(0, leaf);
 
-	const auto reqTup = MyTuple(KEYPOS, KEYPOS * 100, KEYPOS * 1.0);
+  const auto reqTup = MyTuple(KEYPOS, KEYPOS * 100, KEYPOS * 1.0);
   TreeType::SplitInfo splitInfo;
   bool split;
-	
+
   /* BENCHMARKING */
   for (auto _ : state) {
     state.PauseTiming();
@@ -67,9 +67,9 @@ static void BM_TreeInsert(benchmark::State &state) {
     prepare(tree);
     dbis::PersistEmulation::getBytesWritten();
     state.ResumeTiming();
-    
+
     split = tree->insertInLeafNode(leaf, KEYPOS, reqTup, &splitInfo);
-  
+
     state.PauseTiming();
     assert(split == false);
     tree->deleteLeafNode(leaf);

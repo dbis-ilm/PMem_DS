@@ -714,7 +714,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
 
     REQUIRE(inner1Ref.bits.get_ro().count() == 4);
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
-    std::array<pptr<PBPTreeType4::LeafNode>, 5> expectedChildren{ 
+    std::array<pptr<PBPTreeType4::LeafNode>, 5> expectedChildren{
       {leaf1, leaf2, leaf4, leaf5, leaf6}
     };
 

@@ -101,7 +101,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
   /* ------------------------------------------------------------------ */
   SECTION("Looking up a key in a leaf node") {
     auto node = q->btree1->newLeafNode();
-    for (auto i = 0; i < 10; i++) { 
+    for (auto i = 0; i < 10; i++) {
       node->keys.get_rw()[i] = i + 1;
       node->search.get_rw().data.b.set(i);
       node->search.get_rw().data.slot[i+1] = i;
@@ -291,7 +291,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
         actualKeys.push_back(node3->keys[node3->search.data.slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
                        std::begin(actualKeys)));
-    
+
     std::array<persistent_ptr<wHBPTreeType2::LeafNode>, 4> node2Children;
     for (auto i = 1; i < 4; i++)
       node2Children[i-1] = node2->children[node2->search.data.slot[i]].leaf;
@@ -807,7 +807,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
     std::vector<int> nodevecV {std::begin(node->values.get_ro()), std::begin(node->values.get_ro())+11};
     std::sort(std::begin(nodevecK), std::end(nodevecK));
     std::sort(std::begin(nodevecV), std::end(nodevecV));
-    
+
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(nodevecK)));
     REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
@@ -848,7 +848,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
     std::vector<int> nodevecV {std::begin(node->values.get_ro()), std::begin(node->values.get_ro())+11};
     std::sort(std::begin(nodevecK), std::end(nodevecK));
     std::sort(std::begin(nodevecV), std::end(nodevecV));
-   
+
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(nodevecK)));
     REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
@@ -958,7 +958,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
     std::array<int, 8> expectedKeys{{1, 2, 3, 4, 6, 7, 8, 9 }};
     std::array<int, 8> expectedValues{
         {100, 101, 102, 103, 105, 106, 107, 108 }};
-    
+
     std::vector<int> nodevecK {std::begin(node->keys.get_ro()), std::begin(node->keys.get_ro())+9};
     nodevecK.erase(nodevecK.begin() + 4);
     std::vector<int> nodevecV {std::begin(node->values.get_ro()), std::begin(node->values.get_ro())+9};

@@ -27,7 +27,7 @@
 
 #define UNIT_TESTS
 #include "benchmark/benchmark.h"
-#include "PBPTree.hpp"
+#include "BitPBPTree.hpp"
 
 using namespace dbis::pbptree;
 
@@ -38,8 +38,8 @@ using pmem::obj::pool;
 using MyTuple = std::tuple <int, int, double>;
 using MyKey = unsigned long long;
 constexpr auto TARGET_BRANCH_SIZE = 512;
-constexpr auto TARGET_LEAF_SIZE = 512; //< 512B best performance
-constexpr auto TARGET_DEPTH = 1;
+constexpr auto TARGET_LEAF_SIZE = 4096; //< 512B best performance
+constexpr auto TARGET_DEPTH = 0;
 const std::string path = dbis::gPmemPath + "tree_bench.data";
 constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull; //< 4GB
 constexpr auto LAYOUT = "Tree";
@@ -107,9 +107,9 @@ constexpr uint64_t ipow(uint64_t base, int exp, uint64_t result = 1) {
 constexpr auto LEAFKEYS = getLeafKeysPBPTree<5>(); //< 5 iterations should be enough
 constexpr auto BRANCHKEYS = getBranchKeysPBPTree<5>();
 constexpr auto ELEMENTS = LEAFKEYS*ipow(BRANCHKEYS+1, TARGET_DEPTH);
-constexpr auto KEYPOS = ELEMENTS/2;
+constexpr auto KEYPOS = ELEMENTS/1;
 
-using TreeType = PBPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
+using TreeType = BitPBPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
 
 /*=== Insert Function ===*/
 void insert(persistent_ptr<TreeType> &tree) {
@@ -138,7 +138,7 @@ void insert(persistent_ptr<TreeType> &tree) {
     auto firstHalf = start + middle;
     auto helper = start + nodeRange - middle - 1;
     auto secondHalf = (BRANCHKEYS%2==0)? helper - 0 : helper - lowerRange;
-    auto end = (otherHalf)? secondHalf : firstHalf;  
+    auto end = (otherHalf)? secondHalf : firstHalf;
     for(auto i = start; i <= end; i+= LEAFKEYS*ipow(BRANCHKEYS+1,depth-1)) {
       if (depth == 1) insertLoopLeaf(i);
       else insertLoopBranch(i, depth-1, false);

@@ -49,15 +49,15 @@ static void BM_TreeSplit(benchmark::State &state) {
     });
   }
   auto tree = pop.root()->tree;
- 
+
   /* Getting the leaf node */
   auto leaf = tree->rootNode.leaf;
-	//tree->printLeafNode(0, leaf);
+  //tree->printLeafNode(0, leaf);
 
-	const auto reqTup = MyTuple(ELEMENTS+1, (ELEMENTS+1) * 100, (ELEMENTS+1) * 1.0);
+  const auto reqTup = MyTuple(ELEMENTS+1, (ELEMENTS+1) * 100, (ELEMENTS+1) * 1.0);
   TreeType::SplitInfo splitInfo;
   bool split;
-	
+
   /* BENCHMARKING */
   for (auto _ : state) {
     state.PauseTiming();
@@ -68,9 +68,9 @@ static void BM_TreeSplit(benchmark::State &state) {
     dbis::PersistEmulation::getBytesWritten();
     //tree->printLeafNode(0, leaf);
     state.ResumeTiming();
-    
+
     tree->splitLeafNode(leaf, &splitInfo);
-  
+
     state.PauseTiming();
     //tree->printLeafNode(0, leaf);
     tree->deleteLeafNode(leaf->nextLeaf);

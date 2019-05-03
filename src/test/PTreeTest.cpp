@@ -678,7 +678,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     std::vector<int> nodevecV {std::begin(node->values.get_ro()), std::begin(node->values.get_ro())+11};
     std::sort(std::begin(nodevecK), std::end(nodevecK));
     std::sort(std::begin(nodevecV), std::end(nodevecV));
-    
+
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(nodevecK)));
     REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
@@ -717,7 +717,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     std::vector<int> nodevecV {std::begin(node->values.get_ro()), std::begin(node->values.get_ro())+11};
     std::sort(std::begin(nodevecK), std::end(nodevecK));
     std::sort(std::begin(nodevecV), std::end(nodevecV));
-   
+
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(nodevecK)));
     REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
@@ -813,7 +813,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     std::array<int, 8> expectedKeys{{1, 2, 3, 4, 6, 7, 8, 9 }};
     std::array<int, 8> expectedValues{
         {100, 101, 102, 103, 105, 106, 107, 108 }};
-    
+
     std::vector<int> nodevecK {std::begin(node->keys.get_ro()), std::begin(node->keys.get_ro())+8};
     std::vector<int> nodevecV {std::begin(node->values.get_ro()), std::begin(node->values.get_ro())+8};
     std::sort(std::begin(nodevecK), std::end(nodevecK));

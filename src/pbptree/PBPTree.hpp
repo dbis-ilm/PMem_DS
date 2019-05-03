@@ -792,7 +792,7 @@ class PBPTree {
   bool insertInLeafNode(persistent_ptr<LeafNode> node, const KeyType &key,
                         const ValueType &val, SplitInfo *splitInfo) {
     bool split = false;
-    auto &nodeRef = *node; 
+    auto &nodeRef = *node;
     const auto &numKeys = nodeRef.numKeys.get_ro();
     auto pos = lookupPositionInLeafNode(node, key);
     if (pos < numKeys && nodeRef.keys.get_ro()[pos] == key) {
@@ -839,7 +839,7 @@ class PBPTree {
       sibRef.values.get_rw()[i] = nValues[i + middle];
     }
     nodeRef.numKeys.get_rw() = middle;
-      
+
     /* setup the list of leaf nodes */
     if(nodeRef.nextLeaf != nullptr) {
       sibRef.nextLeaf = nodeRef.nextLeaf;
@@ -848,7 +848,7 @@ class PBPTree {
     nodeRef.nextLeaf = sibling;
     sibRef.prevLeaf = node;
     //PersistEmulation::writeBytes(2*4 + sibRef.numKeys*(sizeof(KeyType) + sizeof(ValueType)) + 2*16); // 2 numKeys + half entries + pointers
-    
+
     auto &splitInfoRef = *splitInfo;
     splitInfoRef.leftChild = node;
     splitInfoRef.rightChild = sibling;

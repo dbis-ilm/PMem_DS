@@ -144,7 +144,7 @@ class BitPBPTree {
 
   /* -------------------------------------------------------------------------------------------- */
 
-	/**
+  /**
    * A structure for passing information about a node split to the caller.
    */
   struct SplitInfo {
@@ -706,23 +706,23 @@ class BitPBPTree {
    * @param pos the position of the child node @child in the @c children array of the branch node
    * @param child the node at which the underflow occured
    * @return the (possibly new) child node (in case of a merge)
-	 * TODO: I think this is not entirely correct, yet
+   * TODO: I think this is not entirely correct, yet
    */
   pptr<BranchNode> underflowAtBranchLevel(const pptr<BranchNode> &node, const unsigned int pos,
                                           const pptr<BranchNode> &child) {
     assert(node != nullptr);
     assert(child != nullptr);
-		auto &nodeRef = *node;
+    auto &nodeRef = *node;
     PROFILE_READ(5)
-		const auto &nNumKeys = nodeRef.bits.get_ro().count();
-		const auto prevPos = findMaxKeySmallerThan(node, nodeRef.keys.get_ro()[pos]);
-		const auto prevNumKeys = nodeRef.children.get_ro()[prevPos].branch->bits.get_ro().count();
-		auto nextPos = 0u;
-		auto nextNumKeys = 0u;
+    const auto &nNumKeys = nodeRef.bits.get_ro().count();
+    const auto prevPos = findMaxKeySmallerThan(node, nodeRef.keys.get_ro()[pos]);
+    const auto prevNumKeys = nodeRef.children.get_ro()[prevPos].branch->bits.get_ro().count();
+    auto nextPos = 0u;
+    auto nextNumKeys = 0u;
     constexpr auto middle = (N + 1) / 2;
     pptr<BranchNode> newChild = child;
 
-		/// 1. we check whether we can rebalance with one of the siblings
+    /// 1. we check whether we can rebalance with one of the siblings
     if (pos > 0 && prevNumKeys > middle) {
       /// we have a sibling at the left for rebalancing the keys
       PROFILE_READ(1)
@@ -730,16 +730,16 @@ class BitPBPTree {
       balanceBranchNodes(sibling, child, node, pos);
       return newChild;
     } else if (pos < nNumKeys) {
-    	PROFILE_READ(3)
-			nextPos = findMinKeyGreaterThan(node, nodeRef.keys.get_ro()[pos]);
-			nextNumKeys = nodeRef.children.get_ro()[nextPos].branch->bits.get_ro().count();
+      PROFILE_READ(3)
+      nextPos = findMinKeyGreaterThan(node, nodeRef.keys.get_ro()[pos]);
+      nextNumKeys = nodeRef.children.get_ro()[nextPos].branch->bits.get_ro().count();
       /// we have a sibling at the right for rebalancing the keys
-			if (nextNumKeys > middle) {
-      	PROFILE_READ(1)
-      	auto sibling = (nodeRef.children.get_ro()[nextPos]).branch;
-      	balanceBranchNodes(sibling, child, node, pos);
-      	return newChild;
-			}
+      if (nextNumKeys > middle) {
+        PROFILE_READ(1)
+        auto sibling = (nodeRef.children.get_ro()[nextPos]).branch;
+        balanceBranchNodes(sibling, child, node, pos);
+        return newChild;
+      }
     }
     /// 2. if this fails we have to merge two branch nodes
     pptr<BranchNode> lSibling = nullptr, rSibling = nullptr;
@@ -813,7 +813,7 @@ class BitPBPTree {
       receiverRef.bits.get_rw().set(u);
       /// 1.2. move toMove-1 keys/children from donor to receiver
       for (auto i = 1u; i < toMove; i++) {
-      	const auto max = findMaxKeyInNode(donor);
+        const auto max = findMaxKeyInNode(donor);
         const auto u = getFreeZero(receiverRef.bits.get_ro());
         receiverRef.keys.get_rw()[u] = donorRef.keys.get_ro()[max];
         receiverRef.children.get_rw()[u] = donorRef.children.get_ro()[max];
@@ -899,13 +899,13 @@ class BitPBPTree {
     return false;
   }
 
-	/**
+  /**
    * Split the given leaf node @c node in the middle and move half of the keys/children to the new
    * sibling node.
    *
    * @param node the leaf node to be split
    * @param splitInfo[out] information about the split
-	 */
+   */
   void splitLeafNode(const pptr<LeafNode> &node, SplitInfo *splitInfo) {
     auto &nodeRef = *node;
 
@@ -939,7 +939,7 @@ class BitPBPTree {
 
   /**
    * Insert a (key, value) pair at the first free position into the leaf node @c node. The caller
-	 * has to ensure that there is enough space to insert the element.
+   * has to ensure that there is enough space to insert the element.
    *
    * @oaram node the leaf node where the element is to be inserted
    * @param key the key of the element
@@ -1106,7 +1106,7 @@ class BitPBPTree {
     return pos;
   }
 
-	/* -------------------------------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------------------------- */
   /*                                          DEBUGGING                                           */
   /* -------------------------------------------------------------------------------------------- */
 
@@ -1118,8 +1118,8 @@ class BitPBPTree {
    */
   void printBranchNode(const unsigned int d, const pptr<BranchNode> &node) const {
     PROFILE_READ(1)
-		const auto &nodeRef = *node;
-		const auto nNumKeys = nodeRef.bits.get_ro().count();
+    const auto &nodeRef = *node;
+    const auto nNumKeys = nodeRef.bits.get_ro().count();
     for (auto i = 0u; i < d; i++) std::cout << "  ";
     std::cout << d << "BN { [" << node << "] #" << nNumKeys << ": ";
     for (auto k = 0u; k < N; k++) {
@@ -1150,8 +1150,8 @@ class BitPBPTree {
    */
   void printLeafNode(const unsigned int d, const pptr<LeafNode> &node) const {
     PROFILE_READ(1)
-		const auto &nodeRef = *node;
-		const auto nNumKeys = nodeRef.bits.get_ro().count();
+    const auto &nodeRef = *node;
+    const auto nNumKeys = nodeRef.bits.get_ro().count();
     for (auto i = 0u; i < d; i++) std::cout << "  ";
     std::cout << "[\033[1m" << std::hex << node << std::dec << "\033[0m #" << nNumKeys << ": ";
     for (auto i = 0u; i < M; i++) {
@@ -1162,7 +1162,7 @@ class BitPBPTree {
     std::cout << "]" << std::endl;
   }
 
-	/* -------------------------------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------------------------- */
   /*                                           HELPER                                             */
   /* -------------------------------------------------------------------------------------------- */
 
@@ -1218,27 +1218,27 @@ class BitPBPTree {
 
   template<size_t E>
   auto getFreeZero(std::bitset<E> b) {
-		if constexpr (E > 64) {
-			auto idx = 0u;
-			while (idx < E && b.test(idx)) ++idx;
-			return idx;
-		} else {
-			const auto w = b.to_ullong();
-			if (w != UINT64_MAX) {
-      	/// count consecutive one bits using multiply and lookup
-				static constexpr uint8_t tab64[64] = {
-        	63, 0, 58, 1, 59, 47, 53, 2, 60, 39, 48, 27, 54, 33, 42, 3,
-        	61, 51, 37, 40, 49, 18, 28, 20, 55, 30, 34, 11, 43, 14, 22, 4,
-        	62, 57, 46, 52, 38, 26, 32, 41, 50, 36, 17, 19, 29, 10, 13, 21,
-        	56, 45, 25, 31, 35, 16, 9, 12, 44, 24, 15, 8, 23, 7, 6, 5};
+    if constexpr (E > 64) {
+      auto idx = 0u;
+      while (idx < E && b.test(idx)) ++idx;
+      return idx;
+    } else {
+      const auto w = b.to_ullong();
+      if (w != UINT64_MAX) {
+        /// count consecutive one bits using multiply and lookup
+        static constexpr uint8_t tab64[64] = {
+          63, 0, 58, 1, 59, 47, 53, 2, 60, 39, 48, 27, 54, 33, 42, 3,
+          61, 51, 37, 40, 49, 18, 28, 20, 55, 30, 34, 11, 43, 14, 22, 4,
+          62, 57, 46, 52, 38, 26, 32, 41, 50, 36, 17, 19, 29, 10, 13, 21,
+          56, 45, 25, 31, 35, 16, 9, 12, 44, 24, 15, 8, 23, 7, 6, 5};
 
-    		/// Applying deBruijn hash function + lookup
-    		return tab64[((uint64_t) ((~w & -~w) * 0x07EDD5E59A4E28C2)) >> 58];
-			}
-    	/// Valid result is between 0 and 63; 64 means no free position
-			return static_cast<uint8_t>(64);
-		}
- 	}
+        /// Applying deBruijn hash function + lookup
+        return tab64[((uint64_t) ((~w & -~w) * 0x07EDD5E59A4E28C2)) >> 58];
+      }
+      /// Valid result is between 0 and 63; 64 means no free position
+      return static_cast<uint8_t>(64);
+    }
+  }
 
   /**
    * Find the minimum key in unsorted node
@@ -1284,7 +1284,7 @@ class BitPBPTree {
     return pos;
   }
 
-	/**
+  /**
    * Searches for the next greater key than @key in @c node.
    */
   template<typename Node>

@@ -183,9 +183,9 @@ class UnsortedPBPTree {
   iterator begin() { return iterator(rootNode, depth); }
 
   iterator end() { return iterator(); }
-  
+
   PROFILE_DECL
-  
+
   /**
    * Typedef for a function passed to the scan method.
    */
@@ -953,7 +953,7 @@ class UnsortedPBPTree {
       const ValueType &val, SplitInfo *splitInfo) {
     bool split = false;
     auto pos = lookupPositionInLeafNode(node, key);
-		auto &nodeRef = *node;
+    auto &nodeRef = *node;
     PROFILE_READ(1)
     if (pos < nodeRef.numKeys && nodeRef.keys.get_ro()[pos] == key) {
       // handle insert of duplicates
@@ -963,16 +963,16 @@ class UnsortedPBPTree {
     }
     if (nodeRef.numKeys == M) {
       /* split the node */
-			splitLeafNode(node, splitInfo);
-			auto &splitRef = *splitInfo;
-			auto sibling = splitRef.rightChild.leaf;
+      splitLeafNode(node, splitInfo);
+      auto &splitRef = *splitInfo;
+      auto sibling = splitRef.rightChild.leaf;
 
-			/* insert the new entry */
+      /* insert the new entry */
       if (key < splitRef.key)
         insertInLeafNodeAtLastPosition(node, key, val);
       else
         insertInLeafNodeAtLastPosition(sibling, key, val);
-      
+
       /* inform the caller about the split */
       splitRef.key = sibling->keys.get_ro()[findMinKeyAtLeafNode(sibling)];
       split = true;
@@ -986,34 +986,34 @@ class UnsortedPBPTree {
   void splitLeafNode(persistent_ptr<LeafNode> node, SplitInfo *splitInfo) {
     auto &nodeRef = *node;
 
-		/* determine the split position by finding the median in unsorted array of keys */
-		PROFILE_SPLIT
-		PROFILE_READ(M)
-		auto data = node->keys.get_ro();
+    /* determine the split position by finding the median in unsorted array of keys */
+    PROFILE_SPLIT
+    PROFILE_READ(M)
+    auto data = node->keys.get_ro();
     const auto [__unused__, splitPos] = findSplitKey(data);
     const auto splitKey = data[splitPos];
 
-		/* move all entries with greater or equal keys to a new sibling node */
-		persistent_ptr<LeafNode> sibling = newLeafNode();
-		auto &sibRef = *sibling;
+    /* move all entries with greater or equal keys to a new sibling node */
+    persistent_ptr<LeafNode> sibling = newLeafNode();
+    auto &sibRef = *sibling;
     auto n = 0u, s = 0u; //< node/sibling entry count
-		for (auto i = 0u; i < M; i++) {
-			PROFILE_READ(1)
-			const auto &currkey = nodeRef.keys.get_ro()[i];
-			if (currkey > splitKey){
-				PROFILE_READ(1)
-				PROFILE_WRITE(2)
-				sibRef.keys.get_rw()[s] = currkey;
-				sibRef.values.get_rw()[s] = nodeRef.values.get_ro()[i];
-				s++;
-			} else {
-				PROFILE_READ(1)
-				PROFILE_WRITE(2)
-				nodeRef.keys.get_rw()[n] = currkey;
-				nodeRef.values.get_rw()[n] = nodeRef.values.get_ro()[i];
-				n++;
-			}
-		}
+    for (auto i = 0u; i < M; i++) {
+      PROFILE_READ(1)
+      const auto &currkey = nodeRef.keys.get_ro()[i];
+      if (currkey > splitKey){
+        PROFILE_READ(1)
+        PROFILE_WRITE(2)
+        sibRef.keys.get_rw()[s] = currkey;
+        sibRef.values.get_rw()[s] = nodeRef.values.get_ro()[i];
+        s++;
+      } else {
+        PROFILE_READ(1)
+        PROFILE_WRITE(2)
+        nodeRef.keys.get_rw()[n] = currkey;
+        nodeRef.values.get_rw()[n] = nodeRef.values.get_ro()[i];
+        n++;
+      }
+    }
     nodeRef.numKeys.get_rw() = n;
     sibRef.numKeys.get_rw() = s;
 
