@@ -9,6 +9,7 @@ if (BUILD_TEST_CASES)
     # PBPTree
     do_test(PBPTreeTest)
     do_test(UnsortedPBPTreeTest)
+    do_test(BitPBPTreeTest)
     # FPTree
     do_test(PTreeTest)
     do_test(FPTreeTest)
