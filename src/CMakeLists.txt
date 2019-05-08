@@ -14,7 +14,6 @@ if(NOT PROJECT_INSTALL_DIR)
 endif()
 
 option(ENABLE_LOG         "enables log output for e.g. debugging"        OFF)
-option(ENABLE_PROFILING   "enables profiling for some of the structures" OFF)
 option(BUILD_TEST_CASES   "build tests for functionality of structures"  ON )
 option(BUILD_GOOGLE_BENCH "build google benchmark"                       OFF)
 option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
@@ -25,10 +24,6 @@ option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
 
 if(ENABLE_LOG)
   add_definitions("-DENABLE_LOG")
-endif()
-
-if(ENABLE_PROFILING)
-  add_definitions("-DENABLE_PROFILING")
 endif()
 
 # Benchmark test requires benchmark library

@@ -208,8 +208,6 @@ class wBPTree {
   p<unsigned int> depth;         //< the depth of the tree, i.e. the number of levels (0 => rootNode is LeafNode)
   LeafOrBranchNode rootNode;     //< pointer to the root node
 
-  PROFILE_DECL
-
   public:
   /**
    * Typedef for a function passed to the scan method.
@@ -271,7 +269,6 @@ class wBPTree {
    */
   wBPTree() : depth(0) {
     rootNode = newLeafNode();
-    PROFILE_INIT
     LOG("created new wBPTree with sizeof(BranchNode) = " << sizeof(BranchNode)
                              <<  ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
@@ -379,8 +376,6 @@ class wBPTree {
     }
   }
 
-  PROFILE_PRINT
-
   /**
    * Perform a scan over all key-value pairs stored in the tree.
    * For each entry the given function @func is called.
@@ -479,7 +474,6 @@ class wBPTree {
     }
     return split;
   }
-
 
   void splitLeafNode(persistent_ptr<LeafNode> node, SplitInfo *splitInfo) {
       auto &nodeRef = *node;

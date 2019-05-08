@@ -175,7 +175,6 @@ class BitPBPTree {
       /// traverse to left-most key
       auto node = root;
       while (d-- > 0) {
-        PROFILE_READ(1)
         node = node.branch->children.get_ro()[0];
       }
       currentNode = node.leaf;
@@ -191,13 +190,10 @@ class BitPBPTree {
         currentPosition = 0;
         if (currentNode == nullptr) return *this;
         const auto &nodeRef = *currentNode;
-        PROFILE_READ(1)
         while(!nodeRef.bits.get_ro().test(currentPosition)) {
-          PROFILE_READ(1)
           ++currentPosition;
         };
       } else {
-        PROFILE_READ(1)
         if (!currentNode->bits.get_ro().test(++currentPosition)) ++(*this);
       }
       return *this;
@@ -216,7 +212,6 @@ class BitPBPTree {
     bool operator!=(iterator other) const { return !(*this == other); }
 
     std::pair<KeyType, ValueType> operator*() {
-      PROFILE_READ(2)
       return std::make_pair(currentNode->keys.get_ro()[currentPosition],
                             currentNode->values.get_ro()[currentPosition]);
     }
@@ -233,7 +228,6 @@ class BitPBPTree {
 
   iterator end() { return iterator(); }
 
-  PROFILE_DECL
 
   /**
    * Alias for a function passed to the scan method.
@@ -245,7 +239,6 @@ class BitPBPTree {
    */
   BitPBPTree() : depth(0) {
     rootNode = newLeafNode();
-    PROFILE_INIT
     LOG("created new tree with sizeof(BranchNode) = " << sizeof(BranchNode) <<
         ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
@@ -281,8 +274,6 @@ class BitPBPTree {
           /// we had an overflow in the node and therefore the node is split
           auto root = newBranchNode();
           auto &rootRef = *root;
-          PROFILE_READ(1)
-          PROFILE_WRITE(5)
           rootRef.keys.get_rw()[0] = splitInfo.key;
           rootRef.children.get_rw()[0] = splitInfo.leftChild;
           rootRef.children.get_rw()[N] = splitInfo.rightChild;
@@ -307,7 +298,6 @@ class BitPBPTree {
     const auto pos = lookupPositionInLeafNode(leafNode, key);
     if (pos < M) {
       /// we found it
-      PROFILE_READ(1)
       *val = leafNode->values.get_ro()[pos];
       return true;
     }
@@ -351,7 +341,6 @@ class BitPBPTree {
     else printBranchNode(0u, rootNode.branch);
   }
 
-  PROFILE_PRINT
 
   /**
    * Perform a scan over all key-value pairs stored in the B+ tree.
@@ -362,11 +351,9 @@ class BitPBPTree {
   void scan(ScanFunc func) const {
     /// we traverse to the leftmost leaf node
     auto node = rootNode;
-    PROFILE_READ(1)
     auto d = depth.get_ro();
     while (d-- > 0) {
       /// as long as we aren't at the leaf level we follow the path down
-      PROFILE_READ(1)
       node = node.branch->children.get_ro()[0];
     }
     auto leaf = node.leaf;
@@ -374,9 +361,7 @@ class BitPBPTree {
       const auto &leafRef = *leaf;
       /// for each key-value pair call func
       for (auto i = 0u; i < M; i++) {
-        PROFILE_READ(1)
         if (!leafRef.bits.get_ro().test(i)) continue;
-        PROFILE_READ(2)
         const auto &key = leafRef.keys.get_ro()[i];
         const auto &val = leafRef.values.get_ro()[i];
         func(key, val);
@@ -402,15 +387,12 @@ class BitPBPTree {
       /// for each key-value pair within the range call func
       const auto &leafRef = *leaf;
       for (auto i = 0u; i < M; i++) {
-        PROFILE_READ(1)
         if (leafRef.bits.get_ro().test(i)) continue;
 
-        PROFILE_READ(1)
         const auto &key = leafRef.keys.get_ro()[i];
         if (key < minKey) continue;
         if (key > maxKey) { higherThanMax = true; continue; };
 
-        PROFILE_READ(1)
         const auto &val = leafRef.values.get_ro()[i];
         func(key, val);
       }
@@ -436,10 +418,7 @@ class BitPBPTree {
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
     auto &nodeRef = *node;
-    PROFILE_READ(1)
     if (nodeRef.keys.get_ro()[pos] == key) {
-      PROFILE_READ(1)
-      PROFILE_WRITE(1)
       /// simply reset bit
       nodeRef.bits.get_rw().reset(pos);
       return true;
@@ -462,7 +441,6 @@ class BitPBPTree {
       assert(pos <= M);
       auto &nodeRef = *node;
       const auto &leafRef = *leaf;
-      PROFILE_READ(1)
       const auto prevNumKeys = leafRef.prevLeaf->bits.get_ro().count();
       constexpr auto middle = (M + 1) / 2;
 
@@ -471,8 +449,6 @@ class BitPBPTree {
       if (pos > 0 && prevNumKeys > middle) {
         /// we have a sibling at the left for rebalancing the keys
         balanceLeafNodes(leafRef.prevLeaf, leaf);
-        PROFILE_READ(1)
-        PROFILE_WRITE(1)
         const auto newMin = leafRef.keys.get_ro()[findMinKeyInNode(leaf)];
         const auto prevPos = findMinKeyGreaterThan(leaf, newMin);
         nodeRef.keys.get_rw()[prevPos] = newMin;
@@ -480,8 +456,6 @@ class BitPBPTree {
                  leafRef.nextLeaf->bits.get_ro().count() > middle) {
         /// we have a sibling at the right for rebalancing the keys
         balanceLeafNodes(leafRef.nextLeaf, leaf);
-        PROFILE_READ(1)
-        PROFILE_WRITE(1)
         nodeRef.keys.get_rw()[pos] =
           leafRef.nextLeaf->keys.get_ro()[findMinKeyInNode(leafRef.nextLeaf)];
       } else {
@@ -494,17 +468,12 @@ class BitPBPTree {
           /// merge left
           survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
           deleteLeafNode(leaf);
-          PROFILE_READ(1)
-          PROFILE_WRITE(1)
           nodeRef.children.get_rw()[pos] = survivor;
           if (pos == N) {
-            PROFILE_READ(1)
-            PROFILE_WRITE(2)
             const auto prevPos = findMaxKeyInNode(node);
             nodeRef.bits.get_rw().reset(prevPos);
             nodeRef.children.get_rw()[N] = nodeRef.children.get_ro()[prevPos];
           } else {
-            PROFILE_WRITE(1)
             const auto prevPos = findMaxKeySmallerThan(node, nodeRef.keys.get_ro()[pos]);
             nodeRef.bits.get_rw().reset(prevPos);
           }
@@ -513,7 +482,6 @@ class BitPBPTree {
           /// because we update the pointers in mergeLeafNodes we keep it here
           survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
           deleteLeafNode(leafRef.nextLeaf);
-          PROFILE_WRITE(1)
           nodeRef.bits.get_rw().reset(pos);
         } else {
           /// this shouldn't happen?!
@@ -523,8 +491,6 @@ class BitPBPTree {
           /// This is a special case that happens only if the current node is the root node. Now, we
           /// have to replace the branch root node by a leaf node.
           rootNode = survivor;
-          PROFILE_READ(1)
-          PROFILE_WRITE(1)
           depth.get_rw() = depth.get_ro() - 1;
         }
       }
@@ -546,10 +512,7 @@ class BitPBPTree {
 
     /// we move all keys/values from node2 to node1
     for (auto i = 0u; i < M; i++) {
-      PROFILE_READ(1)
       if (node2Ref.bits.get_ro().test(i)) {
-        PROFILE_READ(3)
-        PROFILE_WRITE(3)
         const auto u = getFreeZero(node1Ref.bits.get_ro());
         node1Ref.keys.get_rw()[u] = node2Ref.keys.get_ro()[i];
         node1Ref.values.get_rw()[u] = node2Ref.values.get_ro()[i];
@@ -572,7 +535,6 @@ class BitPBPTree {
   void balanceLeafNodes(const pptr<LeafNode> &donor, const pptr<LeafNode> &receiver) {
     auto &donorRef = *donor;
     auto &receiverRef = *receiver;
-    PROFILE_READ(2)
     const auto dNumKeys = donorRef.bits.get_ro().count();
     const auto rNumKeys = receiverRef.bits.get_ro().count();
     assert(dNumKeys > rNumKeys);
@@ -581,12 +543,9 @@ class BitPBPTree {
     const auto toMove = dNumKeys - balancedNum;
     if (toMove == 0) return;
 
-    PROFILE_READ(2)
     if (donorRef.keys.get_ro()[0] < receiverRef.keys.get_ro()[0]) {
       /// move from one node to a node with larger keys
       for (auto i = 0u; i < toMove; i++) {
-        PROFILE_READ(3)
-        PROFILE_WRITE(4)
         const auto max = findMaxKeyInNode(donor);
         const auto u = getFreeZero(receiverRef.bits.get_ro());
         /// move the donor's maximum key to the receiver
@@ -601,8 +560,6 @@ class BitPBPTree {
         const auto min = findMinKeyInNode(donor);
         const auto u = getFreeZero(receiverRef.bits.get_ro());
         /// move the donor's minimum key to the receiver
-        PROFILE_READ(3)
-        PROFILE_WRITE(4)
         receiverRef.keys.get_rw()[u] = donorRef.keys.get_ro()[min];
         receiverRef.values.get_rw()[u] = donorRef.values.get_ro()[min];
         receiverRef.bits.get_rw().set(u);
@@ -629,7 +586,6 @@ class BitPBPTree {
     bool deleted = false;
     /// try to find the branch
     auto pos = lookupPositionInBranchNode(node, key);
-    PROFILE_READ(1)
     const auto n = nodeRef.children.get_ro()[pos];
     if (d == 1) {
       /// the next level is the leaf level
@@ -638,7 +594,6 @@ class BitPBPTree {
       constexpr auto middle = (M + 1) / 2;
       if (leaf->bits.get_ro().count() < middle) {
         /// handle underflow
-        PROFILE_UNDERFLOW
         underflowAtLeafLevel(node, pos, leaf);
       }
     } else {
@@ -649,13 +604,10 @@ class BitPBPTree {
       constexpr auto middle = (N + 1) / 2;
       if (child->bits.get_ro().count() < middle) {
         /// handle underflow
-        PROFILE_UNDERFLOW
         child = underflowAtBranchLevel(node, pos, child);
         if (d == depth && nodeRef.bits.get_ro().count() == 0) {
           /// special case: the root node is empty now
           rootNode = child;
-          PROFILE_READ(1)
-          PROFILE_WRITE(1)
           depth.get_rw() = depth.get_ro() - 1;
         }
       }
@@ -677,29 +629,21 @@ class BitPBPTree {
     assert(node != nullptr);
     const auto &nodeRef = *node;
     auto &sibRef = *sibling;
-    PROFILE_READ(2)
     assert(key <= nodeRef.keys.get_ro()[findMinKeyInNode(node)]);
     assert(sibRef.keys.get_ro()[findMaxKeyInNode(sibling)] < key);
 
-    PROFILE_READ(3)
-    PROFILE_WRITE(3)
     const auto u = getFreeZero(sibRef.bits.get_ro());
     sibRef.keys.get_rw()[u] = key;
     sibRef.children.get_rw()[u] = sibRef.children.get_ro()[N];
     sibRef.bits.get_rw().set(u);
     for (auto i = 0u; i < M; i++) {
-      PROFILE_READ(1)
       if (nodeRef.bits.get_ro().test(i)) {
-        PROFILE_READ(3)
-        PROFILE_WRITE(3)
         const auto u = getFreeZero(sibRef.bits.get_ro());
         sibRef.keys.get_rw()[u] = nodeRef.keys.get_ro()[i];
         sibRef.children.get_rw()[u] = nodeRef.children.get_ro()[i];
         sibRef.bits.get_rw().set(u);
       }
     }
-    PROFILE_READ(1)
-    PROFILE_WRITE(1)
     sibRef.children.get_rw()[N] = nodeRef.children.get_ro()[N];
   }
 
@@ -720,7 +664,6 @@ class BitPBPTree {
     assert(node != nullptr);
     assert(child != nullptr);
     auto &nodeRef = *node;
-    PROFILE_READ(5)
     const auto &nNumKeys = nodeRef.bits.get_ro().count();
     const auto prevPos = findMaxKeySmallerThan(node, nodeRef.keys.get_ro()[pos]);
     const auto prevNumKeys = nodeRef.children.get_ro()[prevPos].branch->bits.get_ro().count();
@@ -732,17 +675,14 @@ class BitPBPTree {
     /// 1. we check whether we can rebalance with one of the siblings
     if (pos > 0 && prevNumKeys > middle) {
       /// we have a sibling at the left for rebalancing the keys
-      PROFILE_READ(1)
       const auto sibling = (nodeRef.children.get_ro()[prevPos]).branch;
       balanceBranchNodes(sibling, child, node, pos);
       return newChild;
     } else if (pos < nNumKeys) {
-      PROFILE_READ(3)
       nextPos = findMinKeyGreaterThan(node, nodeRef.keys.get_ro()[pos]);
       nextNumKeys = nodeRef.children.get_ro()[nextPos].branch->bits.get_ro().count();
       /// we have a sibling at the right for rebalancing the keys
       if (nextNumKeys > middle) {
-        PROFILE_READ(1)
         auto sibling = (nodeRef.children.get_ro()[nextPos]).branch;
         balanceBranchNodes(sibling, child, node, pos);
         return newChild;
@@ -753,30 +693,25 @@ class BitPBPTree {
     auto prevKeys = 0u, nextKeys = 0u;
 
     if (pos > 0) {
-      PROFILE_READ(1)
       lSibling = (nodeRef.children.get_ro()[prevPos]).branch;
       prevKeys = prevNumKeys;
     }
     if (pos < nNumKeys) {
-      PROFILE_READ(1)
       rSibling = (nodeRef.children.get_ro()[nextPos]).branch;
       nextKeys = nextNumKeys;
     }
 
     pptr<BranchNode> witnessNode = nullptr;
     if (prevKeys > 0) {
-      PROFILE_READ(1)
       mergeBranchNodes(lSibling, nodeRef.keys.get_ro()[pos], child);
       witnessNode = child;
       newChild = lSibling;
     } else if (nextKeys > 0) {
-      PROFILE_READ(1)
       mergeBranchNodes(child, nodeRef.keys.get_ro()[pos], rSibling);
       witnessNode = rSibling;
     } else assert(false); ///< shouldn't happen
 
     /// cleanup node
-    PROFILE_WRITE(2)
     nodeRef.bits.get_rw().reset(pos);
     if (pos == nNumKeys) nodeRef.children.get_rw()[N] = child; ///< new rightmost child
 
@@ -799,7 +734,6 @@ class BitPBPTree {
     auto &donorRef = *donor;
     auto &receiverRef = *receiver;
     auto &parentRef = *parent;
-    PROFILE_READ(2)
     const auto dNumKeys = donorRef.bits.get_ro().count();
     const auto rNumKeys = receiverRef.bits.get_ro().count();
     assert(dNumKeys > rNumKeys);
@@ -809,10 +743,7 @@ class BitPBPTree {
     if (toMove == 0) return;
 
     /// 1. move from one node to a node with larger keys
-    PROFILE_READ(2)
     if (donorRef.keys.get_ro()[0] < receiverRef.keys.get_ro()[0]) { //TODO: bit check necessary?
-      PROFILE_READ(3 * toMove + 2)
-      PROFILE_WRITE(4 * toMove + 2)
       /// 1.1. copy parent key and rightmost child of receiver
       const auto u = getFreeZero(receiverRef.bits.get_ro());
       receiverRef.keys.get_rw()[u] = parentRef.keys.get_ro()[pos];
@@ -835,8 +766,6 @@ class BitPBPTree {
 
     /// 2. move from one node to a node with smaller keys
     } else {
-      PROFILE_READ(3 * toMove + 2)
-      PROFILE_WRITE(4 * toMove + 2)
       /// 2.1. copy parent key and rightmost child of receiver
       const auto u = getFreeZero(receiverRef.bits.get_ro());
       receiverRef.keys.get_rw()[u] = parentRef.keys.get_ro()[pos];
@@ -878,10 +807,8 @@ class BitPBPTree {
                         SplitInfo *splitInfo) {
     const auto pos = lookupPositionInLeafNode(node, key);
     auto &nodeRef = *node;
-    PROFILE_READ(1)
     if (pos < M) {
       /// handle insert of duplicates
-      PROFILE_WRITE(1)
       nodeRef.values.get_rw()[pos] = val;
       return false;
     }
@@ -917,8 +844,6 @@ class BitPBPTree {
     auto &nodeRef = *node;
 
     /// determine the split position by finding the median in unsorted array of keys
-    PROFILE_SPLIT
-    PROFILE_READ(1)
     const auto data = nodeRef.keys.get_ro();
     auto [b, splitPos] = findSplitKey(data);
     const auto &splitKey = nodeRef.keys.get_ro()[splitPos];
@@ -958,7 +883,6 @@ class BitPBPTree {
     const auto pos = getFreeZero(nodeRef.bits.get_ro());
     assert(pos < M);
     /// insert the new entry at this position
-    PROFILE_WRITE(3)
     nodeRef.keys.get_rw()[pos] = key;
     nodeRef.values.get_rw()[pos] = val;
     nodeRef.bits.get_rw().set(pos);
@@ -976,7 +900,6 @@ class BitPBPTree {
                        SplitInfo *splitInfo) {
     auto &nodeRef = *node;
     /// determine the split position (by finding median in unsorted array of keys)
-    PROFILE_READ(2)
     auto data = nodeRef.keys.get_ro();
     auto [b, splitPos] = findSplitKey(data);
     const auto &splitKey = nodeRef.keys.get_ro()[splitPos];
@@ -984,7 +907,6 @@ class BitPBPTree {
     /// copy node
     const auto sibling = newBranchNode(node);
     auto &sibRef = *sibling;
-    PROFILE_WRITE(2)
     nodeRef.bits.get_rw() = b.reset(splitPos);
     sibRef.bits.get_rw() = b.flip().reset(splitPos);
 
@@ -1017,24 +939,20 @@ class BitPBPTree {
     auto pos = lookupPositionInBranchNode(node, key);
     if (depth == 1) {
       /// case #1: our children are leaf nodes
-      PROFILE_READ(1)
       const auto child = nodeRef.children.get_ro()[pos].leaf;
       hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
     } else {
       /// case #2: our children are branch nodes
-      PROFILE_READ(1)
       const auto child = nodeRef.children.get_ro()[pos].branch;
       hasSplit = insertInBranchNode(child, depth - 1, key, val, &childSplitInfo);
     }
     if (hasSplit) {
       /// the child node was split, thus we have to add a new entry to our branch node
       auto host = node;
-      PROFILE_READ(1)
       if (nodeRef.bits.get_ro().count() == N) {
         /// this node is also full and needs to be split
         splitBranchNode(node, childSplitInfo.key, splitInfo);
         const auto &splitRef = *splitInfo;
-        PROFILE_SPLIT
         host = (key < splitRef.key ? splitRef.leftChild : splitRef.rightChild).branch;
         split = true;
         pos = lookupPositionInBranchNode(host, key);
@@ -1043,7 +961,6 @@ class BitPBPTree {
       auto &hostRef = *host;
       const auto u = getFreeZero(hostRef.bits.get_ro());
       const auto nextPos = findMinKeyGreaterThan(host, childSplitInfo.key);
-      PROFILE_WRITE(4)
       hostRef.keys.get_rw()[u] = childSplitInfo.key;
       hostRef.children.get_rw()[u] = childSplitInfo.leftChild;
       hostRef.children.get_rw()[nextPos] = childSplitInfo.rightChild;
@@ -1066,13 +983,11 @@ class BitPBPTree {
    */
   pptr<LeafNode> findLeafNode(const KeyType &key) const {
     auto node = rootNode;
-    PROFILE_READ(1)
     auto d = depth.get_ro();
     while (d-- > 0) {
       /// as long as we aren't at the leaf level we follow the path down
       const auto n = node.branch;
       const auto pos = lookupPositionInBranchNode(n, key);
-      PROFILE_READ(1)
       node = n->children.get_ro()[pos];
     }
     return node.leaf;
@@ -1104,7 +1019,6 @@ class BitPBPTree {
   auto lookupPositionInLeafNode(const pptr<LeafNode> &node, const KeyType &key) const {
     auto pos = 0u;
     const auto &nodeRef = *node;
-    PROFILE_READ(2)
     const auto &bitsRef = nodeRef.bits.get_ro();
     const auto &keysRef = nodeRef.keys.get_ro();
 
@@ -1124,25 +1038,21 @@ class BitPBPTree {
    * @param node the tree node to print
    */
   void printBranchNode(const unsigned int d, const pptr<BranchNode> &node) const {
-    PROFILE_READ(1)
     const auto &nodeRef = *node;
     const auto nNumKeys = nodeRef.bits.get_ro().count();
     for (auto i = 0u; i < d; i++) std::cout << "  ";
     std::cout << d << "BN { [" << node << "] #" << nNumKeys << ": ";
     for (auto k = 0u; k < N; k++) {
       if (k > 0) std::cout << ", ";
-      PROFILE_READ(2)
       std::cout << '(' << nodeRef.bits.get_ro()[k] << ')' << nodeRef.keys.get_ro()[k];
     }
     std::cout << " }" << std::endl;
     for (auto k = 0u; k <= N; k++) {
       if (k < N && !nodeRef.bits.get_ro().test(k)) continue;
       if (d + 1 < depth) {
-        PROFILE_READ(1)
         auto child = nodeRef.children.get_ro()[k].branch;
         if (child != nullptr) printBranchNode(d + 1, child);
       } else {
-        PROFILE_READ(1)
         auto leaf = (nodeRef.children.get_ro()[k]).leaf;
         printLeafNode(d + 1,leaf);
       }
@@ -1156,14 +1066,12 @@ class BitPBPTree {
    * @param node the tree node to print
    */
   void printLeafNode(const unsigned int d, const pptr<LeafNode> &node) const {
-    PROFILE_READ(1)
     const auto &nodeRef = *node;
     const auto nNumKeys = nodeRef.bits.get_ro().count();
     for (auto i = 0u; i < d; i++) std::cout << "  ";
     std::cout << "[\033[1m" << std::hex << node << std::dec << "\033[0m #" << nNumKeys << ": ";
     for (auto i = 0u; i < M; i++) {
       if (i > 0) std::cout << ", ";
-      PROFILE_READ(2)
       std::cout << "{(" << nodeRef.bits.get_ro()[i] << ')' << nodeRef.keys.get_ro()[i]<< "}";
     }
     std::cout << "]" << std::endl;
@@ -1259,9 +1167,7 @@ class BitPBPTree {
     const auto &nodeRef = *node;
     auto currMinKey = std::numeric_limits<KeyType>::max();
     for (auto i = 0u; i < M; i++) {
-      PROFILE_READ(1)
       if (nodeRef.bits.get_ro().test(i)) {
-        PROFILE_READ(1)
         const auto &key = nodeRef.keys.get_ro()[i];
         if (key < currMinKey) { currMinKey = key; pos = i; }
       }
@@ -1281,9 +1187,7 @@ class BitPBPTree {
     const auto &nodeRef = *node;
     auto currMaxKey = std::numeric_limits<KeyType>::min();
     for(auto i = 0u; i < M; i++) {
-      PROFILE_READ(1)
       if (nodeRef.bits.get_ro().test(i)) {
-        PROFILE_READ(1)
         const auto &key = nodeRef.keys.get_ro()[i];
         if (key > currMaxKey) { currMaxKey = key; pos = i; }
       }
@@ -1298,7 +1202,6 @@ class BitPBPTree {
   auto findMinKeyGreaterThan(const pptr<Node> &node, const KeyType &key) const {
     auto pos = 0u;
     const auto &nodeRef = *node;
-    PROFILE_READ(2)
     const auto &bitsRef = nodeRef.bits.get_ro();
     const auto &keysRef = nodeRef.keys.get_ro();
     constexpr auto MAX = std::numeric_limits<KeyType>::max();
@@ -1321,7 +1224,6 @@ class BitPBPTree {
   auto findMaxKeySmallerThan(const pptr<Node> &node, const KeyType &key) {
     auto pos = 0u;
     const auto &nodeRef = *node;
-    PROFILE_READ(2)
     const auto &bitsRef = nodeRef.bits.get_ro();
     const auto &keysRef = nodeRef.keys.get_ro();
     constexpr auto MIN = std::numeric_limits<KeyType>::min();

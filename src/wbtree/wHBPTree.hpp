@@ -219,8 +219,6 @@ class wHBPTree {
   Node                     rootNode; //< pointer to the root node
   persistent_ptr<LeafNode> leafList; //< pointer to the most left leaf node. Necessary for recovery
 
-  PROFILE_DECL
-
   public:
   /**
    * Typedef for a function passed to the scan method.
@@ -283,7 +281,6 @@ class wHBPTree {
   wHBPTree() : depth(0) {
     rootNode = newLeafNode();
     leafList = rootNode.leaf;
-    PROFILE_INIT
     LOG("created new wHBPTree with sizeof(BranchNode) = " << sizeof(BranchNode)
                               <<  ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
@@ -427,8 +424,6 @@ class wHBPTree {
       printBranchNode(0u, n.branch);
     }
   }
-
-  PROFILE_PRINT
 
   /**
    * Perform a scan over all key-value pairs stored in the tree.
@@ -1281,7 +1276,6 @@ class wHBPTree {
     }
     return false;
   }
-
 
 
   /**

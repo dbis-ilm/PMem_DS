@@ -217,8 +217,6 @@ class PTree {
   LeafOrBranchNode rootNode;     //< pointer to the root node
   persistent_ptr<LeafNode> leafList; //<Pointer to the leaf at the most left position. Neccessary for recovery
 
-  PROFILE_DECL
-
   public:
   /**
    * Typedef for a function passed to the scan method.
@@ -284,7 +282,6 @@ class PTree {
     rootNode = newLeafNode();
     leafList = rootNode.leaf;
     depth = 0;
-    PROFILE_INIT
   }
 
   /**
@@ -340,7 +337,6 @@ class PTree {
           root->numKeys = root->numKeys + 1;
           rootNode.branch = root;
           depth = depth + 1;
-
         }
         }
     });
@@ -397,7 +393,6 @@ class PTree {
         auto node = rootNode.branch;
         assert(node != nullptr);
         result=eraseFromBranchNode(node, depth, key);
-
         }
         });
     return result;
@@ -441,7 +436,6 @@ class PTree {
     }
   }
 
-  PROFILE_PRINT
 
   /**
    * Perform a scan over all key-value pairs stored in the tree.
@@ -788,7 +782,6 @@ class PTree {
 
     const unsigned int num = node->numKeys.get_ro();
     for (; pos < num && node->keys.get_ro()[pos] < key; pos++) {
-
     };
     return pos;
   }
@@ -812,7 +805,6 @@ class PTree {
     unsigned int pos = 0;
     const unsigned int num = node->numKeys;
     for (; pos < num && node->keys[pos] <= key; pos++) {
-
     };
     return pos;
   }
@@ -836,7 +828,6 @@ class PTree {
     unsigned int pos = 0;
     const unsigned int num = node->numKeys;
     for (; pos < num && node->keys[pos] <= key; pos++) {
-
     };
     return pos;
   }
@@ -1612,7 +1603,6 @@ class PTree {
         auto child = node->children[k].lowestbranch;
         if (child != nullptr) printLowestBranchNode(d + 1, child);
       }
-
     }
   }
 

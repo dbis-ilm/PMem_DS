@@ -134,7 +134,6 @@ class UnsortedPBPTree {
       auto node = root;
       while (d-- > 0) {
         auto n = node.branch;
-        //PROFILE_READ(1)
         node = n->children.get_ro()[0];
       }
       currentNode = node.leaf;
@@ -165,7 +164,6 @@ class UnsortedPBPTree {
     bool operator!=(iterator other) const { return !(*this == other); }
 
     std::pair<KeyType, ValueType> operator*() {
-      //PROFILE_READ(2)
       return std::make_pair(currentNode->keys.get_ro()[currentPosition],
           currentNode->values.get_ro()[currentPosition]);
     }
@@ -182,7 +180,6 @@ class UnsortedPBPTree {
 
   iterator end() { return iterator(); }
 
-  PROFILE_DECL
 
   /**
    * Typedef for a function passed to the scan method.
@@ -194,7 +191,6 @@ class UnsortedPBPTree {
    */
   UnsortedPBPTree() : depth(0) {
     rootNode = newLeafNode();
-    PROFILE_INIT
     LOG("created new tree with sizeof(BranchNode) = " << sizeof(BranchNode)
       << ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
@@ -232,7 +228,6 @@ class UnsortedPBPTree {
         if (wasSplit) {
         // we had an overflow in the node and therefore the node is split
         auto root = newBranchNode();
-        PROFILE_WRITE(3)
         root->keys.get_rw()[0] = splitInfo.key;
         root->children.get_rw()[0] = splitInfo.leftChild;
         root->children.get_rw()[1] = splitInfo.rightChild;
@@ -240,9 +235,7 @@ class UnsortedPBPTree {
         rootNode.branch = root;
         depth = depth + 1;
         }
-
     });
-
   }
 
   /**
@@ -260,10 +253,8 @@ class UnsortedPBPTree {
 
     auto leafNode = findLeafNode(key);
     auto pos = lookupPositionInLeafNode(leafNode, key);
-    PROFILE_READ(1)
     if (pos < leafNode->numKeys && leafNode->keys.get_ro()[pos] == key) {
       // we found it!
-      PROFILE_READ(1)
       *val = leafNode->values.get_ro()[pos];
       result = true;
     }
@@ -308,7 +299,6 @@ class UnsortedPBPTree {
     }
   }
 
-  PROFILE_PRINT
 
   /**
    * Perform a scan over all key-value pairs stored in the B+ tree.
@@ -319,19 +309,16 @@ class UnsortedPBPTree {
   void scan(ScanFunc func) const {
     // we traverse to the leftmost leaf node
     auto node = rootNode;
-    PROFILE_READ(1)
     auto d = depth.get_ro();
     while (d-- > 0) {
       // as long as we aren't at the leaf level we follow the path down
       auto n = node.branch;
-      PROFILE_READ(1)
       node = n->children.get_ro()[0];
     }
     auto leaf = node.leaf;
     while (leaf != nullptr) {
       // for each key-value pair call func
       for (auto i = 0u; i < leaf->numKeys; i++) {
-        PROFILE_READ(2)
         auto &key = leaf->keys.get_ro()[i];
         auto &val = leaf->values.get_ro()[i];
         func(key, val);
@@ -355,10 +342,8 @@ class UnsortedPBPTree {
     while (leaf != nullptr) {
       // for each key-value pair within the range call func
       for (auto i = 0u; i < leaf->numKeys; i++) {
-        PROFILE_READ(1)
         auto &key = leaf->keys.get_ro()[i];
         if (key > maxKey) return;
-        PROFILE_READ(1)
         auto &val = leaf->values.get_ro()[i];
         func(key, val);
       }
@@ -384,11 +369,8 @@ class UnsortedPBPTree {
   bool eraseFromLeafNode(persistent_ptr<LeafNode> node, const KeyType &key) {
     bool deleted = false;
     auto pos = lookupPositionInLeafNode(node, key);
-    PROFILE_WRITE()
     if (node->keys.get_rw()[pos] == key) {
       //simply copy the last object on the node to the position of the erased object
-      PROFILE_READ(3)
-      PROFILE_WRITE(2)
       auto last=node->numKeys.get_ro()-1;
       node->keys.get_rw()[pos]=node->keys.get_ro()[last];
       node->values.get_rw()[pos]=node->values.get_ro()[last];
@@ -419,14 +401,10 @@ class UnsortedPBPTree {
       if (pos > 0 && leaf->prevLeaf->numKeys > middle) {
         // we have a sibling at the left for rebalancing the keys
         balanceLeafNodes(leaf->prevLeaf, leaf);
-        PROFILE_READ(1)
-        PROFILE_WRITE()
         node->keys.get_rw()[pos-1] = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
       } else if (pos < node->numKeys && leaf->nextLeaf->numKeys > middle) {
         // we have a sibling at the right for rebalancing the keys
         balanceLeafNodes(leaf->nextLeaf, leaf);
-        PROFILE_READ(1)
-        PROFILE_WRITE()
         node->keys.get_rw()[pos] = leaf->nextLeaf->keys.get_ro()[findMinKeyAtLeafNode(leaf->nextLeaf)];
       } else {
         // 2. if this fails we have to merge two leaf nodes
@@ -449,12 +427,9 @@ class UnsortedPBPTree {
           if (pos > 0) pos--;
           // just remove the child node from the current branch node
           for (auto i = pos; i < node->numKeys - 1; i++) {
-            PROFILE_READ(2)
-            PROFILE_WRITE(2)
             node->keys.get_rw()[i] = node->keys.get_ro()[i + 1];
             node->children.get_rw()[i + 1] = node->children.get_ro()[i + 2];
           }
-          PROFILE_WRITE()
           node->children.get_rw()[pos] = survivor;
           node->numKeys.get_rw() = node->numKeys.get_ro() - 1;
         } else {
@@ -482,8 +457,6 @@ class UnsortedPBPTree {
 
     // we move all keys/values from node2 to node1
     for (auto i = 0u; i < node2->numKeys; i++) {
-      PROFILE_READ(2)
-      PROFILE_WRITE(2)
       node1->keys.get_rw()[node1->numKeys + i] = node2->keys.get_ro()[i];
       node1->values.get_rw()[node1->numKeys + i] = node2->values.get_ro()[i];
     }
@@ -509,7 +482,6 @@ class UnsortedPBPTree {
     unsigned int balancedNum = (donor->numKeys + receiver->numKeys) / 2;
     unsigned int toMove = donor->numKeys - balancedNum;
     if (toMove == 0) return;
-    PROFILE_READ(2)
     if (donor->keys.get_ro()[0] < receiver->keys.get_ro()[0]) {
       // move from one node to a node with larger keys
       unsigned int i = 0;
@@ -518,15 +490,11 @@ class UnsortedPBPTree {
       for (i = 0; i < toMove; i++) {
         uint max=findMaxKeyAtLeafNode(donor);
         // move the donor's maximum key to the receiver
-        PROFILE_READ(2)
-        PROFILE_WRITE(2)
         receiver->keys.get_rw()[receiver->numKeys]=donor->keys.get_ro()[max];
         receiver->values.get_rw()[receiver->numKeys]=donor->values.get_ro()[max];
         receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + 1;
 
         // fill empty space in donor with its currently last key
-        PROFILE_READ(2)
-        PROFILE_WRITE(2)
         donor->keys.get_rw()[max] = donor->keys.get_ro()[donor->numKeys-1];
         donor->values.get_rw()[max] = donor->values.get_ro()[donor->numKeys-1];
         donor->numKeys.get_rw() = donor->numKeys.get_ro() - 1;
@@ -538,21 +506,16 @@ class UnsortedPBPTree {
       for (i = 0; i < toMove; i++) {
         uint min=findMinKeyAtLeafNode(donor);
         // move the donor's minimum key to the receiver
-        PROFILE_READ(2)
-        PROFILE_WRITE(2)
         receiver->keys.get_rw()[receiver->numKeys]=donor->keys.get_ro()[min];
         receiver->values.get_rw()[receiver->numKeys]=donor->values.get_ro()[min];
         receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + 1;
 
         // fill empty space in donor with its currently last key
-        PROFILE_READ(2)
-        PROFILE_WRITE(2)
         donor->keys.get_rw()[min] = donor->keys.get_ro()[donor->numKeys-1];
         donor->values.get_rw()[min] = donor->values.get_ro()[donor->numKeys-1];
         donor->numKeys.get_rw() = donor->numKeys.get_ro() - 1;
       }
     }
-
   }
   /**
    * Find the minimum key in unsorted leaf
@@ -561,10 +524,8 @@ class UnsortedPBPTree {
    */
   uint findMinKeyAtLeafNode(persistent_ptr<LeafNode> node ){
     uint pos=0;
-    PROFILE_READ(1)
     KeyType currMinKey=node->keys.get_ro()[0];
     for(auto i=1u; i<node->numKeys; i++){
-      PROFILE_READ(1)
       KeyType key=node->keys.get_ro()[i];
       if(key<currMinKey){currMinKey=key; pos=i;}
     }
@@ -577,10 +538,8 @@ class UnsortedPBPTree {
    */
   uint findMaxKeyAtLeafNode(persistent_ptr<LeafNode> node ){
     uint pos=0;
-    PROFILE_READ(1)
     KeyType currMinKey=node->keys.get_ro()[0];
     for(auto i=1u; i<node->numKeys; i++){
-      PROFILE_READ(1)
       KeyType key=node->keys.get_ro()[i];
       if(key>currMinKey){currMinKey=key; pos=i;}
     }
@@ -603,7 +562,6 @@ class UnsortedPBPTree {
     bool deleted = false;
     // try to find the branch
     auto pos = lookupPositionInBranchNode(node, key);
-    PROFILE_READ(1)
     auto n = node->children.get_ro()[pos];
     if (d == 1) {
       // the next level is the leaf level
@@ -613,7 +571,6 @@ class UnsortedPBPTree {
       unsigned int middle = (M + 1) / 2;
       if (leaf->numKeys < middle) {
         // handle underflow
-        PROFILE_UNDERFLOW
         underflowAtLeafLevel(node, pos, leaf);
       }
     } else {
@@ -624,7 +581,6 @@ class UnsortedPBPTree {
       unsigned int middle = (N + 1) / 2;
       if (child->numKeys < middle) {
         // handle underflow
-        PROFILE_UNDERFLOW
         child = underflowAtBranchLevel(node, pos, child);
         if (d == depth && node->numKeys == 0) {
           // special case: the root node is empty now
@@ -647,21 +603,14 @@ class UnsortedPBPTree {
    */
   void mergeBranchNodes(persistent_ptr<BranchNode> sibling, const KeyType &key,
       persistent_ptr<BranchNode> node){
-    PROFILE_READ(2)
     assert(key <= node->keys.get_ro()[0]);
     assert(sibling != nullptr);
     assert(node != nullptr);
-    PROFILE_READ(1)
-    PROFILE_WRITE()
     assert(sibling->keys.get_ro()[sibling->numKeys - 1] < key);
 
     sibling->keys.get_rw()[sibling->numKeys] = key;
-    PROFILE_READ(1)
-    PROFILE_WRITE()
     sibling->children.get_rw()[sibling->numKeys + 1] = node->children.get_ro()[0];
     for (auto i = 0u; i < node->numKeys; i++) {
-      PROFILE_READ(2)
-      PROFILE_WRITE(2)
       sibling->keys.get_rw()[sibling->numKeys + i + 1] = node->keys.get_ro()[i];
       sibling->children.get_rw()[sibling->numKeys + i + 2] = node->children.get_ro()[i + 1];
     }
@@ -689,19 +638,16 @@ class UnsortedPBPTree {
     persistent_ptr<BranchNode> newChild = child;
     unsigned int middle = (N + 1) / 2;
     // 1. we check whether we can rebalance with one of the siblings
-    PROFILE_READ(1)
     if (pos > 0 &&
         (node->children.get_ro()[pos - 1]).branch->numKeys >
         middle) {
       // we have a sibling at the left for rebalancing the keys
-      PROFILE_READ(1)
       persistent_ptr<BranchNode> sibling = (node->children.get_ro()[pos - 1]).branch;
       balanceBranchNodes(sibling, child, node, pos - 1);
       // node->keys.get_rw()[pos] = child->keys.get_ro()[0];
       return newChild;
     } else if (pos < node->numKeys && (node->children.get_ro()[pos + 1]).branch->numKeys > middle) {
       // we have a sibling at the right for rebalancing the keys
-      PROFILE_READ(2)
       auto sibling = (node->children.get_ro()[pos + 1]).branch;
       balanceBranchNodes(sibling, child, node, pos);
       return newChild;
@@ -711,12 +657,10 @@ class UnsortedPBPTree {
       unsigned int prevKeys = 0, nextKeys = 0;
 
       if (pos > 0) {
-        PROFILE_READ(2)
         lSibling = (node->children.get_ro()[pos - 1]).branch;
         prevKeys = lSibling->numKeys;
       }
       if (pos < node->numKeys) {
-        PROFILE_READ(1)
         rSibling = (node->children.get_ro()[pos + 1]).branch;
         nextKeys = rSibling->numKeys;
       }
@@ -724,14 +668,12 @@ class UnsortedPBPTree {
       persistent_ptr<BranchNode> witnessNode = nullptr;
       auto ppos = pos;
       if (prevKeys > 0) {
-        PROFILE_READ(1)
         mergeBranchNodes(lSibling, node->keys.get_ro()[pos - 1], child);
         ppos = pos - 1;
         witnessNode = child;
         newChild = lSibling;
         // pos -= 1;
       } else if (nextKeys > 0) {
-        PROFILE_READ(1)
         mergeBranchNodes(child, node->keys.get_ro()[pos], rSibling);
         witnessNode = rSibling;
       } else
@@ -740,15 +682,11 @@ class UnsortedPBPTree {
 
       // remove node->keys.get_ro()[pos] from node
       for (auto i = ppos; i < node->numKeys - 1; i++) {
-        PROFILE_READ(1)
-        PROFILE_WRITE()
         node->keys.get_rw()[i] = node->keys.get_ro()[i + 1];
       }
       if (pos == 0) pos++;
       for (auto i = pos; i < node->numKeys; i++) {
         if (i + 1 <= node->numKeys){
-          PROFILE_READ(1)
-          PROFILE_WRITE()
           node->children.get_rw()[i] = node->children.get_ro()[i + 1];
         }
       }
@@ -778,41 +716,28 @@ class UnsortedPBPTree {
     unsigned int balancedNum = (donor->numKeys + receiver->numKeys) / 2;
     unsigned int toMove = donor->numKeys - balancedNum;
     if (toMove == 0) return;
-    PROFILE_READ(2)
     if (donor->keys.get_ro()[0] < receiver->keys.get_ro()[0]) {
       // move from one node to a node with larger keys
       unsigned int i = 0;
 
       // 1. make room
-      PROFILE_READ(1)
-      PROFILE_WRITE()
       receiver->children.get_rw()[receiver->numKeys + toMove] =
         receiver->children.get_ro()[receiver->numKeys];
       for (i = receiver->numKeys; i > 0; i--) {
         // reserve space on receiver side
-        PROFILE_READ(2)
-        PROFILE_WRITE(2)
         receiver->keys.get_rw()[i + toMove - 1] = receiver->keys.get_ro()[i - 1];
         receiver->children.get_rw()[i + toMove - 1] = receiver->children.get_ro()[i - 1];
       }
       // 2. move toMove keys/children from donor to receiver
       for (i = 0; i < toMove; i++) {
-        PROFILE_READ(1)
-        PROFILE_WRITE()
         receiver->children.get_rw()[i] =
           donor->children.get_ro()[donor->numKeys - toMove + 1 + i];
       }
       for (i = 0; i < toMove - 1; i++) {
-        PROFILE_READ(1)
-        PROFILE_WRITE()
         receiver->keys.get_rw()[i] = donor->keys.get_ro()[donor->numKeys - toMove + 1 + i];
       }
-      PROFILE_READ(1)
-      PROFILE_WRITE()
       receiver->keys.get_rw()[toMove - 1] = parent->keys.get_ro()[pos];
       assert(parent->numKeys > pos);
-      PROFILE_READ(2)
-      PROFILE_WRITE(2)
       parent->keys.get_rw()[pos] = donor->keys.get_ro()[donor->numKeys - toMove];
       receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + toMove;
     } else {
@@ -821,29 +746,20 @@ class UnsortedPBPTree {
 
       // 1. move toMove keys/children from donor to receiver
       for (i = 0; i < toMove; i++) {
-        PROFILE_READ(2)
-        PROFILE_WRITE(2)
         receiver->children.get_rw()[n + 1 + i] = donor->children.get_ro()[i];
         receiver->keys.get_rw()[n + 1 + i] = donor->keys.get_ro()[i];
       }
       // 2. we have to move via the parent node: take the key from
       // parent->keys.get_ro()[pos]
-      PROFILE_READ(2)
-      PROFILE_WRITE(2)
       receiver->keys.get_rw()[n] = parent->keys.get_ro()[pos];
       receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + toMove;
-      PROFILE_READ(1)
       KeyType key = donor->keys.get_ro()[toMove - 1];
 
       // 3. on donor node move all keys and values to the left
       for (i = 0; i < donor->numKeys - toMove; i++) {
-        PROFILE_READ(2)
-        PROFILE_WRITE(2)
         donor->keys.get_rw()[i] = donor->keys.get_ro()[toMove + i];
         donor->children.get_rw()[i] = donor->children.get_ro()[toMove + i];
       }
-      PROFILE_READ(1)
-      PROFILE_WRITE(2)
       donor->children.get_rw()[donor->numKeys - toMove] =
         donor->children.get_ro()[donor->numKeys];
       // and replace this key by donor->keys.get_ro()[0]
@@ -869,17 +785,14 @@ class UnsortedPBPTree {
     std::cout << d << " { ";
     for (auto k = 0u; k < node->numKeys; k++) {
       if (k > 0) std::cout << ", ";
-      PROFILE_READ(1)
       std::cout << node->keys.get_ro()[k];
     }
     std::cout << " }" << std::endl;
     for (auto k = 0u; k <= node->numKeys; k++) {
       if (d + 1 < depth) {
-        PROFILE_READ(1)
         auto child = node->children.get_ro()[k].branch;
         if (child != nullptr) printBranchNode(d + 1, child);
       } else {
-        PROFILE_READ(1)
         auto leaf = (node->children.get_ro()[k]).leaf;
         printLeafNode(d+1,leaf);
       }
@@ -896,7 +809,6 @@ class UnsortedPBPTree {
     std::cout << "{ ";
     for (auto k = 0u; k < node->numKeys; k++) {
       if (k > 0) std::cout << ", ";
-      PROFILE_READ(1)
       std::cout << node->keys.get_ro()[k];
     }
     std::cout << " }" << std::endl;
@@ -913,7 +825,6 @@ class UnsortedPBPTree {
     std::cout << "[" << std::hex << node << std::dec << " : ";
     for (auto i = 0u; i < node->numKeys; i++) {
       if (i > 0) std::cout << ", ";
-      PROFILE_READ(1)
       std::cout << "{" << node->keys.get_ro()[i]<< "}";
     }
     std::cout << "]" << std::endl;
@@ -927,7 +838,6 @@ class UnsortedPBPTree {
     std::cout<<"[";
     for (auto i = 0u; i < node->numKeys; i++) {
       if (i > 0) std::cout << ", ";
-      PROFILE_READ(1)
       std::cout << "{" << node->keys.get_ro()[i] << "}";
     }
     std::cout << "]" << std::endl;
@@ -952,10 +862,8 @@ class UnsortedPBPTree {
     bool split = false;
     auto pos = lookupPositionInLeafNode(node, key);
     auto &nodeRef = *node;
-    PROFILE_READ(1)
     if (pos < nodeRef.numKeys && nodeRef.keys.get_ro()[pos] == key) {
       // handle insert of duplicates
-      PROFILE_WRITE()
       nodeRef.values.get_rw()[pos] = val;
       return false;
     }
@@ -985,8 +893,6 @@ class UnsortedPBPTree {
     auto &nodeRef = *node;
 
     /* determine the split position by finding the median in unsorted array of keys */
-    PROFILE_SPLIT
-    PROFILE_READ(M)
     auto data = node->keys.get_ro();
     const auto [__unused__, splitPos] = findSplitKey(data);
     const auto splitKey = data[splitPos];
@@ -996,17 +902,12 @@ class UnsortedPBPTree {
     auto &sibRef = *sibling;
     auto n = 0u, s = 0u; //< node/sibling entry count
     for (auto i = 0u; i < M; i++) {
-      PROFILE_READ(1)
       const auto &currkey = nodeRef.keys.get_ro()[i];
       if (currkey > splitKey){
-        PROFILE_READ(1)
-        PROFILE_WRITE(2)
         sibRef.keys.get_rw()[s] = currkey;
         sibRef.values.get_rw()[s] = nodeRef.values.get_ro()[i];
         s++;
       } else {
-        PROFILE_READ(1)
-        PROFILE_WRITE(2)
         nodeRef.keys.get_rw()[n] = currkey;
         nodeRef.values.get_rw()[n] = nodeRef.values.get_ro()[i];
         n++;
@@ -1041,8 +942,6 @@ class UnsortedPBPTree {
   void insertInLeafNodeAtLastPosition(persistent_ptr<LeafNode> node,
       const KeyType &key,
       const ValueType &val) {
-    PROFILE_READ(2)
-    PROFILE_WRITE(3)
     const auto pos = node->numKeys.get_ro();
     assert(pos < M);
     /* insert the new entry at the currently last position */
@@ -1069,21 +968,16 @@ class UnsortedPBPTree {
     // determine the split position
     unsigned int middle = (N + 1) / 2;
     // adjust the middle based on the key we have to insert
-    PROFILE_READ(1)
     if (splitKey > node->keys.get_ro()[middle]) middle++;
     // move all entries behind this position to a new sibling node
     persistent_ptr<BranchNode> sibling = newBranchNode();
     sibling->numKeys = node->numKeys - middle;
     for (auto i = 0u; i < sibling->numKeys; i++) {
-      PROFILE_READ(2)
-      PROFILE_WRITE(2)
       sibling->keys.get_rw()[i] = node->keys.get_ro()[middle + i];
       sibling->children.get_rw()[i] = node->children.get_ro()[middle + i];
     }
-    PROFILE_WRITE()
     sibling->children.get_rw()[sibling->numKeys] = node->children.get_ro()[node->numKeys];
     node->numKeys = middle - 1;
-    PROFILE_READ(1)
     splitInfo->key = node->keys.get_ro()[middle - 1];
     splitInfo->leftChild = node;
     splitInfo->rightChild = sibling;
@@ -1109,12 +1003,10 @@ class UnsortedPBPTree {
     auto pos = lookupPositionInBranchNode(node, key);
     if (depth - 1 == 0) {
       // case #1: our children are leaf nodes
-      PROFILE_READ(1)
       auto child = node->children.get_ro()[pos].leaf;
       hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
     } else {
       // case #2: our children are branch nodes
-      PROFILE_READ(1)
       auto child = node->children.get_ro()[pos].branch;
       hasSplit = insertInBranchNode(child, depth - 1, key, val, &childSplitInfo);
     }
@@ -1126,7 +1018,6 @@ class UnsortedPBPTree {
       if (node->numKeys == N) {
 
         splitBranchNode(node, childSplitInfo.key, splitInfo);
-        PROFILE_SPLIT
         host = (key < splitInfo->key ? splitInfo->leftChild
             : splitInfo->rightChild).branch;
         split = true;
@@ -1135,19 +1026,13 @@ class UnsortedPBPTree {
       if (pos < host->numKeys) {
         // if the child isn't inserted at the rightmost position
         // then we have to make space for it
-        PROFILE_READ(1)
-        PROFILE_WRITE()
         host->children.get_rw()[host->numKeys + 1] = host->children.get_ro()[host->numKeys];
-        PROFILE_READ(1)
         for (auto i = host->numKeys.get_ro(); i > pos; i--) {
-          PROFILE_READ(2)
-          PROFILE_WRITE(2)
           host->children.get_rw()[i] = host->children.get_ro()[i - 1];
           host->keys.get_rw()[i] = host->keys.get_ro()[i - 1];
         }
       }
       // finally, add the new entry at the given position
-      PROFILE_WRITE(3)
       host->keys.get_rw()[pos] = childSplitInfo.key;
       host->children.get_rw()[pos] = childSplitInfo.leftChild;
       host->children.get_rw()[pos + 1] = childSplitInfo.rightChild;
@@ -1170,13 +1055,11 @@ class UnsortedPBPTree {
    */
   persistent_ptr<LeafNode> findLeafNode(const KeyType &key) const {
     auto node = rootNode;
-    PROFILE_READ(1)
     auto d = depth.get_ro();
     while (d-- > 0) {
       // as long as we aren't at the leaf level we follow the path down
       auto n = node.branch;
       auto pos = lookupPositionInBranchNode(n, key);
-      PROFILE_READ(1)
       node = n->children.get_ro()[pos];
     }
     return node.leaf;
@@ -1201,7 +1084,6 @@ class UnsortedPBPTree {
     const auto &keys = node->keys.get_ro();
 
     for (; pos < num && keys[pos] <= key; pos++) {
-      PROFILE_READ(1)
     };
     return pos;
   }
@@ -1218,10 +1100,8 @@ class UnsortedPBPTree {
   unsigned int lookupPositionInLeafNode(persistent_ptr<LeafNode> node,
       const KeyType &key) const {
     unsigned int pos = 0;
-    PROFILE_READ(1)
     const unsigned int num = node->numKeys.get_ro();
     const auto &keys = node->keys.get_ro();
-    PROFILE_READ(1)
     for (; pos < num && keys[pos] != key; pos++);
     return pos;
   }

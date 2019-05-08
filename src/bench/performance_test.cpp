@@ -103,7 +103,6 @@ int main(){
 
             curr_test_size--;
             keys[choosen_key] = keys[curr_test_size];
-
         }
         auto avg = std::accumulate(insert_measures.begin(), insert_measures.end(), 0) / insert_measures.size();
         auto minmax = std::minmax_element(std::begin(insert_measures), std::end(insert_measures));
@@ -111,9 +110,6 @@ int main(){
                   << "\n\tAverage: \t" << avg
                   << "\n\tMin: \t" << *minmax.first
                   << "\n\tMax: \t" << *minmax.second << '\n';
-#ifdef IDXPROFILE
-        pTable->printIdxProfile();
-#endif
         std::cout << "\n####################################\n";
 
         //Lookup measures
@@ -126,21 +122,18 @@ int main(){
                 std::cout << "Didn't find " << key << std::endl;
             }
 
-
             end = std::chrono::high_resolution_clock::now();
 
             auto diff = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
             lookup_measures.push_back(diff);
         }
+
         avg = std::accumulate(lookup_measures.begin(), lookup_measures.end(), 0) / lookup_measures.size();
         minmax = std::minmax_element(std::begin(lookup_measures), std::end(lookup_measures));
         std::cout << "\nLookup Statistics in µs: "
                   << "\n\tAverage: \t" << avg
                   << "\n\tMin: \t" << *minmax.first
                   << "\n\tMax: \t" << *minmax.second << '\n';
-#ifdef IDXPROFILE
-        pTable->printIdxProfile();
-#endif
         std::cout << "\n####################################\n";
 
         //Delete measures
@@ -161,18 +154,14 @@ int main(){
             if(i==3*TEST_SIZE/4){std::cout<<"Fortschritt: 75%"<<std::endl;}
             curr_test_size--;
             keys[choosen_key] = keys[curr_test_size];
-
         }
+
         avg = std::accumulate(delete_measures.begin(), delete_measures.end(), 0) / delete_measures.size();
         minmax = std::minmax_element(std::begin(delete_measures), std::end(delete_measures));
         std::cout << "\nDelete Statistics in µs: "
                   << "\n\tAverage: \t" << avg
                   << "\n\tMin: \t" << *minmax.first
                   << "\n\tMax: \t" << *minmax.second << '\n';
-#ifdef IDXPROFILE
-        pTable->printIdxProfile();
-#endif
-
         pop.close();
 
 }

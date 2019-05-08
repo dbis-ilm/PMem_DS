@@ -167,7 +167,6 @@ class FPTree {
     return newNode;
   }
 
-
   void deleteLeafNode(persistent_ptr<LeafNode> node) {
     auto pop = pmem::obj::pool_by_vptr(this);
     transaction::run(pop, [&] {
@@ -200,8 +199,6 @@ class FPTree {
 
   Node rootNode;     //< pointer to the root node
   persistent_ptr<LeafNode> leafList; //<Pointer to the leaf at the most left position. Neccessary for recovery
-
-  PROFILE_DECL
 
   public:
   /**
@@ -266,7 +263,6 @@ class FPTree {
     rootNode = newLeafNode();
     leafList = rootNode.leaf;
     depth = 0;
-    PROFILE_INIT
     LOG("created new FPTree with sizeof(BranchNode) = " << sizeof(BranchNode)
                             <<  ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
@@ -357,7 +353,6 @@ class FPTree {
         auto node = rootNode.branch;
         assert(node != nullptr);
         result=eraseFromBranchNode(node, depth, key);
-
       }
     });
     return result;
@@ -411,8 +406,6 @@ class FPTree {
       printBranchNode(0u, n.branch);
     }
   }
-
-  PROFILE_PRINT
 
   /**
    * Perform a scan over all key-value pairs stored in the tree.
@@ -509,7 +502,6 @@ class FPTree {
       else
         insertInLeafNodeAtPosition(sibling, sibRef.search.get_ro().getFreeZero(), key, val);
 
-
       /* inform the caller about the split */
       splitRef.key = sibRef.keys.get_ro()[findMinKeyAtLeafNode(sibling)];
       split = true;
@@ -568,7 +560,6 @@ class FPTree {
       splitRef.rightChild = sibling;
       splitRef.key = splitKey;
   }
-
 
   /**
    * Insert a (key, value) pair at the given position @c pos into the leaf node
@@ -766,7 +757,6 @@ class FPTree {
     return pos;
   }
 
-
   /**
    * Delete the element with the given key from the given leaf node.
    *
@@ -945,14 +935,12 @@ class FPTree {
       BranchNode *witnessNode = nullptr;
       auto ppos = pos;
       if (prevKeys > 0) {
-
         mergeBranchNodes(lSibling, node->keys[pos - 1], child);
         ppos = pos - 1;
         witnessNode = child;
         newChild = lSibling;
         // pos -= 1;
       } else if (nextKeys > 0) {
-
         mergeBranchNodes(child, node->keys[pos], rSibling);
         witnessNode = rSibling;
       } else
@@ -961,19 +949,15 @@ class FPTree {
 
       // remove node->keys.get_ro()[pos] from node
       for (auto i = ppos; i < node->numKeys - 1; i++) {
-
         node->keys[i] = node->keys[i + 1];
       }
       if (pos == 0) pos++;
       for (auto i = pos; i < node->numKeys; i++) {
         if (i + 1 <= node->numKeys) {
-
-
           node->children[i] = node->children[i + 1];
         }
       }
       node->numKeys--;
-
       deleteBranchNode(witnessNode);
       return newChild;
     }
@@ -1314,7 +1298,6 @@ class FPTree {
         auto child = node->children[k].leaf;
         if (child != nullptr) printLeafNode(d + 1, child);
       }
-
     }
   }
 
