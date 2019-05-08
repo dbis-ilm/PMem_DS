@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2017-2019 DBIS Group - TU Ilmenau, All Rights Reserved.
  *
- * This file is part of our NVM-based Data Structure Repository.
+ * This file is part of our NVM-based Data Structures repository.
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU General Public License as published by the Free Software Foundation, either version 3 of the
@@ -191,8 +191,15 @@ class BitPBPTree {
         currentPosition = 0;
         if (currentNode == nullptr) return *this;
         const auto &nodeRef = *currentNode;
-        while(!nodeRef.bits.get_ro().test(currentPosition)) ++currentPosition;
-      } else if (!currentNode->bits.get_ro().test(++currentPosition)) ++(*this);
+        PROFILE_READ(1)
+        while(!nodeRef.bits.get_ro().test(currentPosition)) {
+          PROFILE_READ(1)
+          ++currentPosition;
+        };
+      } else {
+        PROFILE_READ(1)
+        if (!currentNode->bits.get_ro().test(++currentPosition)) ++(*this);
+      }
       return *this;
     }
 
@@ -298,7 +305,6 @@ class BitPBPTree {
 
     const auto leafNode = findLeafNode(key);
     const auto pos = lookupPositionInLeafNode(leafNode, key);
-    PROFILE_READ(1)
     if (pos < M) {
       /// we found it
       PROFILE_READ(1)
@@ -341,7 +347,7 @@ class BitPBPTree {
    * Print the structure and content of the B+ tree to stdout.
    */
   void print() const {
-    if (depth == 0) printLeafNode(0, rootNode.leaf);
+    if (depth == 0) printLeafNode(0u, rootNode.leaf);
     else printBranchNode(0u, rootNode.branch);
   }
 
@@ -365,9 +371,10 @@ class BitPBPTree {
     }
     auto leaf = node.leaf;
     while (leaf != nullptr) {
-      auto &leafRef = *leaf;
+      const auto &leafRef = *leaf;
       /// for each key-value pair call func
       for (auto i = 0u; i < M; i++) {
+        PROFILE_READ(1)
         if (!leafRef.bits.get_ro().test(i)) continue;
         PROFILE_READ(2)
         const auto &key = leafRef.keys.get_ro()[i];
@@ -393,7 +400,7 @@ class BitPBPTree {
     bool higherThanMax = false;
     while (!higherThanMax && leaf != nullptr) {
       /// for each key-value pair within the range call func
-      auto &leafRef = *leaf;
+      const auto &leafRef = *leaf;
       for (auto i = 0u; i < M; i++) {
         PROFILE_READ(1)
         if (leafRef.bits.get_ro().test(i)) continue;
@@ -460,7 +467,7 @@ class BitPBPTree {
       constexpr auto middle = (M + 1) / 2;
 
       /// 1. we check whether we can rebalance with one of the siblings but only if both nodes have
-      //     the same direct parent
+      ///    the same direct parent
       if (pos > 0 && prevNumKeys > middle) {
         /// we have a sibling at the left for rebalancing the keys
         balanceLeafNodes(leafRef.prevLeaf, leaf);
@@ -479,7 +486,7 @@ class BitPBPTree {
           leafRef.nextLeaf->keys.get_ro()[findMinKeyInNode(leafRef.nextLeaf)];
       } else {
         /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
-        //     direct parent
+        ///    direct parent
         pptr<LeafNode> survivor = nullptr;
         const auto nNumKeys = nodeRef.bits.get_ro().count();
 

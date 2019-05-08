@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2017-2019 DBIS Group - TU Ilmenau, All Rights Reserved.
  *
- * This file is part of our NVM-based Data Structure Repository.
+ * This file is part of our NVM-based Data Structures repository.
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the
  * GNU General Public License as published by the Free Software Foundation, either version 3 of the
@@ -70,7 +70,6 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
 
   if (!rootRef.btree20)
     transaction::run(pop, [&] { rootRef.btree20 = make_persistent<PBPTreeType20>(); });
-
 
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Looking up a key in an inner node") {
