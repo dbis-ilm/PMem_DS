@@ -37,6 +37,8 @@ using pmem::obj::make_persistent;
 using pmem::obj::p;
 using pmem::obj::persistent_ptr;
 using pmem::obj::transaction;
+template<typename Object>
+using pptr = persistent_ptr<Object>;
 
 /**
   * A persistent memory implementation of a B+ tree.
@@ -48,9 +50,9 @@ using pmem::obj::transaction;
   */
 template<typename KeyType, typename ValueType, int N, int M>
 class UnsortedPBPTree {
-  // we need at least two keys on a branch node to be able to split
+  /// we need at least two keys on a branch node to be able to split
   static_assert(N > 2, "number of branch keys has to be >2.");
-  // we need at least one key on a leaf node
+  /// we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
 
 #ifndef UNIT_TESTS
@@ -59,16 +61,16 @@ class UnsortedPBPTree {
   public:
 #endif
 
-  // Forward declarations
+  /// Forward declarations
   struct LeafNode;
   struct BranchNode;
 
   struct Node {
     Node() : tag(BLANK) {};
 
-    Node(persistent_ptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
+    Node(pptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
 
-    Node(persistent_ptr<BranchNode> branch_) : tag(BRANCH), branch(branch_) {};
+    Node(pptr<BranchNode> branch_) : tag(BRANCH), branch(branch_) {};
 
     Node(const Node &other) { copy(other); };
 
@@ -97,25 +99,25 @@ class UnsortedPBPTree {
       BLANK, LEAF, BRANCH
     } tag;
     union {
-      persistent_ptr<LeafNode> leaf;
-      persistent_ptr<BranchNode> branch;
+      pptr<LeafNode> leaf;
+      pptr<BranchNode> branch;
     };
   };
 
   /**
-   * A structure for passing information about a node split to
-   * the caller.
+   * A structure for passing information about a node split to the caller.
    */
   struct SplitInfo {
-    KeyType key;                  //< the key at which the node was split
-    Node leftChild;   //< the resulting lhs child node
-    Node rightChild;  //< the resulting rhs child node
+    KeyType key;     ///< the key at which the node was split
+    Node leftChild;  ///< the resulting lhs child node
+    Node rightChild; ///< the resulting rhs child node
   };
 
-  p<unsigned int> depth;          //< the depth of the tree, i.e. the number of levels (0 => rootNode is LeafNode)
+  p<unsigned int> depth; /**< the depth of the tree, i.e. the number of levels
+                              (0 => rootNode is LeafNode) */
 
-  Node rootNode;      //< pointer to the root node (an instance of @c LeafNode or
-  //< @c BranchNode). This pointer is never @c nullptr.
+  Node rootNode; /**< pointer to the root node (an instance of @c LeafNode or @c BranchNode).
+                      This pointer is never @c nullptr. */
 
   public:
 
@@ -123,25 +125,22 @@ class UnsortedPBPTree {
    * Iterator for iterating over the leaf nodes
    */
   class iterator {
-    persistent_ptr<LeafNode> currentNode;
+    pptr<LeafNode> currentNode;
     std::size_t currentPosition;
 
     public:
     iterator() : currentNode(nullptr), currentPosition(0) {}
 
     iterator(const Node &root, std::size_t d) {
-      // traverse to left-most key
+      /// traverse to left-most key
       auto node = root;
-      while (d-- > 0) {
-        auto n = node.branch;
-        node = n->children.get_ro()[0];
-      }
+      while (d-- > 0) node = node.branch->children.get_ro()[0];
       currentNode = node.leaf;
       currentPosition = 0;
     }
 
     iterator &operator++() {
-      if (currentPosition >= currentNode->numKeys - 1) {
+      if (currentPosition >= currentNode->numKeys.get_ro() - 1) {
         currentNode = currentNode->nextLeaf;
         currentPosition = 0;
       } else {
@@ -168,7 +167,7 @@ class UnsortedPBPTree {
           currentNode->values.get_ro()[currentPosition]);
     }
 
-    // iterator traits
+    /// iterator traits
     using difference_type = long;
     using value_type = std::pair<KeyType, ValueType>;
     using pointer = const std::pair<KeyType, ValueType> *;
@@ -180,11 +179,12 @@ class UnsortedPBPTree {
 
   iterator end() { return iterator(); }
 
-
   /**
    * Typedef for a function passed to the scan method.
    */
   using ScanFunc = std::function<void(const KeyType &key, const ValueType &val)>;
+
+  /* -------------------------------------------------------------------------------------------- */
 
   /**
    * Constructor for creating a new B+ tree.
@@ -198,14 +198,11 @@ class UnsortedPBPTree {
   /**
    * Destructor for the B+ tree. Should delete all allocated nodes.
    */
-  ~UnsortedPBPTree() {
-    //TODO: Necessary in Pmem case?
-    // Nodes are deleted automatically by releasing leafPool and branchPool.
-  }
+  ~UnsortedPBPTree() {}
 
   /**
-   * Insert an element (a key-value pair) into the B+ tree. If the key @c key
-   * already exists, the corresponding value is replaced by @c val.
+   * Insert an element (a key-value pair) into the B+ tree. If the key @c key already exists, the
+   * corresponding value is replaced by @c val.
    *
    * @param key the key of the element to be inserted
    * @param val the value that is associated with the key
@@ -216,46 +213,46 @@ class UnsortedPBPTree {
         SplitInfo splitInfo;
 
         bool wasSplit = false;
-        if (depth == 0) {
-        // the root node is a leaf node
+        if (depth.get_ro() == 0) {
+        /// the root node is a leaf node
         auto n = rootNode.leaf;
         wasSplit = insertInLeafNode(n, key, val, &splitInfo);
         } else {
-        // the root node is a branch node
+        /// the root node is a branch node
         auto n = rootNode.branch;
         wasSplit = insertInBranchNode(n, depth, key, val, &splitInfo);
         }
         if (wasSplit) {
-        // we had an overflow in the node and therefore the node is split
+        /// we had an overflow in the node and therefore the node is split
         auto root = newBranchNode();
-        root->keys.get_rw()[0] = splitInfo.key;
-        root->children.get_rw()[0] = splitInfo.leftChild;
-        root->children.get_rw()[1] = splitInfo.rightChild;
-        root->numKeys = root->numKeys + 1;
+        auto &rootRef = *root;
+        rootRef.keys.get_rw()[0] = splitInfo.key;
+        rootRef.children.get_rw()[0] = splitInfo.leftChild;
+        rootRef.children.get_rw()[1] = splitInfo.rightChild;
+        rootRef.numKeys.get_rw() = 1;
         rootNode.branch = root;
-        depth = depth + 1;
+        depth.get_rw() = depth.get_ro() + 1;
         }
     });
   }
 
   /**
-   * Find the given @c key in the B+ tree and if found return the
-   * corresponding value.
+   * Find the given @c key in the B+ tree and if found return the corresponding value.
    *
    * @param key the key we are looking for
-   * @param[out] val a pointer to memory where the value is stored
-   *                 if the key was found
+   * @param[out] val a pointer to memory where the value is stored if the key was found
    * @return true if the key was found, false otherwise
    */
   bool lookup(const KeyType &key, ValueType *val) const {
     assert(val != nullptr);
     bool result = false;
 
-    auto leafNode = findLeafNode(key);
-    auto pos = lookupPositionInLeafNode(leafNode, key);
-    if (pos < leafNode->numKeys && leafNode->keys.get_ro()[pos] == key) {
-      // we found it!
-      *val = leafNode->values.get_ro()[pos];
+    const auto leaf = findLeafNode(key);
+    auto &leafRef = *leaf;
+    auto pos = lookupPositionInLeafNode(leaf, key);
+    if (pos < leafRef.numKeys.get_ro() && leafRef.keys.get_ro()[pos] == key) {
+      /// we found it!
+      *val = leafRef.values.get_ro()[pos];
       result = true;
     }
     return result;
@@ -271,93 +268,86 @@ class UnsortedPBPTree {
     auto pop = pmem::obj::pool_by_vptr(this);
     bool result;
     transaction::run(pop, [&] {
-        if (depth == 0) {
-        // special case: the root node is a leaf node and
-        // there is no need to handle underflow
+      if (depth.get_ro() == 0) {
+        /// special case: the root node is a leaf node and there is no need to handle underflow
         auto node = rootNode.leaf;
         assert(node != nullptr);
         result= eraseFromLeafNode(node, key);
-        } else {
+      } else {
         auto node = rootNode.branch;
         assert(node != nullptr);
         result= eraseFromBranchNode(node, depth, key);
-        }
-        });
+      }
+    });
     return result;
   }
-  void recover(){return;}
+
+  void recover() {}
+
   /**
    * Print the structure and content of the B+ tree to stdout.
    */
   void print() const {
-    if (depth == 0) {
-      // the trivial case
-      printLeafNode(0, rootNode.leaf);
-    } else {
-      auto n = rootNode;
-      printBranchNode(0u, n.branch);
-    }
+    if (depth.get_ro() == 0) printLeafNode(0, rootNode.leaf);
+    else printBranchNode(0u, rootNode.branch);
   }
 
-
   /**
-   * Perform a scan over all key-value pairs stored in the B+ tree.
-   * For each entry the given function @func is called.
+   * Perform a scan over all key-value pairs stored in the B+ tree. For each entry the given
+   * function @func is called.
    *
    * @param func the function called for each entry
    */
   void scan(ScanFunc func) const {
-    // we traverse to the leftmost leaf node
+    /// we traverse to the leftmost leaf node
     auto node = rootNode;
     auto d = depth.get_ro();
-    while (d-- > 0) {
-      // as long as we aren't at the leaf level we follow the path down
-      auto n = node.branch;
-      node = n->children.get_ro()[0];
-    }
+    while (d-- > 0) node = node.branch->children.get_ro()[0];
     auto leaf = node.leaf;
     while (leaf != nullptr) {
-      // for each key-value pair call func
-      for (auto i = 0u; i < leaf->numKeys; i++) {
-        auto &key = leaf->keys.get_ro()[i];
-        auto &val = leaf->values.get_ro()[i];
+      const auto &leafRef = *leaf;
+      /// for each key-value pair call func
+      for (auto i = 0u; i < leafRef.numKeys; i++) {
+        auto &key = leafRef.keys.get_ro()[i];
+        auto &val = leafRef.values.get_ro()[i];
         func(key, val);
       }
-      // move to the next leaf node
-      leaf = leaf->nextLeaf;
+      /// move to the next leaf node
+      leaf = leafRef.nextLeaf;
     }
   }
 
   /**
-   * Perform a range scan over all elements within the range [minKey, maxKey]
-   * and for each element call the given function @c func.
+   * Perform a range scan over all elements within the range [minKey, maxKey] and for each element
+   * call the given function @c func.
    *
    * @param minKey the lower boundary of the range
    * @param maxKey the upper boundary of the range
    * @param func the function called for each entry
    */
   void scan(const KeyType &minKey, const KeyType &maxKey, ScanFunc func) const {
-    auto leaf = findLeafNode(minKey);
+    const auto leaf = findLeafNode(minKey);
 
     while (leaf != nullptr) {
-      // for each key-value pair within the range call func
-      for (auto i = 0u; i < leaf->numKeys; i++) {
-        auto &key = leaf->keys.get_ro()[i];
+      const auto &leafRef = *leaf;
+      /// for each key-value pair within the range call func
+      for (auto i = 0u; i < leafRef.numKeys; i++) {
+        auto &key = leafRef.keys.get_ro()[i];
         if (key > maxKey) return;
-        auto &val = leaf->values.get_ro()[i];
+        auto &val = leafRef.values.get_ro()[i];
         func(key, val);
       }
-      // move to the next leaf node
-      leaf = leaf->nextLeaf;
+      /// move to the next leaf node
+      leaf = leafRef.nextLeaf;
     }
   }
 
 #ifndef UNIT_TESTS
   private:
 #endif
-  /* ------------------------------------------------------------------- */
-  /*                        DELETE AT LEAF LEVEL                         */
-  /* ------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------------------------- */
+  /* DELETE AT LEAF LEVEL                                                                         */
+  /* -------------------------------------------------------------------------------------------- */
 
   /**
    * Delete the element with the given key from the given leaf node.
@@ -366,226 +356,235 @@ class UnsortedPBPTree {
    * @param key the key of the element to be deleted
    * @return true of the element was deleted
    */
-  bool eraseFromLeafNode(persistent_ptr<LeafNode> node, const KeyType &key) {
-    bool deleted = false;
+  bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
+    auto &nodeRef = *node;
     auto pos = lookupPositionInLeafNode(node, key);
-    if (node->keys.get_rw()[pos] == key) {
-      //simply copy the last object on the node to the position of the erased object
-      auto last=node->numKeys.get_ro()-1;
-      node->keys.get_rw()[pos]=node->keys.get_ro()[last];
-      node->values.get_rw()[pos]=node->values.get_ro()[last];
-      node->numKeys.get_rw() = node->numKeys.get_ro() - 1;
-      deleted = true;
+    if (nodeRef.keys.get_rw()[pos] == key) {
+      /// simply copy the last object on the node to the position of the erased object
+      auto last = nodeRef.numKeys.get_ro()-1;
+      nodeRef.keys.get_rw()[pos] = nodeRef.keys.get_ro()[last];
+      nodeRef.values.get_rw()[pos] = nodeRef.values.get_ro()[last];
+      nodeRef.numKeys.get_rw() = nodeRef.numKeys.get_ro() - 1;
+      return true;
     }
-    return deleted;
+    return false;
   }
 
   /**
-   * Handle the case that during a delete operation a underflow at node @c leaf
-   * occured. If possible this is handled
+   * Handle the case that during a delete operation a underflow at node @c leaf occured. If possible
+   * this is handled
    * (1) by rebalancing the elements among the leaf node and one of its siblings
    * (2) if not possible by merging with one of its siblings.
    *
    * @param node the parent node of the node where the underflow occured
-   * @param pos the position of the child node @leaf in the @c children array of
-   * the branch node
+   * @param pos the position of the child node @leaf in the @c children array of the branch node
    * @param leaf the node at which the underflow occured
    */
-  void
-    underflowAtLeafLevel(persistent_ptr<BranchNode> node, unsigned int pos, persistent_ptr<LeafNode> leaf) {
-      assert(pos <= node->numKeys);
+  void underflowAtLeafLevel(const pptr<BranchNode> &node, unsigned int pos,
+                            const pptr<LeafNode> &leaf) {
+    auto &nodeRef = *node;
+    const auto &leafRef = *leaf;
+    assert(pos <= nodeRef.numKeys.get_ro());
 
-      unsigned int middle = (M + 1) / 2;
-      // 1. we check whether we can rebalance with one of the siblings
-      // but only if both nodes have the same direct parent
-      if (pos > 0 && leaf->prevLeaf->numKeys > middle) {
-        // we have a sibling at the left for rebalancing the keys
-        balanceLeafNodes(leaf->prevLeaf, leaf);
-        node->keys.get_rw()[pos-1] = leaf->keys.get_ro()[findMinKeyAtLeafNode(leaf)];
-      } else if (pos < node->numKeys && leaf->nextLeaf->numKeys > middle) {
-        // we have a sibling at the right for rebalancing the keys
-        balanceLeafNodes(leaf->nextLeaf, leaf);
-        node->keys.get_rw()[pos] = leaf->nextLeaf->keys.get_ro()[findMinKeyAtLeafNode(leaf->nextLeaf)];
+    constexpr auto middle = (M + 1) / 2;
+    /// 1. we check whether we can rebalance with one of the siblings but only if both nodes have
+    //     the same direct parent
+    if (pos > 0 && leafRef.prevLeaf->numKeys.get_ro() > middle) {
+      /// we have a sibling at the left for rebalancing the keys
+      balanceLeafNodes(leafRef.prevLeaf, leaf);
+      nodeRef.keys.get_rw()[pos-1] = leafRef.keys.get_ro()[findMinKeyAtLeafNode(leaf)];
+    } else if (pos < nodeRef.numKeys.get_ro() && leafRef.nextLeaf->numKeys.get_ro() > middle) {
+      /// we have a sibling at the right for rebalancing the keys
+      balanceLeafNodes(leafRef.nextLeaf, leaf);
+      nodeRef.keys.get_rw()[pos] =
+        leafRef.nextLeaf->keys.get_ro()[findMinKeyAtLeafNode(leafRef.nextLeaf)];
+    } else {
+      /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
+      //     direct parent
+      pptr<LeafNode> survivor = nullptr;
+      if (pos > 0 && leafRef.prevLeaf->numKeys.get_ro() <= middle) {
+        survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
+        deleteLeafNode(leaf);
+      } else if (pos < nodeRef.numKeys.get_ro() && leafRef.nextLeaf->numKeys.get_ro() <= middle) {
+        /// because we update the pointers in mergeLeafNodes we keep it here
+        auto l = leafRef.nextLeaf;
+        survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
+        deleteLeafNode(l);
       } else {
-        // 2. if this fails we have to merge two leaf nodes
-        // but only if both nodes have the same direct parent
-        persistent_ptr<LeafNode> survivor = nullptr;
-        if (pos > 0 && leaf->prevLeaf->numKeys <= middle) {
-          survivor = mergeLeafNodes(leaf->prevLeaf, leaf);
-          deleteLeafNode(leaf);
-        } else if (pos < node->numKeys && leaf->nextLeaf->numKeys <= middle) {
-          // because we update the pointers in mergeLeafNodes
-          // we keep it here
-          auto l = leaf->nextLeaf;
-          survivor = mergeLeafNodes(leaf, leaf->nextLeaf);
-          deleteLeafNode(l);
-        } else {
-          // this shouldn't happen?!
-          assert(false);
+        /// this shouldn't happen?!
+        assert(false);
+      }
+      if (nodeRef.numKeys.get_ro() > 1) {
+        if (pos > 0) pos--;
+        /// just remove the child node from the current branch node
+        for (auto i = pos; i < nodeRef.numKeys.get_ro() - 1; i++) {
+          nodeRef.keys.get_rw()[i] = nodeRef.keys.get_ro()[i + 1];
+          nodeRef.children.get_rw()[i + 1] = nodeRef.children.get_ro()[i + 2];
         }
-        if (node->numKeys > 1) {
-          if (pos > 0) pos--;
-          // just remove the child node from the current branch node
-          for (auto i = pos; i < node->numKeys - 1; i++) {
-            node->keys.get_rw()[i] = node->keys.get_ro()[i + 1];
-            node->children.get_rw()[i + 1] = node->children.get_ro()[i + 2];
-          }
-          node->children.get_rw()[pos] = survivor;
-          node->numKeys.get_rw() = node->numKeys.get_ro() - 1;
-        } else {
-          // This is a special case that happens only if
-          // the current node is the root node. Now, we have
-          // to replace the branch root node by a leaf node.
-          rootNode = survivor;
-          depth = depth - 1;
-        }
+        nodeRef.children.get_rw()[pos] = survivor;
+        nodeRef.numKeys.get_rw() = nodeRef.numKeys.get_ro() - 1;
+      } else {
+        /// This is a special case that happens only if the current node is the root node. Now, we
+        /// have to replace the branch root node by a leaf node.
+        rootNode = survivor;
+        depth.get_rw() = depth.get_ro() - 1;
       }
     }
+  }
 
   /**
-   * Merge two leaf nodes by moving all elements from @c node2 to
-   * @c node1.
+   * Merge two leaf nodes by moving all elements from @c node2 to @c node1.
    *
    * @param node1 the target node of the merge
    * @param node2 the source node
    * @return the merged node (always @c node1)
    */
-  persistent_ptr<LeafNode> mergeLeafNodes(persistent_ptr<LeafNode> node1, persistent_ptr<LeafNode> node2) {
+  pptr<LeafNode> mergeLeafNodes(const pptr<LeafNode> &node1, const pptr<LeafNode> &node2) {
     assert(node1 != nullptr);
     assert(node2 != nullptr);
-    assert(node1->numKeys + node2->numKeys <= M);
+    auto &node1Ref = *node1;
+    auto &node2Ref = *node2;
+    assert(node1Ref.numKeys.get_ro() + node2Ref.numKeys.get_ro() <= M);
 
-    // we move all keys/values from node2 to node1
-    for (auto i = 0u; i < node2->numKeys; i++) {
-      node1->keys.get_rw()[node1->numKeys + i] = node2->keys.get_ro()[i];
-      node1->values.get_rw()[node1->numKeys + i] = node2->values.get_ro()[i];
+    /// we move all keys/values from node2 to node1
+    for (auto i = 0u; i < node2Ref.numKeys; i++) {
+      node1Ref.keys.get_rw()[node1Ref.numKeys.get_ro() + i] = node2Ref.keys.get_ro()[i];
+      node1Ref.values.get_rw()[node1Ref.numKeys.get_ro() + i] = node2Ref.values.get_ro()[i];
     }
-    node1->numKeys.get_rw() = node1->numKeys.get_ro() + node2->numKeys.get_ro();
-    node1->nextLeaf = node2->nextLeaf;
-    node2->numKeys = 0;
-    if (node2->nextLeaf != nullptr) node2->nextLeaf->prevLeaf = node1;
+    node1Ref.numKeys.get_rw() = node1Ref.numKeys.get_ro() + node2Ref.numKeys.get_ro();
+    node1Ref.nextLeaf = node2Ref.nextLeaf;
+    node2Ref.numKeys.get_rw() = 0;
+    if (node2Ref.nextLeaf != nullptr) node2Ref.nextLeaf->prevLeaf = node1;
     return node1;
   }
 
   /**
-   * Redistribute (key, value) pairs from the leaf node @c donor to
-   * the leaf node @c receiver such that both nodes have approx. the same
-   * number of elements. This method is used in case of an underflow
-   * situation of a leaf node.
+   * Redistribute (key, value) pairs from the leaf node @c donor to the leaf node @c receiver such
+   * that both nodes have approx. the same number of elements. This method is used in case of an
+   * underflow situation of a leaf node.
    *
    * @param donor the leaf node from which the elements are taken
    * @param receiver the sibling leaf node getting the elements from @c donor
    */
-  void balanceLeafNodes(persistent_ptr<LeafNode> donor, persistent_ptr<LeafNode> receiver) {
-    assert(donor->numKeys > receiver->numKeys);
+  void balanceLeafNodes(const pptr<LeafNode> &donor, const pptr<LeafNode> &receiver) {
+    auto &donorRef = *donor;
+    auto &receiverRef = *receiver;
+    assert(donorRef.numKeys.get_ro() > receiverRef.numKeys.get_ro());
 
-    unsigned int balancedNum = (donor->numKeys + receiver->numKeys) / 2;
-    unsigned int toMove = donor->numKeys - balancedNum;
+    unsigned int balancedNum = (donorRef.numKeys.get_ro() + receiverRef.numKeys.get_ro()) / 2;
+    unsigned int toMove = donorRef.numKeys.get_ro() - balancedNum;
     if (toMove == 0) return;
-    if (donor->keys.get_ro()[0] < receiver->keys.get_ro()[0]) {
-      // move from one node to a node with larger keys
+    if (donorRef.keys.get_ro()[0] < receiverRef.keys.get_ro()[0]) {
+      /// move from one node to a node with larger keys
       unsigned int i = 0;
 
-      // move toMove keys/values from donor to receiver
+      /// move toMove keys/values from donor to receiver
       for (i = 0; i < toMove; i++) {
-        uint max=findMaxKeyAtLeafNode(donor);
-        // move the donor's maximum key to the receiver
-        receiver->keys.get_rw()[receiver->numKeys]=donor->keys.get_ro()[max];
-        receiver->values.get_rw()[receiver->numKeys]=donor->values.get_ro()[max];
-        receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + 1;
+        uint max = findMaxKeyAtLeafNode(donor);
+        /// move the donor's maximum key to the receiver
+        receiverRef.keys.get_rw()[receiverRef.numKeys] = donorRef.keys.get_ro()[max];
+        receiverRef.values.get_rw()[receiverRef.numKeys] = donorRef.values.get_ro()[max];
+        receiverRef.numKeys.get_rw() = receiverRef.numKeys.get_ro() + 1;
 
-        // fill empty space in donor with its currently last key
-        donor->keys.get_rw()[max] = donor->keys.get_ro()[donor->numKeys-1];
-        donor->values.get_rw()[max] = donor->values.get_ro()[donor->numKeys-1];
-        donor->numKeys.get_rw() = donor->numKeys.get_ro() - 1;
+        /// fill empty space in donor with its currently last key
+        donorRef.keys.get_rw()[max] = donorRef.keys.get_ro()[donorRef.numKeys-1];
+        donorRef.values.get_rw()[max] = donorRef.values.get_ro()[donorRef.numKeys-1];
+        donorRef.numKeys.get_rw() = donorRef.numKeys.get_ro() - 1;
       }
     } else {
-      // mode from one node to a node with smaller keys
+      /// mode from one node to a node with smaller keys
       unsigned int i = 0;
-      // move toMove keys/values from donor to receiver
+      /// move toMove keys/values from donor to receiver
       for (i = 0; i < toMove; i++) {
-        uint min=findMinKeyAtLeafNode(donor);
-        // move the donor's minimum key to the receiver
-        receiver->keys.get_rw()[receiver->numKeys]=donor->keys.get_ro()[min];
-        receiver->values.get_rw()[receiver->numKeys]=donor->values.get_ro()[min];
-        receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + 1;
+        uint min = findMinKeyAtLeafNode(donor);
+        /// move the donor's minimum key to the receiver
+        receiverRef.keys.get_rw()[receiverRef.numKeys] = donorRef.keys.get_ro()[min];
+        receiverRef.values.get_rw()[receiverRef.numKeys] = donorRef.values.get_ro()[min];
+        receiverRef.numKeys.get_rw() = receiverRef.numKeys.get_ro() + 1;
 
-        // fill empty space in donor with its currently last key
-        donor->keys.get_rw()[min] = donor->keys.get_ro()[donor->numKeys-1];
-        donor->values.get_rw()[min] = donor->values.get_ro()[donor->numKeys-1];
-        donor->numKeys.get_rw() = donor->numKeys.get_ro() - 1;
+        /// fill empty space in donor with its currently last key
+        donorRef.keys.get_rw()[min] = donorRef.keys.get_ro()[donorRef.numKeys-1];
+        donorRef.values.get_rw()[min] = donorRef.values.get_ro()[donorRef.numKeys-1];
+        donorRef.numKeys.get_rw() = donorRef.numKeys.get_ro() - 1;
       }
     }
   }
   /**
-   * Find the minimum key in unsorted leaf
+   * Find the minimum key in unsorted leaf.
+   *
    * @param node the leaf node to find the minimum key in
    * @return position of the minimum key
    */
-  uint findMinKeyAtLeafNode(persistent_ptr<LeafNode> node ){
-    uint pos=0;
-    KeyType currMinKey=node->keys.get_ro()[0];
-    for(auto i=1u; i<node->numKeys; i++){
-      KeyType key=node->keys.get_ro()[i];
-      if(key<currMinKey){currMinKey=key; pos=i;}
+  auto findMinKeyAtLeafNode(const pptr<LeafNode> &node) {
+    const auto &nodeRef = *node;
+    auto pos = 0u;
+    auto currMinKey = nodeRef.keys.get_ro()[0];
+    for (auto i = 1u; i < nodeRef.numKeys; i++) {
+      const auto key = nodeRef.keys.get_ro()[i];
+      if (key < currMinKey) { currMinKey = key; pos = i; }
     }
     return pos;
   }
   /**
-   * Find the maximum key in unsorted leaf
+   * Find the maximum key in unsorted leaf.
+   *
    * @param node the leaf node to find the maximum key in
    * @return position of the maximum key
    */
-  uint findMaxKeyAtLeafNode(persistent_ptr<LeafNode> node ){
-    uint pos=0;
-    KeyType currMinKey=node->keys.get_ro()[0];
-    for(auto i=1u; i<node->numKeys; i++){
-      KeyType key=node->keys.get_ro()[i];
-      if(key>currMinKey){currMinKey=key; pos=i;}
+  auto findMaxKeyAtLeafNode(const pptr<LeafNode> &node) {
+    const auto &nodeRef = *node;
+    auto pos = 0u;
+    auto currMinKey = nodeRef.keys.get_ro()[0];
+    for (auto i = 1u; i < nodeRef.numKeys; i++) {
+      const auto key = nodeRef.keys.get_ro()[i];
+      if (key > currMinKey) { currMinKey = key; pos = i; }
     }
     return pos;
   }
-  /* ------------------------------------------------------------------- */
-  /*                        DELETE AT INNER LEVEL                        */
-  /* ------------------------------------------------------------------- */
+
+  /* -------------------------------------------------------------------------------------------- */
+  /* DELETE AT INNER LEVEL                                                                        */
+  /* -------------------------------------------------------------------------------------------- */
+
   /**
-   * Delete an entry from the tree by recursively going down to the leaf level
-   * and handling the underflows.
+   * Delete an entry from the tree by recursively going down to the leaf level and handling the
+   * underflows.
    *
    * @param node the current branch node
    * @param d the current depth of the traversal
    * @param key the key to be deleted
    * @return true if the entry was deleted
    */
-  bool eraseFromBranchNode(persistent_ptr<BranchNode> node, unsigned int d, const KeyType &key) {
+  bool eraseFromBranchNode(const pptr<BranchNode> &node, const unsigned int d, const KeyType &key) {
     assert(d >= 1);
+    const auto &nodeRef = *node;
     bool deleted = false;
-    // try to find the branch
+    /// try to find the branch
     auto pos = lookupPositionInBranchNode(node, key);
-    auto n = node->children.get_ro()[pos];
+    auto n = nodeRef.children.get_ro()[pos];
     if (d == 1) {
-      // the next level is the leaf level
+      /// the next level is the leaf level
       auto leaf = n.leaf;
+      auto &leafRef = *leaf;
       assert(leaf != nullptr);
       deleted = eraseFromLeafNode(leaf, key);
-      unsigned int middle = (M + 1) / 2;
-      if (leaf->numKeys < middle) {
-        // handle underflow
+      constexpr auto middle = (M + 1) / 2;
+      if (leafRef.numKeys.get_ro() < middle) {
+        /// handle underflow
         underflowAtLeafLevel(node, pos, leaf);
       }
     } else {
       auto child = n.branch;
       deleted = eraseFromBranchNode(child, d - 1, key);
-
       pos = lookupPositionInBranchNode(node, key);
-      unsigned int middle = (N + 1) / 2;
-      if (child->numKeys < middle) {
-        // handle underflow
+      constexpr auto middle = (N + 1) / 2;
+      if (child->numKeys.get_ro() < middle) {
+        /// handle underflow
         child = underflowAtBranchLevel(node, pos, child);
-        if (d == depth && node->numKeys == 0) {
-          // special case: the root node is empty now
+        if (d == depth.get_ro() && nodeRef.numKeys.get_ro() == 0) {
+          /// special case: the root node is empty now
           rootNode = child;
-          depth = depth - 1;
+          depth.get_rw() = depth.get_ro() - 1;
         }
       }
     }
@@ -593,223 +592,224 @@ class UnsortedPBPTree {
   }
 
   /**
-   * Merge two branch nodes my moving all keys/children from @c node to @c
-   * sibling and put the key @c key from the parent node in the middle. The node
-   * @c node should be deleted by the caller.
+   * Merge two branch nodes my moving all keys/children from @c node to @c sibling and put the key
+   * @c key from the parent node in the middle. The node @c node should be deleted by the caller.
    *
    * @param sibling the left sibling node which receives all keys/children
    * @param key the key from the parent node that is between sibling and node
    * @param node the node from which we move all keys/children
    */
-  void mergeBranchNodes(persistent_ptr<BranchNode> sibling, const KeyType &key,
-      persistent_ptr<BranchNode> node){
-    assert(key <= node->keys.get_ro()[0]);
+  void mergeBranchNodes(const pptr<BranchNode> &sibling, const KeyType &key,
+      const pptr<BranchNode> &node){
+    const auto &nodeRef = *node;
+    auto &sibRef = *sibling;
+    assert(key <= nodeRef.keys.get_ro()[0]);
     assert(sibling != nullptr);
     assert(node != nullptr);
-    assert(sibling->keys.get_ro()[sibling->numKeys - 1] < key);
+    assert(sibRef.keys.get_ro()[sibRef.numKeys.get_ro() - 1] < key);
 
-    sibling->keys.get_rw()[sibling->numKeys] = key;
-    sibling->children.get_rw()[sibling->numKeys + 1] = node->children.get_ro()[0];
-    for (auto i = 0u; i < node->numKeys; i++) {
-      sibling->keys.get_rw()[sibling->numKeys + i + 1] = node->keys.get_ro()[i];
-      sibling->children.get_rw()[sibling->numKeys + i + 2] = node->children.get_ro()[i + 1];
+    sibRef.keys.get_rw()[sibRef.numKeys] = key;
+    sibRef.children.get_rw()[sibRef.numKeys.get_ro() + 1] = nodeRef.children.get_ro()[0];
+    for (auto i = 0u; i < nodeRef.numKeys; i++) {
+      sibRef.keys.get_rw()[sibRef.numKeys.get_ro() + i + 1] = nodeRef.keys.get_ro()[i];
+      sibRef.children.get_rw()[sibRef.numKeys.get_ro() + i + 2] = nodeRef.children.get_ro()[i + 1];
     }
-    sibling->numKeys.get_rw() = sibling->numKeys.get_ro() + node->numKeys.get_ro() + 1;
+    sibRef.numKeys.get_rw() = sibRef.numKeys.get_ro() + nodeRef.numKeys.get_ro() + 1;
   }
 
   /**
-   * Handle the case that during a delete operation a underflow at node @c child
-   * occured where @c node is the parent node. If possible this is handled
-   * (1) by rebalancing the elements among the node @c child and one of its
-   * siblings
+   * Handle the case that during a delete operation a underflow at node @c child occured where @c
+   * node is the parent node. If possible this is handled
+   * (1) by rebalancing the elements among the node @c child and one of its siblings
    * (2) if not possible by merging with one of its siblings.
    *
    * @param node the parent node of the node where the underflow occured
-   * @param pos the position of the child node @child in the @c children array
-   * of the branch node
+   * @param pos the position of the child node @child in the @c children array of the branch node
    * @param child the node at which the underflow occured
    * @return the (possibly new) child node (in case of a merge)
    */
-  persistent_ptr<BranchNode> underflowAtBranchLevel(persistent_ptr<BranchNode> node, unsigned int pos,
-      persistent_ptr<BranchNode> child) {
+  pptr<BranchNode> underflowAtBranchLevel(const pptr<BranchNode> &node, unsigned int pos,
+                                          const pptr<BranchNode> &child) {
+    auto &nodeRef = *node;
     assert(node != nullptr);
     assert(child != nullptr);
 
-    persistent_ptr<BranchNode> newChild = child;
-    unsigned int middle = (N + 1) / 2;
-    // 1. we check whether we can rebalance with one of the siblings
+    pptr<BranchNode> newChild = child;
+    constexpr auto middle = (N + 1) / 2;
+    /// 1. we check whether we can rebalance with one of the siblings
     if (pos > 0 &&
-        (node->children.get_ro()[pos - 1]).branch->numKeys >
+        (nodeRef.children.get_ro()[pos - 1]).branch->numKeys.get_ro() >
         middle) {
-      // we have a sibling at the left for rebalancing the keys
-      persistent_ptr<BranchNode> sibling = (node->children.get_ro()[pos - 1]).branch;
+      /// we have a sibling at the left for rebalancing the keys
+      auto sibling = (nodeRef.children.get_ro()[pos - 1]).branch;
       balanceBranchNodes(sibling, child, node, pos - 1);
-      // node->keys.get_rw()[pos] = child->keys.get_ro()[0];
+      /// nodeRef.keys.get_rw()[pos] = child->keys.get_ro()[0];
       return newChild;
-    } else if (pos < node->numKeys && (node->children.get_ro()[pos + 1]).branch->numKeys > middle) {
-      // we have a sibling at the right for rebalancing the keys
-      auto sibling = (node->children.get_ro()[pos + 1]).branch;
+    } else if (pos < nodeRef.numKeys.get_ro() &&
+               (nodeRef.children.get_ro()[pos + 1]).branch->numKeys.get_ro() > middle) {
+      /// we have a sibling at the right for rebalancing the keys
+      auto sibling = (nodeRef.children.get_ro()[pos + 1]).branch;
       balanceBranchNodes(sibling, child, node, pos);
       return newChild;
     } else {
-      // 2. if this fails we have to merge two branch nodes
-      persistent_ptr<BranchNode> lSibling = nullptr, rSibling = nullptr;
+      /// 2. if this fails we have to merge two branch nodes
+      pptr<BranchNode> lSibling = nullptr, rSibling = nullptr;
       unsigned int prevKeys = 0, nextKeys = 0;
 
       if (pos > 0) {
-        lSibling = (node->children.get_ro()[pos - 1]).branch;
+        lSibling = (nodeRef.children.get_ro()[pos - 1]).branch;
         prevKeys = lSibling->numKeys;
       }
-      if (pos < node->numKeys) {
-        rSibling = (node->children.get_ro()[pos + 1]).branch;
+      if (pos < nodeRef.numKeys.get_ro()) {
+        rSibling = (nodeRef.children.get_ro()[pos + 1]).branch;
         nextKeys = rSibling->numKeys;
       }
 
-      persistent_ptr<BranchNode> witnessNode = nullptr;
+      pptr<BranchNode> witnessNode = nullptr;
       auto ppos = pos;
       if (prevKeys > 0) {
-        mergeBranchNodes(lSibling, node->keys.get_ro()[pos - 1], child);
+        mergeBranchNodes(lSibling, nodeRef.keys.get_ro()[pos - 1], child);
         ppos = pos - 1;
         witnessNode = child;
         newChild = lSibling;
-        // pos -= 1;
       } else if (nextKeys > 0) {
-        mergeBranchNodes(child, node->keys.get_ro()[pos], rSibling);
+        mergeBranchNodes(child, nodeRef.keys.get_ro()[pos], rSibling);
         witnessNode = rSibling;
       } else
-        // shouldn't happen
+        /// shouldn't happen
         assert(false);
 
-      // remove node->keys.get_ro()[pos] from node
-      for (auto i = ppos; i < node->numKeys - 1; i++) {
-        node->keys.get_rw()[i] = node->keys.get_ro()[i + 1];
+      /// remove nodeRef.keys.get_ro()[pos] from node
+      for (auto i = ppos; i < nodeRef.numKeys.get_ro() - 1; i++) {
+        nodeRef.keys.get_rw()[i] = nodeRef.keys.get_ro()[i + 1];
       }
       if (pos == 0) pos++;
-      for (auto i = pos; i < node->numKeys; i++) {
-        if (i + 1 <= node->numKeys){
-          node->children.get_rw()[i] = node->children.get_ro()[i + 1];
+      for (auto i = pos; i < nodeRef.numKeys; i++) {
+        if (i + 1 <= nodeRef.numKeys.get_ro()){
+          nodeRef.children.get_rw()[i] = nodeRef.children.get_ro()[i + 1];
         }
       }
-      node->numKeys.get_rw() = node->numKeys.get_ro() - 1;
+      nodeRef.numKeys.get_rw() = nodeRef.numKeys.get_ro() - 1;
 
       deleteBranchNode(witnessNode);
       return newChild;
     }
   }
 
-  /* ---------------------------------------------------------------------- */
   /**
-   * Rebalance two branch nodes by moving some key-children pairs from the node
-   * @c donor to the node @receiver via the parent node @parent. The position of
-   * the key between the two nodes is denoted by @c pos.
+   * Rebalance two branch nodes by moving some key-children pairs from the node @c donor to the node
+   * @receiver via the parent node @parent. The position of the key between the two nodes is denoted
+   * by @c pos.
    *
    * @param donor the branch node from which the elements are taken
    * @param receiver the sibling branch node getting the elements from @c donor
    * @param parent the parent node of @c donor and @c receiver
-   * @param pos the position of the key in node @c parent that lies between
-   *      @c donor and @c receiver
+   * @param pos the position of the key in node @c parent that lies between @c donor and @c receiver
    */
-  void balanceBranchNodes(persistent_ptr<BranchNode> donor, persistent_ptr<BranchNode> receiver,
-      persistent_ptr<BranchNode> parent, unsigned int pos) {
-    assert(donor->numKeys > receiver->numKeys);
+  void balanceBranchNodes(const pptr<BranchNode> &donor, const pptr<BranchNode> &receiver,
+                          const pptr<BranchNode> &parent, const unsigned int pos) {
+    auto &donorRef = *donor;
+    auto &receiverRef = *receiver;
+    auto &parentRef = *parent;
+    assert(donorRef.numKeys.get_ro() > receiverRef.numKeys.get_ro());
 
-    unsigned int balancedNum = (donor->numKeys + receiver->numKeys) / 2;
-    unsigned int toMove = donor->numKeys - balancedNum;
+    unsigned int balancedNum = (donorRef.numKeys.get_ro() + receiverRef.numKeys.get_ro()) / 2;
+    unsigned int toMove = donorRef.numKeys.get_ro() - balancedNum;
     if (toMove == 0) return;
-    if (donor->keys.get_ro()[0] < receiver->keys.get_ro()[0]) {
-      // move from one node to a node with larger keys
+    if (donorRef.keys.get_ro()[0] < receiverRef.keys.get_ro()[0]) {
+      /// move from one node to a node with larger keys
       unsigned int i = 0;
 
-      // 1. make room
-      receiver->children.get_rw()[receiver->numKeys + toMove] =
-        receiver->children.get_ro()[receiver->numKeys];
-      for (i = receiver->numKeys; i > 0; i--) {
-        // reserve space on receiver side
-        receiver->keys.get_rw()[i + toMove - 1] = receiver->keys.get_ro()[i - 1];
-        receiver->children.get_rw()[i + toMove - 1] = receiver->children.get_ro()[i - 1];
+      /// 1. make room
+      receiverRef.children.get_rw()[receiverRef.numKeys.get_ro() + toMove] =
+        receiverRef.children.get_ro()[receiverRef.numKeys];
+      for (i = receiverRef.numKeys; i > 0; i--) {
+        /// reserve space on receiver side
+        receiverRef.keys.get_rw()[i + toMove - 1] = receiverRef.keys.get_ro()[i - 1];
+        receiverRef.children.get_rw()[i + toMove - 1] = receiverRef.children.get_ro()[i - 1];
       }
-      // 2. move toMove keys/children from donor to receiver
+      /// 2. move toMove keys/children from donor to receiver
       for (i = 0; i < toMove; i++) {
-        receiver->children.get_rw()[i] =
-          donor->children.get_ro()[donor->numKeys - toMove + 1 + i];
+        receiverRef.children.get_rw()[i] =
+          donorRef.children.get_ro()[donorRef.numKeys.get_ro() - toMove + 1 + i];
       }
       for (i = 0; i < toMove - 1; i++) {
-        receiver->keys.get_rw()[i] = donor->keys.get_ro()[donor->numKeys - toMove + 1 + i];
+        receiverRef.keys.get_rw()[i] =
+          donorRef.keys.get_ro()[donorRef.numKeys.get_ro() - toMove + 1 + i];
       }
-      receiver->keys.get_rw()[toMove - 1] = parent->keys.get_ro()[pos];
-      assert(parent->numKeys > pos);
-      parent->keys.get_rw()[pos] = donor->keys.get_ro()[donor->numKeys - toMove];
-      receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + toMove;
+      receiverRef.keys.get_rw()[toMove - 1] = parentRef.keys.get_ro()[pos];
+      assert(parentRef.numKeys.get_ro() > pos);
+      parentRef.keys.get_rw()[pos] = donorRef.keys.get_ro()[donorRef.numKeys.get_ro() - toMove];
+      receiverRef.numKeys.get_rw() = receiverRef.numKeys.get_ro() + toMove;
     } else {
-      // mode from one node to a node with smaller keys
-      unsigned int i = 0, n = receiver->numKeys;
+      /// mode from one node to a node with smaller keys
+      unsigned int i = 0, n = receiverRef.numKeys;
 
-      // 1. move toMove keys/children from donor to receiver
+      /// 1. move toMove keys/children from donor to receiver
       for (i = 0; i < toMove; i++) {
-        receiver->children.get_rw()[n + 1 + i] = donor->children.get_ro()[i];
-        receiver->keys.get_rw()[n + 1 + i] = donor->keys.get_ro()[i];
+        receiverRef.children.get_rw()[n + 1 + i] = donorRef.children.get_ro()[i];
+        receiverRef.keys.get_rw()[n + 1 + i] = donorRef.keys.get_ro()[i];
       }
-      // 2. we have to move via the parent node: take the key from
-      // parent->keys.get_ro()[pos]
-      receiver->keys.get_rw()[n] = parent->keys.get_ro()[pos];
-      receiver->numKeys.get_rw() = receiver->numKeys.get_ro() + toMove;
-      KeyType key = donor->keys.get_ro()[toMove - 1];
+      /// 2. we have to move via the parent node: take the key from parentRef.keys.get_ro()[pos]
+      receiverRef.keys.get_rw()[n] = parentRef.keys.get_ro()[pos];
+      receiverRef.numKeys.get_rw() = receiverRef.numKeys.get_ro() + toMove;
+      KeyType key = donorRef.keys.get_ro()[toMove - 1];
 
-      // 3. on donor node move all keys and values to the left
-      for (i = 0; i < donor->numKeys - toMove; i++) {
-        donor->keys.get_rw()[i] = donor->keys.get_ro()[toMove + i];
-        donor->children.get_rw()[i] = donor->children.get_ro()[toMove + i];
+      /// 3. on donor node move all keys and values to the left
+      for (i = 0; i < donorRef.numKeys.get_ro() - toMove; i++) {
+        donorRef.keys.get_rw()[i] = donorRef.keys.get_ro()[toMove + i];
+        donorRef.children.get_rw()[i] = donorRef.children.get_ro()[toMove + i];
       }
-      donor->children.get_rw()[donor->numKeys - toMove] =
-        donor->children.get_ro()[donor->numKeys];
-      // and replace this key by donor->keys.get_ro()[0]
-      assert(parent->numKeys > pos);
-      parent->keys.get_rw()[pos] = key;
+      donorRef.children.get_rw()[donorRef.numKeys.get_ro() - toMove] =
+        donorRef.children.get_ro()[donorRef.numKeys];
+      /// and replace this key by donorRef.keys.get_ro()[0]
+      assert(parentRef.numKeys.get_ro() > pos);
+      parentRef.keys.get_rw()[pos] = key;
     }
-    donor->numKeys.get_rw() = donor->numKeys.get_ro() - toMove;
+    donorRef.numKeys.get_rw() = donorRef.numKeys.get_ro() - toMove;
   }
 
-  /* ---------------------------------------------------------------------- */
-  /*                                   DEBUGGING                            */
-  /* ---------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------------------------- */
+  /* DEBUGGING                                                                                    */
+  /* -------------------------------------------------------------------------------------------- */
 
   /**
-   * Print the given branch node @c node and all its children
-   * to standard output.
+   * Print the given branch node @c node and all its children to standard output.
    *
    * @param d the current depth used for indention
    * @param node the tree node to print
    */
-  void printBranchNode(unsigned int d, persistent_ptr<BranchNode> node) const {
+  void printBranchNode(const unsigned int d, const pptr<BranchNode> &node) const {
+    const auto &nodeRef = *node;
     for (auto i = 0u; i < d; i++) std::cout << "  ";
     std::cout << d << " { ";
-    for (auto k = 0u; k < node->numKeys; k++) {
+    for (auto k = 0u; k < nodeRef.numKeys; k++) {
       if (k > 0) std::cout << ", ";
-      std::cout << node->keys.get_ro()[k];
+      std::cout << nodeRef.keys.get_ro()[k];
     }
     std::cout << " }" << std::endl;
-    for (auto k = 0u; k <= node->numKeys; k++) {
+    for (auto k = 0u; k <= nodeRef.numKeys; k++) {
       if (d + 1 < depth) {
-        auto child = node->children.get_ro()[k].branch;
+        auto child = nodeRef.children.get_ro()[k].branch;
         if (child != nullptr) printBranchNode(d + 1, child);
       } else {
-        auto leaf = (node->children.get_ro()[k]).leaf;
+        auto leaf = (nodeRef.children.get_ro()[k]).leaf;
         printLeafNode(d+1,leaf);
       }
     }
   }
 
   /**
-   * Print the keys of the given branch node @c node to standard
-   * output.
+   * Print the keys of the given branch node @c node to standard output.
    *
    * @param node the tree node to print
    */
-  void printBranchNodeKeys(persistent_ptr<BranchNode> node) const {
+  void printBranchNodeKeys(const pptr<BranchNode> &node) const {
+    const auto &nodeRef = *node;
     std::cout << "{ ";
-    for (auto k = 0u; k < node->numKeys; k++) {
+    for (auto k = 0u; k < nodeRef.numKeys; k++) {
       if (k > 0) std::cout << ", ";
-      std::cout << node->keys.get_ro()[k];
+      std::cout << nodeRef.keys.get_ro()[k];
     }
     std::cout << " }" << std::endl;
   }
@@ -820,12 +820,13 @@ class UnsortedPBPTree {
    * @param d the current depth used for indention
    * @param node the tree node to print
    */
-  void printLeafNode(unsigned int d, persistent_ptr<LeafNode> node) const {
+  void printLeafNode(const unsigned int d, const pptr<LeafNode> &node) const {
+    const auto &nodeRef = *node;
     for (auto i = 0u; i < d; i++) std::cout << "  ";
     std::cout << "[" << std::hex << node << std::dec << " : ";
-    for (auto i = 0u; i < node->numKeys; i++) {
+    for (auto i = 0u; i < nodeRef.numKeys; i++) {
       if (i > 0) std::cout << ", ";
-      std::cout << "{" << node->keys.get_ro()[i]<< "}";
+      std::cout << "{" << nodeRef.keys.get_ro()[i]<< "}";
     }
     std::cout << "]" << std::endl;
   }
@@ -834,40 +835,41 @@ class UnsortedPBPTree {
    *
    * @param node the tree node to print
    */
-  void printLeafNodeKeys(persistent_ptr<LeafNode> node) const {
+  void printLeafNodeKeys(const pptr<LeafNode> &node) const {
+    const auto &nodeRef = *node;
     std::cout<<"[";
-    for (auto i = 0u; i < node->numKeys; i++) {
+    for (auto i = 0u; i < nodeRef.numKeys; i++) {
       if (i > 0) std::cout << ", ";
-      std::cout << "{" << node->keys.get_ro()[i] << "}";
+      std::cout << "{" << nodeRef.keys.get_ro()[i] << "}";
     }
     std::cout << "]" << std::endl;
   }
 
-  /* ---------------------------------------------------------------------- */
-  /*                                   INSERT                               */
-  /* ---------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------------------------- */
+  /* INSERT                                                                                       */
+  /* -------------------------------------------------------------------------------------------- */
 
   /**
-   * Insert a (key, value) pair into the corresponding leaf node. It is the
-   * responsibility of the caller to make sure that the node @c node is
-   * the correct node. The key is inserted at the last position.
+   * Insert a (key, value) pair into the corresponding leaf node. It is the responsibility of the
+   * caller to make sure that the node @c node is the correct node. The key is inserted at the last
+   * position.
    *
    * @param node the node where the key-value pair is inserted.
    * @param key the key to be inserted
    * @param val the value associated with the key
    * @param splitInfo information about a possible split of the node
    */
-  bool insertInLeafNode(persistent_ptr<LeafNode> node, const KeyType &key,
-      const ValueType &val, SplitInfo *splitInfo) {
+  bool insertInLeafNode(const pptr<LeafNode> &node, const KeyType &key, const ValueType &val,
+                        SplitInfo *splitInfo) {
     bool split = false;
     auto pos = lookupPositionInLeafNode(node, key);
     auto &nodeRef = *node;
-    if (pos < nodeRef.numKeys && nodeRef.keys.get_ro()[pos] == key) {
-      // handle insert of duplicates
+    if (pos < nodeRef.numKeys.get_ro() && nodeRef.keys.get_ro()[pos] == key) {
+      /// handle insert of duplicates
       nodeRef.values.get_rw()[pos] = val;
       return false;
     }
-    if (nodeRef.numKeys == M) {
+    if (nodeRef.numKeys.get_ro() == M) {
       /* split the node */
       splitLeafNode(node, splitInfo);
       auto &splitRef = *splitInfo;
@@ -889,18 +891,18 @@ class UnsortedPBPTree {
     return split;
   }
 
-  void splitLeafNode(persistent_ptr<LeafNode> node, SplitInfo *splitInfo) {
+  void splitLeafNode(const pptr<LeafNode> &node, SplitInfo *splitInfo) {
     auto &nodeRef = *node;
 
     /* determine the split position by finding the median in unsorted array of keys */
-    auto data = node->keys.get_ro();
+    auto data = nodeRef.keys.get_ro();
     const auto [__unused__, splitPos] = findSplitKey(data);
     const auto splitKey = data[splitPos];
 
     /* move all entries with greater or equal keys to a new sibling node */
-    persistent_ptr<LeafNode> sibling = newLeafNode();
+    auto sibling = newLeafNode();
     auto &sibRef = *sibling;
-    auto n = 0u, s = 0u; //< node/sibling entry count
+    auto n = 0u, s = 0u; ///< node/sibling entry count
     for (auto i = 0u; i < M; i++) {
       const auto &currkey = nodeRef.keys.get_ro()[i];
       if (currkey > splitKey){
@@ -916,7 +918,7 @@ class UnsortedPBPTree {
     nodeRef.numKeys.get_rw() = n;
     sibRef.numKeys.get_rw() = s;
 
-    /* setup the list of leaf nodes */
+    /// setup the list of leaf nodes
     if(nodeRef.nextLeaf != nullptr) {
       sibRef.nextLeaf = nodeRef.nextLeaf;
       nodeRef.nextLeaf->prevLeaf = sibling;
@@ -932,132 +934,133 @@ class UnsortedPBPTree {
   }
 
   /**
-   * Insert a (key, value) pair at the last position into the leaf node
-   * @c node. The caller has to ensure that there is enough space to insert the element
+   * Insert a (key, value) pair at the last position into the leaf node @c node. The caller has to
+   * ensure that there is enough space to insert the element.
    *
    * @oaram node the leaf node where the element is to be inserted
    * @param key the key of the element
    * @param val the actual value corresponding to the key
    */
-  void insertInLeafNodeAtLastPosition(persistent_ptr<LeafNode> node,
-      const KeyType &key,
-      const ValueType &val) {
-    const auto pos = node->numKeys.get_ro();
+  void insertInLeafNodeAtLastPosition(const pptr<LeafNode> &node, const KeyType &key,
+                                      const ValueType &val) {
+    auto &nodeRef = *node;
+    const auto pos = nodeRef.numKeys.get_ro();
     assert(pos < M);
-    /* insert the new entry at the currently last position */
-    node->keys.get_rw()[pos] = key;
-    node->values.get_rw()[pos] = val;
+    /// insert the new entry at the currently last position
+    nodeRef.keys.get_rw()[pos] = key;
+    nodeRef.values.get_rw()[pos] = val;
     //PersistEmulation::persistStall();
 
-    node->numKeys.get_rw() = pos + 1;
+    nodeRef.numKeys.get_rw() = pos + 1;
     //PersistEmulation::persistStall();
     //PersistEmulation::writeBytes(sizeof(KeyType) + sizeof(ValueType) +sizeof(unsigned int));
   }
 
   /**
-   * Split the given branch node @c node in the middle and move
-   * half of the keys/children to the new sibling node.
+   * Split the given branch node @c node in the middle and move half of the keys/children to the new
+   * sibling node.
    *
    * @param node the branch node to be split
    * @param splitKey the key on which the split of the child occured
    * @param splitInfo information about the split
    */
-  void splitBranchNode(persistent_ptr<BranchNode> node, const KeyType &splitKey,
-      SplitInfo *splitInfo) {
-    // we have an overflow at the branch node, let's split it
-    // determine the split position
-    unsigned int middle = (N + 1) / 2;
-    // adjust the middle based on the key we have to insert
-    if (splitKey > node->keys.get_ro()[middle]) middle++;
-    // move all entries behind this position to a new sibling node
-    persistent_ptr<BranchNode> sibling = newBranchNode();
-    sibling->numKeys = node->numKeys - middle;
-    for (auto i = 0u; i < sibling->numKeys; i++) {
-      sibling->keys.get_rw()[i] = node->keys.get_ro()[middle + i];
-      sibling->children.get_rw()[i] = node->children.get_ro()[middle + i];
+  void splitBranchNode(const pptr<BranchNode> &node, const KeyType &splitKey,
+                       SplitInfo *splitInfo) {
+    auto &nodeRef = *node;
+    /// determine the split position
+    auto middle = (N + 1) / 2;
+    /// adjust the middle based on the key we have to insert
+    if (splitKey > nodeRef.keys.get_ro()[middle]) middle++;
+    /// move all entries behind this position to a new sibling node
+    auto sibling = newBranchNode();
+    auto &sibRef = *sibling;
+    sibRef.numKeys.get_rw() = nodeRef.numKeys.get_ro() - middle;
+    for (auto i = 0u; i < sibRef.numKeys; i++) {
+      sibRef.keys.get_rw()[i] = nodeRef.keys.get_ro()[middle + i];
+      sibRef.children.get_rw()[i] = nodeRef.children.get_ro()[middle + i];
     }
-    sibling->children.get_rw()[sibling->numKeys] = node->children.get_ro()[node->numKeys];
-    node->numKeys = middle - 1;
-    splitInfo->key = node->keys.get_ro()[middle - 1];
-    splitInfo->leftChild = node;
-    splitInfo->rightChild = sibling;
+    sibRef.children.get_rw()[sibRef.numKeys] = nodeRef.children.get_ro()[nodeRef.numKeys];
+    nodeRef.numKeys.get_rw() = middle - 1;
+
+    auto &splitRef = *splitInfo;
+    splitRef.key = nodeRef.keys.get_ro()[middle - 1];
+    splitRef.leftChild = node;
+    splitRef.rightChild = sibling;
   }
 
   /**
-   * Insert a (key, value) pair into the tree recursively by following the path
-   * down to the leaf level starting at node @c node at depth @c depth.
+   * Insert a (key, value) pair into the tree recursively by following the path down to the leaf
+   * level starting at node @c node at depth @c depth.
    *
    * @param node the starting node for the insert
-   * @param depth the current depth of the tree (0 == leaf level)
+   * @param d the current depth of the tree (0 == leaf level)
    * @param key the key of the element
    * @param val the actual value corresponding to the key
    * @param splitInfo information about the split
    * @return true if a split was performed
    */
-  bool insertInBranchNode(persistent_ptr<BranchNode> node, unsigned int depth,
-      const KeyType &key, const ValueType &val,
-      SplitInfo *splitInfo) {
+  bool insertInBranchNode(const pptr<BranchNode> &node, const unsigned int d,
+                          const KeyType &key, const ValueType &val, SplitInfo *splitInfo) {
+    const auto &nodeRef = *node;
     SplitInfo childSplitInfo;
     bool split = false, hasSplit = false;
 
     auto pos = lookupPositionInBranchNode(node, key);
-    if (depth - 1 == 0) {
-      // case #1: our children are leaf nodes
-      auto child = node->children.get_ro()[pos].leaf;
+    if (d == 1) {
+      /// case #1: our children are leaf nodes
+      auto child = nodeRef.children.get_ro()[pos].leaf;
       hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
     } else {
-      // case #2: our children are branch nodes
-      auto child = node->children.get_ro()[pos].branch;
-      hasSplit = insertInBranchNode(child, depth - 1, key, val, &childSplitInfo);
+      /// case #2: our children are branch nodes
+      auto child = nodeRef.children.get_ro()[pos].branch;
+      hasSplit = insertInBranchNode(child, d - 1, key, val, &childSplitInfo);
     }
     if (hasSplit) {
-      persistent_ptr<BranchNode> host = node;
-      // the child node was split, thus we have to add a new entry
-      // to our branch node
-
-      if (node->numKeys == N) {
-
+      auto host = node;
+      /// the child node was split, thus we have to add a new entry to our branch node
+      if (nodeRef.numKeys.get_ro() == N) {
         splitBranchNode(node, childSplitInfo.key, splitInfo);
-        host = (key < splitInfo->key ? splitInfo->leftChild
-            : splitInfo->rightChild).branch;
+        const auto &splitRef = *splitInfo;
+        host = (key < splitRef.key ? splitRef.leftChild : splitRef.rightChild).branch;
         split = true;
         pos = lookupPositionInBranchNode(host, key);
       }
-      if (pos < host->numKeys) {
-        // if the child isn't inserted at the rightmost position
-        // then we have to make space for it
-        host->children.get_rw()[host->numKeys + 1] = host->children.get_ro()[host->numKeys];
-        for (auto i = host->numKeys.get_ro(); i > pos; i--) {
-          host->children.get_rw()[i] = host->children.get_ro()[i - 1];
-          host->keys.get_rw()[i] = host->keys.get_ro()[i - 1];
+      auto &hostRef = *host;
+      if (pos < hostRef.numKeys.get_ro()) {
+        /// if the child isn't inserted at the rightmost position then we have to make space for it
+        hostRef.children.get_rw()[hostRef.numKeys.get_ro() + 1] =
+          hostRef.children.get_ro()[hostRef.numKeys];
+        for (auto i = hostRef.numKeys.get_ro(); i > pos; i--) {
+          hostRef.children.get_rw()[i] = hostRef.children.get_ro()[i - 1];
+          hostRef.keys.get_rw()[i] = hostRef.keys.get_ro()[i - 1];
         }
       }
-      // finally, add the new entry at the given position
-      host->keys.get_rw()[pos] = childSplitInfo.key;
-      host->children.get_rw()[pos] = childSplitInfo.leftChild;
-      host->children.get_rw()[pos + 1] = childSplitInfo.rightChild;
-      host->numKeys = host->numKeys + 1;
+      /// finally, add the new entry at the given position
+      hostRef.keys.get_rw()[pos] = childSplitInfo.key;
+      hostRef.children.get_rw()[pos] = childSplitInfo.leftChild;
+      hostRef.children.get_rw()[pos + 1] = childSplitInfo.rightChild;
+      hostRef.numKeys.get_rw() = hostRef.numKeys.get_ro() + 1;
     }
     return split;
   }
 
-  /* ---------------------------------------------------------------------- */
-  /*                                   LOOKUP                               */
-  /* ---------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------------------------- */
+  /* LOOKUP                                                                                       */
+  /* -------------------------------------------------------------------------------------------- */
 
   /**
-   * Traverse the tree starting at the root until the leaf node is found that
-   * could contain the given @key. Note, that always a leaf node is returned
-   * even if the key doesn't exist on this node.
+   * Traverse the tree starting at the root until the leaf node is found that could contain the
+   * given @key. Note, that always a leaf node is returned even if the key doesn't exist on this
+   * node.
    *
    * @param key the key we are looking for
    * @return the leaf node that would store the key
    */
-  persistent_ptr<LeafNode> findLeafNode(const KeyType &key) const {
+  pptr<LeafNode> findLeafNode(const KeyType &key) const {
     auto node = rootNode;
     auto d = depth.get_ro();
     while (d-- > 0) {
-      // as long as we aren't at the leaf level we follow the path down
+      /// as long as we aren't at the leaf level we follow the path down
       auto n = node.branch;
       auto pos = lookupPositionInBranchNode(n, key);
       node = n->children.get_ro()[pos];
@@ -1066,10 +1069,9 @@ class UnsortedPBPTree {
   }
 
   /**
-   * Lookup the search key @c key in the given branch node and return the
-   * position which is the position in the list of keys + 1. in this way, the
-   * position corresponds to the position of the child pointer in the
-   * array @children.
+   * Lookup the search key @c key in the given branch node and return the position which is the
+   * position in the list of keys + 1. in this way, the position corresponds to the position of the
+   * child pointer in the array @children.
    * If the search key is less than the smallest key, then @c 0 is returned.
    * If the key is greater than the largest key, then @c numKeys is returned.
    *
@@ -1077,11 +1079,11 @@ class UnsortedPBPTree {
    * @param key the search key
    * @return the position of the key + 1 (or 0 or @c numKey)
    */
-  unsigned int lookupPositionInBranchNode(persistent_ptr<BranchNode> node,
-      const KeyType &key) const {
-    unsigned int pos = 0;
-    const unsigned int num = node->numKeys;
-    const auto &keys = node->keys.get_ro();
+  auto lookupPositionInBranchNode(const pptr<BranchNode> &node, const KeyType &key) const {
+    const auto &nodeRef = *node;
+    auto pos = 0u;
+    const auto num = nodeRef.numKeys;
+    const auto &keys = nodeRef.keys.get_ro();
 
     for (; pos < num && keys[pos] <= key; pos++) {
     };
@@ -1089,64 +1091,54 @@ class UnsortedPBPTree {
   }
 
   /**
-   * Lookup the search key @c key in the given leaf node and return the
-   * position.
+   * Lookup the search key @c key in the given leaf node and return the position.
    * If the search key was not found, then @c numKeys is returned.
    *
    * @param node the leaf node where we search
    * @param key the search key
    * @return the position of the key  (or @c numKey if not found)
    */
-  unsigned int lookupPositionInLeafNode(persistent_ptr<LeafNode> node,
-      const KeyType &key) const {
-    unsigned int pos = 0;
-    const unsigned int num = node->numKeys.get_ro();
-    const auto &keys = node->keys.get_ro();
+  auto lookupPositionInLeafNode(const pptr<LeafNode> &node, const KeyType &key) const {
+    const auto &nodeRef = *node;
+    auto pos = 0u;
+    const auto num = nodeRef.numKeys.get_ro();
+    const auto &keys = nodeRef.keys.get_ro();
     for (; pos < num && keys[pos] != key; pos++);
     return pos;
   }
 
-  /* ---------------------------------------------------------------------- */
+  /* -------------------------------------------------------------------------------------------- */
 
   /**
    * Create a new empty leaf node
    */
-  persistent_ptr<LeafNode> newLeafNode() {
+  pptr<LeafNode> newLeafNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
-    persistent_ptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] {
-        newNode = make_persistent<LeafNode>();
-        });
+    pptr<LeafNode> newNode = nullptr;
+    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
     return newNode;
   }
 
-  void deleteLeafNode(persistent_ptr<LeafNode> node) {
+  void deleteLeafNode(const pptr<LeafNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] {
-        delete_persistent<LeafNode>(node);
-        });
+    transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
   }
 
   /**
    * Create a new empty branch node
    */
-  persistent_ptr<BranchNode> newBranchNode() {
+  pptr<BranchNode> newBranchNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
-    persistent_ptr<BranchNode> newNode = nullptr;
-    transaction::run(pop, [&] {
-        newNode = make_persistent<BranchNode>();
-        });
+    pptr<BranchNode> newNode = nullptr;
+    transaction::run(pop, [&] { newNode = make_persistent<BranchNode>(); });
     return newNode;
   }
 
-  void deleteBranchNode(persistent_ptr<BranchNode> node) {
+  void deleteBranchNode(const pptr<BranchNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] {
-        delete_persistent<BranchNode>(node);
-        });
+    transaction::run(pop, [&] { delete_persistent<BranchNode>(node); });
   }
-  /* -----------------------------------------------------------------------
-  */
+  /* -------------------------------------------------------------------------------------------- */
 
   /**
    * A structure for representing a leaf node of a B+ tree.
@@ -1157,11 +1149,11 @@ class UnsortedPBPTree {
      */
     LeafNode() : numKeys(0), nextLeaf(nullptr), prevLeaf(nullptr) {}
 
-    p<unsigned int> numKeys;             //< the number of currently stored keys
-    p<std::array<KeyType, M>> keys;      //< the actual keys
-    p<std::array<ValueType, M>> values;  //< the actual values
-    persistent_ptr<LeafNode> nextLeaf;   //< pointer to the subsequent sibling
-    persistent_ptr<LeafNode> prevLeaf;   //< pointer to the preceeding sibling
+    p<unsigned int> numKeys;            ///< the number of currently stored keys
+    p<std::array<KeyType, M>> keys;     ///< the actual keys
+    p<std::array<ValueType, M>> values; ///< the actual values
+    pptr<LeafNode> nextLeaf;            ///< pointer to the subsequent sibling
+    pptr<LeafNode> prevLeaf;            ///< pointer to the preceeding sibling
   };
 
   /**
@@ -1173,9 +1165,9 @@ class UnsortedPBPTree {
      */
     BranchNode() : numKeys(0) {}
 
-    p<unsigned int> numKeys;             //< the number of currently stored keys
-    p<std::array<KeyType, N>> keys;      //< the actual keys
-    p<std::array<Node, N + 1>> children; //< pointers to child nodes (BranchNode or LeafNode)
+    p<unsigned int> numKeys;             ///< the number of currently stored keys
+    p<std::array<KeyType, N>> keys;      ///< the actual keys
+    p<std::array<Node, N + 1>> children; ///< pointers to child nodes (BranchNode or LeafNode)
   };
 
 }; /* end class UnsortedPBPTree */
