@@ -46,11 +46,12 @@ static void BM_TreeInsert(benchmark::State &state) {
       pop.root()->tree = make_persistent<TreeType>();
     });
   }
-  auto tree = pop.root()->tree;
+  const auto tree = pop.root()->tree;
+  auto &treeRef = *tree;
 
   /* Getting the leaf node */
-  auto leaf = tree->rootNode.leaf;
-  //tree->printLeafNode(0, leaf);
+  auto leaf = treeRef.rootNode.leaf;
+  //treeRef.printLeafNode(0, leaf);
 
   const auto reqTup = MyTuple(KEYPOS, KEYPOS * 100, KEYPOS * 1.0);
   TreeType::SplitInfo splitInfo;
@@ -60,21 +61,21 @@ static void BM_TreeInsert(benchmark::State &state) {
   for (auto _ : state) {
     state.PauseTiming();
     std::cout.setstate(std::ios_base::failbit);
-    tree->rootNode = tree->newLeafNode();
-    leaf = tree->rootNode.leaf;
+    treeRef.rootNode = treeRef.newLeafNode();
+    leaf = treeRef.rootNode.leaf;
     prepare(tree);
     dbis::PersistEmulation::getBytesWritten();
     state.ResumeTiming();
 
-    split = tree->insertInLeafNode(leaf, KEYPOS, reqTup, &splitInfo);
+    split = treeRef.insertInLeafNode(leaf, KEYPOS, reqTup, &splitInfo);
 
     state.PauseTiming();
     assert(split == false);
-    tree->deleteLeafNode(leaf);
+    treeRef.deleteLeafNode(leaf);
     state.ResumeTiming();
   }
 
-  //tree->printLeafNode(0, leaf);
+  //treeRef.printLeafNode(0, leaf);
   std::cout.clear();
   std::cout << "Writes:" << dbis::PersistEmulation::getBytesWritten() << '\n';
   std::cout << "Elements:" << ELEMENTS << '\n';
@@ -86,10 +87,11 @@ BENCHMARK_MAIN();
 
 /* preparing inserts */
 void prepare(const persistent_ptr<TreeType> tree) {
-  auto insertLoop = [&tree](int start, int end) {
+  auto &treeRef = *tree;
+  auto insertLoop = [&treeRef](int start, int end) {
     for (auto j = start; j < end + 1; ++j) {
       auto tup = MyTuple(j, j * 100, j * 1.0);
-      tree->insert(j, tup);
+      treeRef.insert(j, tup);
     }
   };
   switch (KEYPOS) {

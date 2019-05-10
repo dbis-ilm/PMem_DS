@@ -18,7 +18,6 @@ SUFFIX="" # in case of binary vs. linear
 
 ### needs manual adaption ###
 fillratio=1.0
-lat=75
 
 ### adapting Tree usage ###
 sed -i'' -e 's/\(.*BRANCH_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$bsize"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
@@ -43,7 +42,7 @@ do
     writes="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
     elements="$(echo "$OUTPUT" | tail -3 | head -1 | cut -d ':' -f2)"
     time="$(echo "$OUTPUT" | tail -1 | cut -d ',' -f4)"
-    echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$(($elements+1)),$time,$writes,$lat" >> $OUTPUT_FILE
+    echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$(($elements+1)),$time,$writes" >> $OUTPUT_FILE
   done
   popd > /dev/null
 done

@@ -47,10 +47,11 @@ static void BM_TreeSplit(benchmark::State &state) {
     });
   }
   auto tree = pop.root()->tree;
+  auto &treeRef = *tree;
 
   /* Getting the leaf node */
-  auto leaf = tree->rootNode.leaf;
-  //tree->printLeafNode(0, leaf);
+  auto leaf = treeRef.rootNode.leaf;
+  //treeRef.printLeafNode(0, leaf);
 
   const auto reqTup = MyTuple(ELEMENTS+1, (ELEMENTS+1) * 100, (ELEMENTS+1) * 1.0);
   TreeType::SplitInfo splitInfo;
@@ -60,23 +61,23 @@ static void BM_TreeSplit(benchmark::State &state) {
   for (auto _ : state) {
     state.PauseTiming();
     std::cout.setstate(std::ios_base::failbit);
-    tree->rootNode = tree->newLeafNode();
-    leaf = tree->rootNode.leaf;
+    treeRef.rootNode = treeRef.newLeafNode();
+    leaf = treeRef.rootNode.leaf;
     prepare(tree);
     dbis::PersistEmulation::getBytesWritten();
-    //tree->printLeafNode(0, leaf);
+    //treeRef.printLeafNode(0, leaf);
     state.ResumeTiming();
 
-    tree->splitLeafNode(leaf, &splitInfo);
+    treeRef.splitLeafNode(leaf, &splitInfo);
 
     state.PauseTiming();
-    //tree->printLeafNode(0, leaf);
-    tree->deleteLeafNode(leaf->nextLeaf);
-    tree->deleteLeafNode(leaf);
+    //treeRef.printLeafNode(0, leaf);
+    treeRef.deleteLeafNode(leaf->nextLeaf);
+    treeRef.deleteLeafNode(leaf);
     state.ResumeTiming();
   }
 
-  //tree->printLeafNode(0, leaf);
+  //treeRef.printLeafNode(0, leaf);
   std::cout.clear();
   std::cout << "Writes:" << dbis::PersistEmulation::getBytesWritten() << '\n';
   std::cout << "Elements:" << ELEMENTS << '\n';
@@ -88,8 +89,9 @@ BENCHMARK_MAIN();
 
 /* preparing inserts */
 void prepare(const persistent_ptr<TreeType> tree) {
-    for (auto j = 1; j < ELEMENTS+1; ++j) {
-      auto tup = MyTuple(j, j * 100, j * 1.0);
-      tree->insert(j, tup);
-    }
+  auto &treeRef = *tree;
+  for (auto j = 1; j < ELEMENTS+1; ++j) {
+    auto tup = MyTuple(j, j * 100, j * 1.0);
+    treeRef.insert(j, tup);
+  }
 }

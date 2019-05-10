@@ -6,12 +6,17 @@ BUILD_DIR=$REPO_ROOT/build
 DATA=/mnt/pmem/test/tree_bench.data
 OUTPUT_FILE=$PWD/results/bytesWritten.csv
 
+### Create header ###
+if [ ! -s $OUTPUT_FILE ]; then
+  echo "tree,tblsize,lsize,bsize,depth,fillratio,keypos,time,writes" >> $OUTPUT_FILE
+fi
+
 ### CUSTOMIZABLE PARAMETERS ###
 bsize=512
 depth=0
 keypos=('first' 'middle' 'last')
 LEAF_SIZES=( 256 512 1024 2048 4096 )
-TREE="UnsortedPBP" #FP/PBP/wBP
+TREE="BitPBP" #FP/PBP/wBP
 TREE_BASE="PBP" # for namespace and numKeys determination
 SUFFIX="" # in case of binary vs. linear
 
@@ -19,7 +24,6 @@ SUFFIX="" # in case of binary vs. linear
 
 ### needs manual adaption ###
 fillratio=1.0
-lat=750
 
 ### adapting Tree usage ###
 sed -i'' -e 's/\(.*BRANCH_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$bsize"'\3/' $REPO_ROOT/src/bench/trees/common.hpp
@@ -54,7 +58,7 @@ do
       writes="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
       elements="$(echo "$OUTPUT" | tail -3 | head -1 | cut -d ':' -f2)"
       time="$(echo "$OUTPUT" | tail -1 | cut -d ',' -f4)"
-      echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$pos,$time,$writes,$lat" >> $OUTPUT_FILE
+      echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$pos,$time,$writes" >> $OUTPUT_FILE
     done
     popd > /dev/null
   done
