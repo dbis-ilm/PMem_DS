@@ -19,27 +19,37 @@
 #define DBIS_TREES_COMMON_HPP
 
 #include <chrono>
+#include <iostream>
 #include <numeric>
 #include <unistd.h>
+#include <experimental/filesystem>
 #include <libpmemobj++/pool.hpp>
+#include <libpmemobj++/persistent_ptr.hpp>
+#include <libpmemobj++/make_persistent.hpp>
+#include <libpmemobj++/transaction.hpp>
 
 #define UNIT_TESTS
 #include "benchmark/benchmark.h"
-#include "BitPBPTree.hpp"
+#include "PBPTree.hpp"
 
 using namespace dbis::pbptree;
 
+using pmem::obj::delete_persistent;
+using pmem::obj::make_persistent;
 using pmem::obj::pool;
+using pmem::obj::persistent_ptr;
+using pmem::obj::transaction;
 
 /*=== Types and constants ===*/
 /* Customization section */
 using MyTuple = std::tuple <int, int, double>;
 using MyKey = unsigned long long;
 constexpr auto TARGET_BRANCH_SIZE = 512;
-constexpr auto TARGET_LEAF_SIZE = 4096; //< 512B best performance
-constexpr auto TARGET_DEPTH = 0;
+constexpr auto TARGET_LEAF_SIZE = 512; //< 512B best performance
+constexpr auto TARGET_DEPTH = 1;
+constexpr auto IS_HYBRID = false;
 const std::string path = dbis::gPmemPath + "tree_bench.data";
-constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull; //< 4GB
+constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 1ull; //< 1GB
 constexpr auto LAYOUT = "Tree";
 
 /* wBPTree pre-calculations */
@@ -102,12 +112,74 @@ constexpr uint64_t ipow(uint64_t base, int exp, uint64_t result = 1) {
 }
 
 /* Tree relevant calculated parameters*/
-constexpr auto LEAFKEYS = getLeafKeysPBPTree<5>(); //< 5 iterations should be enough
-constexpr auto BRANCHKEYS = getBranchKeysPBPTree<5>();
+constexpr auto LEAFKEYS = getLeafKeysPBPTree<5>(); ///< 5 iterations should be enough
+constexpr auto BRANCHKEYS = getBranchKeysPBPTree<5>() & ~1; ///< make this one even
 constexpr auto ELEMENTS = LEAFKEYS*ipow(BRANCHKEYS+1, TARGET_DEPTH);
-constexpr auto KEYPOS = ELEMENTS/1;
+constexpr auto KEYPOS = ELEMENTS/ELEMENTS;
 
-using TreeType = BitPBPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
+using TreeType = PBPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
+
+
+
+
+
+/* Helper for distinction between hybrid and NVM-only structures
+   http://index-of.co.uk/C++/C++%20Design%20Generic%20Programming%20and%20Design%20Patterns%20Applied.pdf
+   depending on variable IS_HYBRID different code is generated during compile time
+*/
+template <int v>
+struct Int2Type { enum { value = v }; };
+
+template<typename T, bool isHybrid>
+class HybridWrapper {
+  using Node = typename T::Node;
+
+ private:
+  inline size_t getDepth(const T &tree, Int2Type<true>) const {
+    return tree.depth;
+  }
+  inline size_t getDepth(const T &tree, Int2Type<false>) const {
+    return tree.depth.get_ro();
+  }
+
+  inline Node getChildAt(const Node &node, const size_t pos, Int2Type<true>) const {
+    return node.branch->children[pos];
+  }
+  inline Node getChildAt(const Node &node, const size_t pos, Int2Type<false>) const {
+    return node.branch->children.get_ro()[pos];
+  }
+
+  inline void recover(const T &tree, Int2Type<true>) const {
+    tree.recover();
+  }
+  inline void recover(const T &tree, Int2Type<false>) const {
+    return;
+  }
+
+ public:
+  inline size_t getDepth(const T &tree) const {
+    return getDepth(tree, Int2Type<isHybrid>());
+  }
+
+  inline Node getFirstChild(const Node &node) const {
+    return getChildAt(node, 0, Int2Type<isHybrid>());
+  }
+
+  inline Node getChildAt(const Node &node, const size_t pos) const {
+    return getChildAt(node, pos, Int2Type<isHybrid>());
+  }
+
+  inline void recover(const T &tree) const {
+    recover(tree, Int2Type<isHybrid>());
+  }
+};
+
+auto hybridWrapperPtr = new HybridWrapper<TreeType, IS_HYBRID>();
+auto &hybridWrapper = *hybridWrapperPtr;
+
+
+
+
 
 /*=== Insert Function ===*/
 void insert(persistent_ptr<TreeType> &tree) {

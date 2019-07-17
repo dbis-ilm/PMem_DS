@@ -15,7 +15,7 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <filesystem>
+#include <experimental/filesystem>
 #include "common.hpp"
 #include "utils/PersistEmulation.hpp"
 
@@ -39,8 +39,8 @@ static void BM_TreeInsert(benchmark::State &state) {
     });
   } else {
     LOG("Warning: " << path << " already exists");
-    auto n = std::filesystem::remove_all(path);
-    pop = pool<root>::create(path, LAYOUT);
+    auto n = std::experimental::filesystem::remove_all(path);
+    pop = pool<root>::create(path, LAYOUT, POOL_SIZE);
     transaction::run(pop, [&] {
       delete_persistent<TreeType>(pop.root()->tree);
       pop.root()->tree = make_persistent<TreeType>();
@@ -50,8 +50,7 @@ static void BM_TreeInsert(benchmark::State &state) {
   auto &treeRef = *tree;
 
   /* Getting the leaf node */
-  auto leaf = treeRef.rootNode.leaf;
-  //treeRef.printLeafNode(0, leaf);
+  auto &leaf = treeRef.rootNode.leaf;
 
   const auto reqTup = MyTuple(KEYPOS, KEYPOS * 100, KEYPOS * 1.0);
   TreeType::SplitInfo splitInfo;
@@ -62,7 +61,7 @@ static void BM_TreeInsert(benchmark::State &state) {
     state.PauseTiming();
     std::cout.setstate(std::ios_base::failbit);
     treeRef.rootNode = treeRef.newLeafNode();
-    leaf = treeRef.rootNode.leaf;
+    treeRef.depth = 0;
     prepare(tree);
     dbis::PersistEmulation::getBytesWritten();
     state.ResumeTiming();
@@ -79,7 +78,10 @@ static void BM_TreeInsert(benchmark::State &state) {
   std::cout.clear();
   std::cout << "Writes:" << dbis::PersistEmulation::getBytesWritten() << '\n';
   std::cout << "Elements:" << ELEMENTS << '\n';
+
+  transaction::run(pop, [&] { delete_persistent<TreeType>(tree); });
   pop.close();
+  std::experimental::filesystem::remove_all(path);
 }
 BENCHMARK(BM_TreeInsert);
 
@@ -88,15 +90,15 @@ BENCHMARK_MAIN();
 /* preparing inserts */
 void prepare(const persistent_ptr<TreeType> tree) {
   auto &treeRef = *tree;
-  auto insertLoop = [&treeRef](int start, int end) {
+  auto insertLoop = [&treeRef](const auto start, const auto end) {
     for (auto j = start; j < end + 1; ++j) {
       auto tup = MyTuple(j, j * 100, j * 1.0);
       treeRef.insert(j, tup);
     }
   };
   switch (KEYPOS) {
-    case 1 /*first*/: insertLoop(2, ELEMENTS); break;
-    case ELEMENTS /*last*/:  insertLoop(1, ELEMENTS-1);break;
-    case ELEMENTS/2 /*middle*/: {insertLoop(1, KEYPOS-1); insertLoop(KEYPOS+1, ELEMENTS);}
+    case 1 /*first*/: insertLoop(2, LEAFKEYS); break;
+    case ELEMENTS /*last*/:  insertLoop(1, LEAFKEYS-1);break;
+    case ELEMENTS/2 /*middle*/: {insertLoop(1, KEYPOS-1); insertLoop(KEYPOS+1, LEAFKEYS);}
   }
 }

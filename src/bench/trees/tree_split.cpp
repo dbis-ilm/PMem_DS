@@ -15,7 +15,7 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <filesystem>
+#include <experimental/filesystem>
 #include "common.hpp"
 #include "utils/PersistEmulation.hpp"
 
@@ -39,8 +39,8 @@ static void BM_TreeSplit(benchmark::State &state) {
     });
   } else {
     LOG("Warning: " << path << " already exists");
-    auto n = std::filesystem::remove_all(path);
-    pop = pool<root>::create(path, LAYOUT);
+    auto n = std::experimental::filesystem::remove_all(path);
+    pop = pool<root>::create(path, LAYOUT, POOL_SIZE);
     transaction::run(pop, [&] {
       delete_persistent<TreeType>(pop.root()->tree);
       pop.root()->tree = make_persistent<TreeType>();
@@ -48,10 +48,7 @@ static void BM_TreeSplit(benchmark::State &state) {
   }
   auto tree = pop.root()->tree;
   auto &treeRef = *tree;
-
-  /* Getting the leaf node */
-  auto leaf = treeRef.rootNode.leaf;
-  //treeRef.printLeafNode(0, leaf);
+  auto &leaf = treeRef.rootNode.leaf;
 
   const auto reqTup = MyTuple(ELEMENTS+1, (ELEMENTS+1) * 100, (ELEMENTS+1) * 1.0);
   TreeType::SplitInfo splitInfo;
@@ -62,10 +59,9 @@ static void BM_TreeSplit(benchmark::State &state) {
     state.PauseTiming();
     std::cout.setstate(std::ios_base::failbit);
     treeRef.rootNode = treeRef.newLeafNode();
-    leaf = treeRef.rootNode.leaf;
+    treeRef.depth = 0;
     prepare(tree);
     dbis::PersistEmulation::getBytesWritten();
-    //treeRef.printLeafNode(0, leaf);
     state.ResumeTiming();
 
     treeRef.splitLeafNode(leaf, &splitInfo);
@@ -81,7 +77,9 @@ static void BM_TreeSplit(benchmark::State &state) {
   std::cout.clear();
   std::cout << "Writes:" << dbis::PersistEmulation::getBytesWritten() << '\n';
   std::cout << "Elements:" << ELEMENTS << '\n';
+  transaction::run(pop, [&] { delete_persistent<TreeType>(tree); });
   pop.close();
+  std::experimental::filesystem::remove_all(path);
 }
 BENCHMARK(BM_TreeSplit);
 
@@ -90,7 +88,7 @@ BENCHMARK_MAIN();
 /* preparing inserts */
 void prepare(const persistent_ptr<TreeType> tree) {
   auto &treeRef = *tree;
-  for (auto j = 1; j < ELEMENTS+1; ++j) {
+  for (auto j = 1; j < LEAFKEYS+1; ++j) {
     auto tup = MyTuple(j, j * 100, j * 1.0);
     treeRef.insert(j, tup);
   }

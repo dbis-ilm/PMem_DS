@@ -37,23 +37,15 @@ static void BM_TreeGet(benchmark::State &state) {
   } else {
     LOG("Warning: " << path << " already exists");
     pop = pool<root>::open(path, LAYOUT);
-    //pop.root()->treeRef.recover(); //< hybrids only
+    hybridWrapper.recover(*pop.root()->tree);
   }
   const auto tree = pop.root()->tree;
   auto &treeRef = *tree;
-  //treeRef.printBranchNode(0, treeRef.rootNode.branch);
 
   /* Getting a leaf node */
+  auto d = hybridWrapper.getDepth(treeRef);
   auto node = treeRef.rootNode;
-
-  /* hybrid versions */
-  //auto d = treeRef.depth;
-  //while ( d-- > 0) node = node.branch->children[0];
-
-  /* nvm-only trees */
-  auto d = treeRef.depth.get_ro();
-  while ( d-- > 0) node = node.branch->children.get_ro()[0];
-
+  while ( d-- > 0) node = hybridWrapper.getFirstChild(node);
   auto leaf = node.leaf;
 
   /* BENCHMARKING */
@@ -66,8 +58,11 @@ static void BM_TreeGet(benchmark::State &state) {
 
   //treeRef.printBranchNode(0, treeRef.rootNode.branch);
   std::cout << "Elements:" << ELEMENTS << '\n';
+
+  transaction::run(pop, [&] { delete_persistent<TreeType>(tree); });
   pop.close();
+  std::experimental::filesystem::remove_all(path);
 }
-BENCHMARK(BM_TreeGet);//->Apply(KeyRangeArguments);
+BENCHMARK(BM_TreeGet);
 
 BENCHMARK_MAIN();

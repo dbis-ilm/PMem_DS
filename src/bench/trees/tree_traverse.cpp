@@ -37,7 +37,7 @@ static void BM_TreeTraverse(benchmark::State &state) {
   } else {
     LOG("Warning: " << path << " already exists");
     pop = pool<root>::open(path, LAYOUT);
-    //pop.root()->treeRef.recover(); //< Hybrids only
+    hybridWrapper.recover(*pop.root()->tree);
   }
   auto tree = pop.root()->tree;
   auto &treeRef = *tree;
@@ -46,25 +46,20 @@ static void BM_TreeTraverse(benchmark::State &state) {
   /* BENCHMARKING */
   for (auto _ : state) {
     /* Getting a leaf node */
+    auto d = hybridWrapper.getDepth(treeRef);
     auto node = treeRef.rootNode;
-
-    /* hybrid versions *//*
-    auto d = treeRef.depth;
-    while ( --d > 0)
-      node = node.branch->children[treeRef.lookupPositionInBranchNode(node.branch, KEYPOS)];*/
-    /* NVM-only versions */
-    auto d = treeRef.depth.get_ro();
-    while ( --d > 0)
-      node = node.branch->children.get_ro()[treeRef.lookupPositionInBranchNode(node.branch, KEYPOS)];
+    while ( --d > 0) node =
+      hybridWrapper.getChildAt(node, treeRef.lookupPositionInBranchNode(node.branch, KEYPOS));
 
     benchmark::DoNotOptimize(
       leaf = node.leaf
     );
     //auto p = treeRef.lookupPositionInLeafNode(leaf, 1);
   }
-  //treeRef.printBranchNode(0, treeRef.rootNode.branch);
   std::cout << "Elements:" << ELEMENTS << "\n";
+  transaction::run(pop, [&] { delete_persistent<TreeType>(tree); });
   pop.close();
+  std::experimental::filesystem::remove_all(path);
 }
 BENCHMARK(BM_TreeTraverse);
 
