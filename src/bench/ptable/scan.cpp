@@ -96,7 +96,6 @@ static void BM_PBPTreeKeyScan(benchmark::State &state) {
   }
 
   pop.close();
-  //std::remove(path.c_str());
 }
 BENCHMARK(BM_PBPTreeKeyScan)->Apply(KeyRangeArguments);
 
@@ -111,12 +110,12 @@ static void BM_PBPTreeScan(benchmark::State &state) {
     pop = pool<root>::open(path, LAYOUT);
   }
 
-  auto pTable = pop.root()->pTable;
+  auto &pTable = *pop.root()->pTable;
 
   for (auto _ : state) {
     /* Scan via PTuple iterator */
-    auto eIter = pTable->end();
-    auto iter = pTable->select(
+    auto eIter = pTable.end();
+    auto iter = pTable.select(
       [&](const PTuple<int, MyTuple> &tp) {
         return (tp.get<0>() >= state.range(0)) && (tp.get<0>() <= state.range(1)) &&
                (tp.get<3>() >= state.range(2)) && (tp.get<3>() <= state.range(3));
@@ -127,8 +126,9 @@ static void BM_PBPTreeScan(benchmark::State &state) {
     }
   }
 
+  transaction::run(pop, [&] { delete_persistent<PTableType>(pop.root()->pTable); });
   pop.close();
-  //std::remove(path.c_str());
+  std::experimental::filesystem::remove_all(path);
 }
 BENCHMARK(BM_PBPTreeScan)->Apply(NonKeyRangeArguments);
 

@@ -38,15 +38,17 @@ static void BM_PointQuery(benchmark::State& state) {
     pop = pool<root>::open(path, LAYOUT);
   }
 
-  auto pTable = pop.root()->pTable;
+  auto &pTable = *pop.root()->pTable;
 
   for (auto _ : state) {
-    auto ptp = pTable->getByKey(state.range(1));
+    auto ptp = pTable.getByKey(state.range(1));
     if (ptp.getNode() != nullptr) ptp;// ptp.createTuple();
     else std::cerr << "key not found" << '\n';
   }
+
+  transaction::run(pop, [&] { delete_persistent<PTableType>(pop.root()->pTable); });
   pop.close();
-  std::remove(path.c_str());
+  std::experimental::filesystem::remove_all(path);
 }
 static void VectorArguments(benchmark::internal::Benchmark* b) {
   for (const auto &arg : POINT_ACCESS) b->Args(arg);

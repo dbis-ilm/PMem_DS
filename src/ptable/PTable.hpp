@@ -33,9 +33,9 @@
 
 namespace dbis::ptable {
 
-const std::string LAYOUT = "PTable";
+constexpr auto LAYOUT = "PTable";
 
-auto const TARGET_INDEX_NODE_SIZE =  1 * 1024; // 1KB
+constexpr auto TARGET_INDEX_NODE_SIZE =  1 * 1024; // 1KB
 
 /** Abort reason codes: */
 const auto NOT_ENOUGH_SPACE = 1;
@@ -57,9 +57,9 @@ class PTable;
 template<typename KeyType, class... Types>
 class PTable<KeyType, std::tuple<Types...>> {
   using Tuple = std::tuple<Types...>;
-  static const auto BRANCHKEYS = ((TARGET_INDEX_NODE_SIZE - 28) / (sizeof(KeyType) + 24)) & ~1;
-  static const auto LEAFKEYS = ((TARGET_INDEX_NODE_SIZE - 36) /
-    (sizeof(KeyType) + sizeof(PTuple<KeyType, Tuple>))) & ~1;
+  static constexpr auto BRANCHKEYS = ((TARGET_INDEX_NODE_SIZE - 28) / (sizeof(KeyType) + 24)) & ~1;
+  static constexpr auto LEAFKEYS = ((TARGET_INDEX_NODE_SIZE - 36) /
+    (sizeof(KeyType) + sizeof(PTuple<KeyType, Tuple>)));
 
   using VTableInfoType = VTableInfo<KeyType, Tuple>;
   using PTableInfoType = PTableInfo<KeyType, Tuple>;

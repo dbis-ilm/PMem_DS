@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <unistd.h>
+#include <experimental/filesystem>
 #include "PTable.hpp"
 
 using pmem::obj::make_persistent;
@@ -44,7 +45,7 @@ struct root {
 };
 
 const std::string path = dbis::gPmemPath + "benchdb.db";
-const auto NUM_TUPLES = 1000 * 100;
+const auto NUM_TUPLES = 1000 * 10;
 const auto POOL_SIZE = 1024 * 1024 * 256; // * 4ull; // 1GB
 
 const auto ALIGNMENT = hibit_pos(NUM_TUPLES) + 1;
