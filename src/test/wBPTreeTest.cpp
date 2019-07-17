@@ -184,20 +184,20 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     };
 
     std::vector<int> actualKeys{};
-    for(auto i = 1u; i < 5; i++)
-      if(node1Ref.search.get_ro().b.test(node1Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1), std::begin(actualKeys)));
+    for(auto i = 1u; i < node1Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
+            std::begin(actualKeys)));
     actualKeys.clear();
-    for(auto i = 1u; i < 5; i++)
-      if(node2Ref.search.get_ro().b.test(node2Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node2Ref.keys.get_ro()[node2Ref.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2), std::begin(actualKeys)));
+    for(auto i = 1u; i < node2Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node2Ref.keys.get_ro()[node2Ref.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
+            std::begin(actualKeys)));
     actualKeys.clear();
-    for(auto i = 1u; i < 5; i++)
-      if(node3Ref.search.get_ro().b.test(node3Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node3Ref.keys.get_ro()[node3Ref.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3), std::begin(actualKeys)));
+    for(auto i = 1u; i < node3Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node3Ref.keys.get_ro()[node3Ref.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
+            std::begin(actualKeys)));
 
     std::array<pptr<wBPTreeType4::LeafNode>, 3> node2Children;
     for (auto i = 1; i < 3; i++)
@@ -286,20 +286,20 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     };
 
     std::vector<int> actualKeys{};
-    for(auto i = 1u; i < 5; i++)
-      if(node1Ref.search.get_ro().b.test(node1Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1), std::begin(actualKeys)));
+    for(auto i = 1u; i < node1Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
+            std::begin(actualKeys)));
     actualKeys.clear();
-    for(auto i = 1u; i < 5; i++)
-      if(node2Ref.search.get_ro().b.test(node2Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node2Ref.keys.get_ro()[node2Ref.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2), std::begin(actualKeys)));
+    for(auto i = 1u; i < node2Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node2Ref.keys.get_ro()[node2Ref.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
+            std::begin(actualKeys)));
     actualKeys.clear();
-    for(auto i = 1u; i < 5; i++)
-      if(node3Ref.search.get_ro().b.test(node3Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node3Ref.keys.get_ro()[node3Ref.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3), std::begin(actualKeys)));
+    for(auto i = 1u; i < node3Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node3Ref.keys.get_ro()[node3Ref.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
+            std::begin(actualKeys)));
 
     std::array<pptr<wBPTreeType4::LeafNode>, 4> node2Children;
     for (auto i = 1; i < 4; i++)
@@ -398,9 +398,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
                        std::begin(inner1Ref.keys.get_ro())));
 
     std::vector<int> actualKeys{};
-    for(auto i = 1u; i < 5; i++)
-      if(inner2Ref.search.get_ro().b.test(inner2Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(inner2Ref.keys.get_ro()[inner2Ref.search.get_ro().slot[i]]);
+    for(auto i = 1u; i < inner2Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(inner2Ref.keys.get_ro()[inner2Ref.search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2), std::begin(actualKeys)));
   }
 
@@ -453,9 +452,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
 
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
     std::vector<int> actualKeys{};
-    for(auto i = 1u; i < 5; i++)
-      if(node1Ref.search.get_ro().b.test(node1Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
+    for(auto i = 1u; i < node1Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys), std::begin(actualKeys)));
 
     std::array<pptr<wBPTreeType4::LeafNode>, 5> node1Children;
@@ -498,9 +496,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     std::array<int, 8> expectedKeys{{0, 1, 2, 3, 10, 11, 12, 13}};
     std::array<int, 8> expectedValues{{100, 101, 102, 103, 200, 201, 202, 203}};
     std::vector<int> actualKeys{};
-    for(auto i = 1u; i < 9; i++)
-      if(node1Ref.search.get_ro().b.test(node1Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
+    for(auto i = 1u; i < node1Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(node1Ref.keys.get_ro()[node1Ref.search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys), std::begin(actualKeys)));
     REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
                        std::begin(node1Ref.values.get_ro())));
@@ -546,16 +543,13 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     std::array<int, 6> expectedValues2{{600, 700, 0, 200, 400, 600}};
 
     std::vector<int> actualKeys2{};
-    for(auto i = 1u; i < 7; i++)
-      if(node2Ref.search.get_ro().b.test(node2Ref.search.get_ro().slot[i]))
+    std::vector<int> actualVals2{};
+    for(auto i = 1u; i < node2Ref.search.get_ro().slot[0] + 1; i++) {
         actualKeys2.push_back(node2Ref.keys.get_ro()[node2Ref.search.get_ro().slot[i]]);
+        actualVals2.push_back(node2Ref.values.get_ro()[node2Ref.search.get_ro().slot[i]]);
+    }
     REQUIRE(std::equal(std::begin(expectedKeys2), std::begin(expectedKeys2) + 6,
                        std::begin(actualKeys2)));
-
-    std::vector<int> actualVals2{};
-    for(auto i = 1u; i < 7; i++)
-      if(node2Ref.search.get_ro().b.test(node2Ref.search.get_ro().slot[i]))
-        actualVals2.push_back(node2Ref.values.get_ro()[node2Ref.search.get_ro().slot[i]]);
     REQUIRE(std::equal(std::begin(expectedValues2), std::begin(expectedValues2) + 6,
                        std::begin(actualVals2)));
   }
@@ -955,19 +949,19 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
 
     std::array<int, 2> expectedKeys{{10, 12}};
     std::vector<int> actualKeys{};
-    for(auto i = 1u; i < 3; i++)
-      if(nodeRef.search.get_ro().b.test(nodeRef.search.get_ro().slot[i]))
-        actualKeys.push_back(nodeRef.keys.get_ro()[nodeRef.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys), std::begin(actualKeys)));
+    for(auto i = 1u; i < nodeRef.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(nodeRef.keys.get_ro()[nodeRef.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
+            std::begin(actualKeys)));
 
     std::array<int, 3> expectedKeys2{{12, 13, 14}};
     const auto leaf3 = nodeRef.children.get_ro()[4].leaf;
     const auto leaf3Ref = *leaf3;
     actualKeys.clear();
-    for(auto i = 1u; i < 4; i++)
-      if(leaf3Ref.search.get_ro().b.test(leaf3Ref.search.get_ro().slot[i]))
-        actualKeys.push_back(leaf3Ref.keys.get_ro()[leaf3Ref.search.get_ro().slot[i]]);
-    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2), std::begin(actualKeys)));
+    for(auto i = 1u; i < leaf3Ref.search.get_ro().slot[0] + 1; i++)
+      actualKeys.push_back(leaf3Ref.keys.get_ro()[leaf3Ref.search.get_ro().slot[i]]);
+    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
+            std::begin(actualKeys)));
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -1003,8 +997,10 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     std::sort(std::begin(nodevecK), std::end(nodevecK));
     std::sort(std::begin(nodevecV), std::end(nodevecV));
 
-    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys), std::begin(nodevecK)));
-    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues), std::begin(nodevecV)));
+    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
+            std::begin(nodevecK)));
+    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
+            std::begin(nodevecV)));
   }
 
   /* -------------------------------------------------------------------------------------------- */
