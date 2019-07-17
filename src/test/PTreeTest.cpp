@@ -162,12 +162,12 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
                        std::begin(node3->keys)));
 
     std::array<persistent_ptr<PTreeType2::LeafNode>, 3> node2Children;
-    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](PTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
 
     std::array<persistent_ptr<PTreeType2::LeafNode>, 4> node3Children;
-    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](PTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -229,11 +229,11 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
                        std::begin(node3->keys)));
     std::array<persistent_ptr<PTreeType2::LeafNode>, 4> node2Children;
-    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node2->children), std::end(node2->children), std::begin(node2Children), [](PTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
     std::array<persistent_ptr<PTreeType2::LeafNode>, 3> node3Children;
-    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node3->children), std::end(node3->children), std::begin(node3Children), [](PTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -351,7 +351,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(node1->keys)));
     std::array<persistent_ptr<PTreeType2::LeafNode>, 5> node1Children;
-    std::transform(std::begin(node1->children), std::end(node1->children), std::begin(node1Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(node1->children), std::end(node1->children), std::begin(node1Children), [](PTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(leafNodes), std::end(leafNodes),
                        std::begin(node1Children)));
 
@@ -442,7 +442,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     auto leaf2 = btree->newLeafNode();
     leaf1->nextLeaf = leaf2;
     leaf2->prevLeaf = leaf1;
-    auto parent = btree->newLowestBranchNode();
+    auto parent = btree->newBranchNode();
 
     PTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -483,7 +483,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     leaf2->prevLeaf = leaf1;
     leaf2->nextLeaf = leaf3;
     leaf3->prevLeaf = leaf2;
-    auto parent = btree->newLowestBranchNode();
+    auto parent = btree->newBranchNode();
 
     PTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -505,7 +505,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
 
     btree->underflowAtLeafLevel(parent, 1, leaf2);
     REQUIRE(leaf1->numKeys == 5);
-    REQUIRE(btree->rootNode.lowestbranch == parent);
+    REQUIRE(btree->rootNode.branch == parent);
     REQUIRE(parent->numKeys == 1);
 
   }
@@ -518,7 +518,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     auto leaf2 = btree->newLeafNode();
     leaf1->nextLeaf = leaf2;
     leaf2->prevLeaf = leaf1;
-    auto parent = btree->newLowestBranchNode();
+    auto parent = btree->newBranchNode();
 
     PTreeType3::SplitInfo splitInfo;
     btree->insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -601,7 +601,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     leaf5->nextLeaf = leaf6;
     leaf6->prevLeaf = leaf5;
 
-    auto inner1 = btree->newLowestBranchNode();
+    auto inner1 = btree->newBranchNode();
     inner1->keys[0] = 5;
     inner1->keys[1] = 10;
     inner1->children[0] = leaf1;
@@ -609,7 +609,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     inner1->children[2] = leaf3;
     inner1->numKeys = 2;
 
-    auto inner2 = btree->newLowestBranchNode();
+    auto inner2 = btree->newBranchNode();
     inner2->keys[0] = 20;
     inner2->keys[1] = 30;
     inner2->children[0] = leaf4;
@@ -636,7 +636,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(inner1->keys)));
     std::array<persistent_ptr<PTreeType2::LeafNode>, 5> inner1Children;
-    std::transform(std::begin(inner1->children), std::end(inner1->children), std::begin(inner1Children), [](PTreeType2::LeafOrBranchNode n) { return n.leaf; });
+    std::transform(std::begin(inner1->children), std::end(inner1->children), std::begin(inner1Children), [](PTreeType2::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren), std::end(expectedChildren),
                        std::begin(inner1Children)));
 
@@ -737,7 +737,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     btree->insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree->insertInLeafNode(leaf2, 12, 120, &splitInfo);
 
-    auto node = btree->newLowestBranchNode();
+    auto node = btree->newBranchNode();
     node->keys[0] = 10;
     node->children[0] = leaf1;
     node->children[1] = leaf2;
@@ -746,7 +746,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     btree->rootNode = node;
     btree->depth = 2;
 
-    btree->insertInLowestBranchNode(node, 11, 112, &splitInfo);
+    btree->insertInBranchNode(node, 1, 11, 112, &splitInfo);
     REQUIRE(leaf2->numKeys == 3);
 
   }
@@ -767,7 +767,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     btree->insertInLeafNode(leaf2, 13, 130, &splitInfo);
     btree->insertInLeafNode(leaf2, 14, 140, &splitInfo);
 
-    auto node = btree->newLowestBranchNode();
+    auto node = btree->newBranchNode();
     node->keys[0] = 10;
     node->children[0] = leaf1;
     node->children[1] = leaf2;
@@ -776,7 +776,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
     btree->rootNode = node;
     btree->depth = 2;
 
-    btree->insertInLowestBranchNode(node, 12, 112, &splitInfo);
+    btree->insertInBranchNode(node, 1, 12, 112, &splitInfo);
     REQUIRE(leaf2->numKeys == 2);
     REQUIRE(node->numKeys == 2);
 
@@ -785,7 +785,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PTree]") {
                        std::begin(node->keys)));
 
     std::array<int, 3> expectedKeys2{{12, 13, 14}};
-    auto leaf3 = node->children[2];
+    auto leaf3 = node->children[2].leaf;
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
                        std::begin(leaf3->keys.get_ro())));
 
