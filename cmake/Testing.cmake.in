@@ -17,8 +17,7 @@ macro( build_bench path)
   string(REGEX REPLACE ".*/([a-zA-Z0-9_]+)$" "\\1" name "${path}")
   include_directories(${TEST_INCLUDE_DIRS})
   add_executable( ${name} "${path}.cpp")
-  add_dependencies(${name} benchmark_target)
-  set(DEPS nvmDS_deps ${BENCHMARK_LIB})
+  set(DEPS nvmDS_deps benchmark)
   if (${ARGC} GREATER 1) # extra dependencies
     set(DEPS ${DEPS} ${ARGV1})
   endif()
@@ -46,7 +45,8 @@ macro (do_bench path)
   string(REGEX REPLACE ".*/([a-zA-Z0-9_]+)$" "\\1" name "${path}")
   add_test(
     NAME ${name}
-    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${path}"
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${name}"
+    --benchmark_min_time=0.01
     )
   if (${ARGC} GREATER 1) # extra dependencies
     build_bench( ${path} ${ARGV1})
@@ -54,7 +54,3 @@ macro (do_bench path)
     build_bench( ${path})
   endif()
 endmacro(do_bench)
-
-set (CTEST_ENVIRONMENT
-  "DYLD_FALLBACK_LIBRARY_PATH=${DYLD_LIBRARY_PATH}"
-  )

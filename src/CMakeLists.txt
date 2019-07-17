@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
 project (nvm-DS)
 
 ################################################################################
@@ -44,21 +44,14 @@ endif()
 # show used compiler
 message("Using Compiler: ${CMAKE_CXX_COMPILER_ID}.")
 
-set(CMAKE_MACOSX_RPATH 1)
-
 # Add our CMake directory to CMake's module path
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/")
 
-# We download some 3rdparty modules from github.com before building the project.
-include(Download3rdParty)
+# We fetch some 3rdparty modules from github.com before building the project.
+include(Fetch3rdParty)
 
-if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
-set(DYLIB_LIBRARY "-ldl")
-else()
-set(DYLIB_LIBRARY "")
-endif()
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
 
 ############################
 # Google benchmark library #
@@ -70,32 +63,22 @@ if (BUILD_GOOGLE_BENCH)
   set (BENCHMARK_LIB "${THIRD_PARTY_DIR}/benchmark/lib/libbenchmark.a")
 endif()
 
-#####################################
-# Persistent Memory Development Kit #
-#####################################
-#
-set (PMDK_LIBRARIES
-  ${THIRD_PARTY_DIR}/pmdk/lib/libpmemblk.a
-  ${THIRD_PARTY_DIR}/pmdk/lib/libpmemlog.a
-  ${THIRD_PARTY_DIR}/pmdk/lib/libpmemobj.a
-  ${THIRD_PARTY_DIR}/pmdk/lib/libpmempool.a
-  ${THIRD_PARTY_DIR}/pmdk/lib/libpmem.a
-  ${DYLIB_LIBRARY}
-)
-
 #################################
 # Pre-built common dependencies #
 #################################
 #
-configure_file(config.h.in ${CMAKE_BINARY_DIR}/generated/config.h)
+configure_file(config.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/config.h)
 
 include_directories(${PROJECT_SOURCE_DIR}
-                    ${CMAKE_BINARY_DIR}/generated
-                    ${THIRD_PARTY_DIR}
-                    ${THIRD_PARTY_DIR}/pmdk/include)
-add_library(nvmDS_deps STATIC ${THIRD_PARTY_DIR}/pmdk)
-add_dependencies(nvmDS_deps fmt_target catch_target pmdk_target) #< executes custom commands
-target_link_libraries(nvmDS_deps ${PMDK_LIBRARIES} stdc++fs ndctl daxctl)
+                    ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
+add_library(nvmDS_deps STATIC ${PMDK_INCLUDE_DIRS})
+target_link_libraries(nvmDS_deps
+    Threads::Threads
+    stdc++fs
+    ${PMDK_LIBRARIES} ndctl daxctl
+    fmt
+)
 set_target_properties(nvmDS_deps PROPERTIES LINKER_LANGUAGE CXX)
 
 #################
@@ -104,9 +87,9 @@ set_target_properties(nvmDS_deps PROPERTIES LINKER_LANGUAGE CXX)
 #
 #set(PROJECT_LIBS ${PROJECT_LIBS})
 set(PROJECT_INCLUDES_D ${PROJECT_INCLUDES_D}
-                       ${CMAKE_CURRENT_SOURCE_DIR}/utils)
+  ${CMAKE_CURRENT_SOURCE_DIR}/utils)
 set(PROJECT_INCLUDES_F ${PROJECT_INCLUDES_F}
-                       ${CMAKE_BINARY_DIR}/generated/config.h)
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/config.h)
 
 set(PROJECT_LIB_DIR ${PROJECT_INSTALL_DIR}/lib)
 set(PROJECT_INCLUDE_DIR ${PROJECT_INSTALL_DIR}/include)
@@ -124,16 +107,18 @@ add_subdirectory(ptable)  # BDCC-based analytical table structure
 # Unit test using Catch #
 #########################
 #
-add_library(Catch INTERFACE)
-target_include_directories(Catch INTERFACE test)
-enable_testing()
-add_subdirectory(test)
+if(BUILD_TEST_CASES)
+  enable_testing()
+  add_subdirectory(test)
+endif()
 
 #############################################
 # Micro-benchmarking using Google Benchmark #
 #############################################
 #
-add_subdirectory(bench)
+if(BUILD_BENCHMARKS)
+  add_subdirectory(bench)
+endif()
 
 ###################
 # Install Process #
