@@ -53,8 +53,10 @@ using pptr = persistent_ptr<Object>;
  */
 template<typename KeyType, typename ValueType, int N, int M>
 class FPTree {
-  /// we need at least two keys on a branch node to be able to split
+  /// we need at least three keys on a branch node to be able to split
   static_assert(N > 2, "number of branch keys has to be >2.");
+  /// we need an even order for branch nodes to be able to merge
+  static_assert(N % 2 == 0, "order of branch nodes must be even.");
   /// we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
 
@@ -593,7 +595,7 @@ class FPTree {
    * down to the leaf level starting at node @c node at depth @c depth.
    *
    * @param node the starting node for the insert
-   * @param depth the current depth of the tree (0 == leaf level)
+   * @param d the current depth of the tree (0 == leaf level)
    * @param key the key of the element
    * @param val the actual value corresponding to the key
    * @param splitInfo information about the split
@@ -887,8 +889,6 @@ class FPTree {
     assert(node != nullptr);
     assert(child != nullptr);
     auto &nodeRef = *node;
-    auto &childRef = *child;
-
     auto newChild = child;
     constexpr auto middle = (N + 1) / 2;
     /// 1. we check whether we can rebalance with one of the siblings
@@ -1162,7 +1162,7 @@ class FPTree {
    *
    * @param leaf the leaf to insert
    */
-  void recoveryInsert(const pptr<LeafNode> &leaf){
+  void recoveryInsert(const pptr<LeafNode> &leaf) {
     assert(depth > 0);
     assert(leaf != nullptr);
 
@@ -1194,7 +1194,7 @@ class FPTree {
    * @return true if a split was performed
    */
   bool recoveryInsertInBranchNode(BranchNode * const node, const int curr_depth,
-                                  const pptr<LeafNode> &leaf, SplitInfo *splitInfo){
+                                  const pptr<LeafNode> &leaf, SplitInfo *splitInfo) {
     auto &nodeRef = *node;
     auto &leafRef = *leaf;
     auto &splitRef = *splitInfo;

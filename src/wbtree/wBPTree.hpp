@@ -54,6 +54,8 @@ template<typename KeyType, typename ValueType, int N, int M>
 class wBPTree {
   /// we need at least two keys on a branch node to be able to split
   static_assert(N > 2, "number of branch keys has to be >2.");
+  /// we need an even order for branch nodes to be able to merge
+  static_assert(N % 2 == 0, "order of branch nodes must be even.");
   /// we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
 
@@ -268,8 +270,8 @@ class wBPTree {
    */
   wBPTree() : depth(0) {
     rootNode = newLeafNode();
-    LOG("created new wBPTree with sizeof(BranchNode) = " << sizeof(BranchNode) <<
-        ", sizeof(LeafNode) = " << sizeof(LeafNode));
+    LOG("created new wBPTree with sizeof(BranchNode) = " << sizeof(BranchNode)
+                              << ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
 
   /**
@@ -379,9 +381,9 @@ class wBPTree {
     auto node = rootNode;
     auto d = depth.get_ro();
     while ( d-- > 0) node = node.branch->children.get_ro()[0];
-    auto leaf = *node.leaf;
-    auto &leafRef = *leaf;
+    auto leaf = node.leaf;
     while (leaf != nullptr) {
+      auto &leafRef = *leaf;
       /// for each key-value pair call func
       for (auto i = 0u; i < M; i++) {
         if (!leafRef.search.get_ro().b.test(i)) continue;
@@ -403,11 +405,11 @@ class wBPTree {
    * @param func the function called for each entry
    */
   void scan(const KeyType &minKey, const KeyType &maxKey, ScanFunc func) const {
-    const auto leaf = findLeafNode(minKey);
-    auto &leafRef = *leaf;
+    auto leaf = findLeafNode(minKey);
 
     bool higherThanMax = false;
     while (!higherThanMax && leaf != nullptr) {
+      const auto &leafRef = *leaf;
       /// for each key-value pair within the range call func
       for (auto i = 0u; i < M; i++) {
         if (!leafRef.search.get_ro().b.test(i)) continue;
@@ -707,7 +709,7 @@ class wBPTree {
    */
   auto lookupPositionInLeafNode(const pptr<LeafNode> &node, const KeyType &key) const {
     auto pos = 1u;
-    auto &nodeRef = *node;
+    const auto &nodeRef = *node;
     const auto &slotArray = nodeRef.search.get_ro().slot;
     const auto &keys = nodeRef.keys.get_ro();
     auto l = 1;

@@ -52,6 +52,8 @@ template<typename KeyType, typename ValueType, size_t N, size_t M>
 class BitPBPTree {
   /// we need at least two keys on a branch node to be able to split
   static_assert(N > 2, "number of branch keys has to be >2.");
+  /// we need an even order for branch nodes to be able to merge
+  static_assert(N % 2 == 0, "order of branch nodes must be even.");
   /// we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
 
@@ -181,7 +183,6 @@ class BitPBPTree {
       currentPosition = 0;
       const auto &nodeRef = *currentNode;
       while(!nodeRef.bits.get_ro().test(currentPosition)) ++currentPosition;
-
     }
 
     iterator &operator++() {

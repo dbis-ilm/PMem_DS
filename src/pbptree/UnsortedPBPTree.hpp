@@ -52,6 +52,8 @@ template<typename KeyType, typename ValueType, int N, int M>
 class UnsortedPBPTree {
   /// we need at least two keys on a branch node to be able to split
   static_assert(N > 2, "number of branch keys has to be >2.");
+  /// we need an even order for branch nodes to be able to merge
+  static_assert(N % 2 == 0, "order of branch nodes must be even.");
   /// we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
 
@@ -614,7 +616,7 @@ class UnsortedPBPTree {
       sibRef.keys.get_rw()[sibRef.numKeys.get_ro() + i + 1] = nodeRef.keys.get_ro()[i];
       sibRef.children.get_rw()[sibRef.numKeys.get_ro() + i + 2] = nodeRef.children.get_ro()[i + 1];
     }
-    sibRef.numKeys.get_rw() = sibRef.numKeys.get_ro() + nodeRef.numKeys.get_ro() + 1;
+    sibRef.numKeys.get_rw() += nodeRef.numKeys.get_ro() + 1;
   }
 
   /**
