@@ -6,7 +6,13 @@ set(THIRD_PARTY_DIR "${PROJECT_BINARY_DIR}/_deps")
 
 # Searching for PMDK ======================================================== #
 message(STATUS "Searching for PMDK")
-pkg_check_modules(PMDK QUIET REQUIRED libpmemobj>=1.5)
+find_path(PMDK_INCLUDE_DIR libpmem.h)
+pkg_check_modules(PMDK REQUIRED libpmemobj++>=1.5)
+set(PMDK_INCLUDE_DIRS ${PMDK_INCLUDE_DIRS} ${PMDK_INCLUDE_DIR})
+if(NOT PMDK_INCLUDE_DIRS OR "${PMDK_INCLUDE_DIRS}" STREQUAL "")
+  message(FATAL_ERROR "ERROR: libpmem include directory not found.")
+endif()
+message(STATUS "  libpmem.h found in ${PMDK_INCLUDE_DIRS}")
 mark_as_advanced(PMDK_LIBRARIES PMDK_INCLUDE_DIRS)
   
 # Format ==================================================================== #
