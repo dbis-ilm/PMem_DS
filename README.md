@@ -18,7 +18,14 @@ Please see the file [COPYING](COPYING) for detailed license information.
 
 ## Requirements ##
 - C++ Compiler supporting C++17
-- ndctl/daxctl - via [github](https://github.com/pmem/ndctl) or package manager (e.g., Fedora: ```dnf install ndctl-devel daxctl-devel```)
+- PMDK >= 1.5
+
+  | Name | Github | Package |
+  | ---- | ------ | ------- |
+  | ndctl/daxctl      | [ndctl](https://github.com/pmem/ndctl)                    | ndctl-dev(el), daxctl-dev(el) |
+  | PMDK              | [pmdk](https://github.com/pmem/pmdk)                      | libpmemobj-dev(el)           |
+  | PMDK C++ bindings |  [libpmemobj-cpp](https://github.com/pmem/libpmemobj-cpp) | libpmemobj++-dev(el)         |
+  > **NOTE**: When installing via package manager - libpmemobj++-dev(el) should install the dependencies above, too.
 - Emulated NVM device [pmem.io](http://pmem.io/2016/02/22/pm-emulation.html) (optional)
 
 
