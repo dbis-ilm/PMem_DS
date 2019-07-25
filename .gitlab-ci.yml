@@ -6,7 +6,7 @@ stages:
 
 before_script:
   - echo pmdkpass | sudo -S dnf update -y
-  - echo pmdkpass | sudo -S dnf install cmake
+  - echo pmdkpass | sudo -S dnf install -y cmake
   - echo pmdkpass | sudo -S mkdir -p /mnt/pmem/test
   - echo pmdkpass | sudo -S chmod 777 /mnt/pmem/test
 
