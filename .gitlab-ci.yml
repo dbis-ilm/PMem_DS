@@ -8,25 +8,36 @@ stages:
 prepare:
   stage: prepare
   script:
-#  - echo pass | sudo -S dnf update -y
-  - echo pass | sudo -S dnf install -y cmake
-  - echo pass | sudo -S dnf install -y libpmemobj++-devel
-  - echo pass | sudo -S mkdir -p /mnt/pmem/test
-  - echo pass | sudo -S chmod 777 /mnt/pmem/test
+#    - echo pass | sudo -S dnf update -y
+    - echo pass | sudo -S dnf install -y cmake
+    - echo pass | sudo -S dnf install -y libpmemobj++-devel
+    - echo pass | sudo -S mkdir -p /mnt/pmem/test
+    - echo pass | sudo -S chmod 777 /mnt/pmem/test
+  artifacts:
+    -paths:
+      deps/
+
 
 build:
   stage: build
   script:
+    - ls -al
+    - pwd
     - mkdir build
     - cd build
-    - cmake ../src
+    - cmake -DCMAKE_CXX_FLAGS="-g -O0 -Wall -fprofile-arcs -ftest-coverage" ../src
     - make -j
   dependencies:
     - prepare
+  artifacts:
+    paths:
+      - binaries/
 
 test:
   stage: test
   script:
+    - ls -al
+    - pwd
     - ctest
   dependencies:
     - build
