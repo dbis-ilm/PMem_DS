@@ -1,10 +1,13 @@
 image: "pmem/libpmemobj-cpp:fedora-30"
 
 stages:
+  - prepare
   - build
   - test
 
-before_script:
+prepare:
+  stage: prepare
+  script:
 #  - echo pass | sudo -S dnf update -y
   - echo pass | sudo -S dnf install -y cmake
   - echo pass | sudo -S dnf install -y libpmemobj++-devel
@@ -18,9 +21,13 @@ build:
     - cd build
     - cmake ../src
     - make -j
+  dependencies:
+    - prepare
 
 test:
   stage: test
   script:
     - ctest
+  dependencies:
+    - build
 
