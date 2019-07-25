@@ -1,22 +1,15 @@
-image: "pmem/libpmemobj-cpp:fedora-30"
+image: "dbisilm/nvm-based_data_structures:latest"
 
 stages:
   - build
   - test
 
-before_script:
-#    - echo pass | sudo -S dnf update -y
-  - echo pass | sudo -S dnf install -y cmake libpmemobj++-devel
-
 build:
   stage: build
   script:
-    - ls -l /usr/lib64/libpmem*
-    - ls -l /usr/include/libpmem*
-    - pwd
     - mkdir build
     - cd build
-    - cmake -DCMAKE_CXX_FLAGS="-g -O0 -Wall -fprofile-arcs -ftest-coverage" ../src
+    - cmake -DCMAKE_CXX_FLAGS="-g -O0 -fprofile-arcs -ftest-coverage" ../src
     - make -j
   artifacts:
     paths:
