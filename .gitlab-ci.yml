@@ -5,10 +5,9 @@ stages:
   - test
 
 before_script:
-  - whoami
-  - dnf update -y
-  - mkdir -p /mnt/pmem/test
-  - chmod 777 /mnt/pmem/test
+  - echo pmdkpass | sudo -S dnf update -y
+  - echo pmdkpass | sudo -S mkdir -p /mnt/pmem/test
+  - echo pmdkpass | sudo -S chmod 777 /mnt/pmem/test
 
 build:
   stage: build
