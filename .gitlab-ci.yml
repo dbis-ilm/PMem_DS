@@ -9,19 +9,20 @@ prepare:
   stage: prepare
   script:
 #    - echo pass | sudo -S dnf update -y
-    - echo pass | sudo -S dnf install -y cmake
-    - echo pass | sudo -S dnf install -y libpmemobj++-devel
-    - echo pass | sudo -S mkdir -p /mnt/pmem/test
-    - echo pass | sudo -S chmod 777 /mnt/pmem/test
+    - echo pass | sudo -S dnf install -y cmake libpmemobj++-devel
   artifacts:
     paths:
-      - deps/
+      - /usr/bin/cmake*
+      - /usr/bin/ctest*
+      - /usr/lib64/libpmem*
+      - /usr/include/libpmem*
 
 
 build:
   stage: build
   script:
-    - ls -al
+    - ls -l /usr/lib64/libpmem*
+    - ls -l /usr/include/libpmem*
     - pwd
     - mkdir build
     - cd build
@@ -31,13 +32,13 @@ build:
     - prepare
   artifacts:
     paths:
-      - binaries/
+      - build/
 
 test:
   stage: test
   script:
-    - ls -al
-    - pwd
+    - echo pass | sudo -S mkdir -m 777 -p /mnt/pmem/test
+    - cd build
     - ctest
   dependencies:
     - build
