@@ -5,9 +5,9 @@ stages:
   - test
 
 before_script:
-  - dnf update -y
-  - mkdir -p /mnt/pmem/test
-  - chmod 777 /mnt/pmem/test
+  - sudo dnf update -y
+  - sudo mkdir -p /mnt/pmem/test
+  - sudo chmod 777 /mnt/pmem/test
 
 build:
   stage: build
