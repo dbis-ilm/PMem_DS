@@ -5,9 +5,10 @@ stages:
   - test
 
 before_script:
-  - su root -c "dnf update -y"
-  - su root -c "mkdir -p /mnt/pmem/test"
-  - su root -c "chmod 777 /mnt/pmem/test"
+  - whoami
+  - dnf update -y
+  - mkdir -p /mnt/pmem/test
+  - chmod 777 /mnt/pmem/test
 
 build:
   stage: build
