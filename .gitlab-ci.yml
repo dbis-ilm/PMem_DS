@@ -11,6 +11,9 @@ build:
     - cd build
     - cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-g -O0 -fprofile-arcs -ftest-coverage" ../src
     - make
+    # clean up unnecessary files and strip binaries
+    - rm -rf _deps *tree generated
+    - strip bench/point bench/scan bench/tree_* test/*Test
   artifacts:
     paths:
       - build/
