@@ -14,7 +14,7 @@ prepare:
     - echo pass | sudo -S mkdir -p /mnt/pmem/test
     - echo pass | sudo -S chmod 777 /mnt/pmem/test
   artifacts:
-    -paths:
+    paths:
       deps/
 
 
