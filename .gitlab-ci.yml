@@ -15,7 +15,7 @@ prepare:
     - echo pass | sudo -S chmod 777 /mnt/pmem/test
   artifacts:
     paths:
-      deps/
+      - deps/
 
 
 build:
