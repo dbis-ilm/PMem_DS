@@ -1,14 +1,14 @@
-image: "pmem/pmdk:1.7-fedora-28"
+image: "pmem/libpmemobj-cpp:fedora-30"
 
 stages:
   - build
   - test
 
 before_script:
-  - echo pmdkpass | sudo -S dnf update -y
-  - echo pmdkpass | sudo -S dnf install -y cmake
-  - echo pmdkpass | sudo -S mkdir -p /mnt/pmem/test
-  - echo pmdkpass | sudo -S chmod 777 /mnt/pmem/test
+  - echo pass | sudo -S dnf update -y
+  - echo pass | sudo -S dnf install -y cmake
+  - echo pass | sudo -S mkdir -p /mnt/pmem/test
+  - echo pass | sudo -S chmod 777 /mnt/pmem/test
 
 build:
   stage: build
