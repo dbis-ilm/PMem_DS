@@ -1,22 +1,12 @@
 image: "pmem/libpmemobj-cpp:fedora-30"
 
 stages:
-  - prepare
   - build
   - test
 
-prepare:
-  stage: prepare
-  script:
+before_scripte:
 #    - echo pass | sudo -S dnf update -y
-    - echo pass | sudo -S dnf install -y cmake libpmemobj++-devel
-  artifacts:
-    paths:
-      - /usr/bin/cmake*
-      - /usr/bin/ctest*
-      - /usr/lib64/libpmem*
-      - /usr/include/libpmem*
-
+  - echo pass | sudo -S dnf install -y cmake libpmemobj++-devel
 
 build:
   stage: build
@@ -28,8 +18,6 @@ build:
     - cd build
     - cmake -DCMAKE_CXX_FLAGS="-g -O0 -Wall -fprofile-arcs -ftest-coverage" ../src
     - make -j
-  dependencies:
-    - prepare
   artifacts:
     paths:
       - build/
