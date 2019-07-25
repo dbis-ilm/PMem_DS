@@ -5,8 +5,9 @@ stages:
   - test
 
 before_script:
-  - echo pass | sudo -S dnf update -y
+#  - echo pass | sudo -S dnf update -y
   - echo pass | sudo -S dnf install -y cmake
+  - echo pass | sudo -S dnf install -y libpmemobj++-devel
   - echo pass | sudo -S mkdir -p /mnt/pmem/test
   - echo pass | sudo -S chmod 777 /mnt/pmem/test
 
