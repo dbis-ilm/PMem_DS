@@ -4,7 +4,7 @@ NVM-based Data Strucutres
 [![coverage report](https://dbgit.prakinf.tu-ilmenau.de/code/nvm-based_data_structures/badges/master/coverage.svg)](https://dbgit.prakinf.tu-ilmenau.de/code/nvm-based_data_structures/commits/master)
 
 This is a repository for persistent data structures based on non-volatile memory (NVM).
-## TODOs: ##
+## :sparkles: TODOs: ##
 - [x] ~~PBPTree (B⁺-Tree for NVM)~~
 - [x] ~~PTable (BDCC + NVM)~~
 - [x] ~~Steffen's implementations~~
@@ -15,11 +15,11 @@ This is a repository for persistent data structures based on non-volatile memory
 - [ ] Data structure common benchmark
 - [ ] Documentation
 
-## License ##
+## :copyright: License ##
 The structures are licensed under GPLv3.
 Please see the file [COPYING](COPYING) for detailed license information.
 
-## Requirements ##
+## :heavy_plus_sign: Requirements ##
 - C++ Compiler supporting C++17
 - PMDK >= 1.5
 
@@ -32,7 +32,7 @@ Please see the file [COPYING](COPYING) for detailed license information.
 - Emulated NVM device [pmem.io](http://pmem.io/2016/02/22/pm-emulation.html) (optional)
 
 
-## Build ##
+## :gear: Build ##
 Configurations can be found in [src/CMakeLists.txt](src/CMakeLists.txt).
 
 ```
@@ -45,6 +45,16 @@ Tests and benchmarks, if enabled, can be either manually executed from the ```bu
 ```
 make test
 ```
+### :whale: Docker ###
+There is also the option to create a Docker container.
+For this you can either download a pre-built docker image: ```docker pull dbisilm/nvm-based_data_structures``` 
+or built it yourself (in project root directory) with: ```docker build .```
 
-## Documentation ##
-TODO
+After this you can start the container and bash login with e.g.:
+```
+docker run --rm -i -t dbisilm/nvm-based_data_structures /bin/bash
+```
+
+
+## :books: Documentation ##
+:construction:
