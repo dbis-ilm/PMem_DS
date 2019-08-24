@@ -14,18 +14,23 @@ if(NOT PMDK_INCLUDE_DIRS OR "${PMDK_INCLUDE_DIRS}" STREQUAL "")
 endif()
 message(STATUS "  libpmem.h found in ${PMDK_INCLUDE_DIRS}")
 mark_as_advanced(PMDK_LIBRARIES PMDK_INCLUDE_DIRS)
-  
+
 # Format ==================================================================== #
 FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
   GIT_TAG        5.3.0
-  )
+)
 FetchContent_GetProperties(fmt)
 if(NOT fmt_POPULATED)
   message(STATUS "Populating fmt (Format)")
   FetchContent_Populate(fmt)
-  add_subdirectory(${fmt_SOURCE_DIR} ${fmt_BINARY_DIR} EXCLUDE_FROM_ALL)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_HEADER_ONLY=1")
+  file(COPY ${fmt_SOURCE_DIR}/include/fmt/core.h
+            ${fmt_SOURCE_DIR}/include/fmt/format-inl.h
+            ${fmt_SOURCE_DIR}/include/fmt/format.h
+       DESTINATION ${THIRD_PARTY_DIR}/fmt
+  )
 endif()
 
 
@@ -77,7 +82,7 @@ if(BUILD_BENCHMARKS)
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
     set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
     message(STATUS "Populating benchmark (google)")
-    FetchContent_Populate(benchmark) 
+    FetchContent_Populate(benchmark)
     add_subdirectory(${benchmark_SOURCE_DIR} ${benchmark_BINARY_DIR} EXCLUDE_FROM_ALL)
   endif()
 endif()

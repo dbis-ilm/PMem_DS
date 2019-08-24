@@ -70,6 +70,7 @@ endif()
 configure_file(config.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/config.h)
 
 include_directories(${PROJECT_SOURCE_DIR}
+                    ${THIRD_PARTY_DIR}
                     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 add_library(nvmDS_deps STATIC ${PMDK_INCLUDE_DIRS})
@@ -77,7 +78,6 @@ target_link_libraries(nvmDS_deps
     Threads::Threads
     stdc++fs
     ${PMDK_LIBRARIES} ndctl daxctl
-    fmt
 )
 set_target_properties(nvmDS_deps PROPERTIES LINKER_LANGUAGE CXX)
 
