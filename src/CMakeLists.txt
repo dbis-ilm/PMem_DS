@@ -53,16 +53,6 @@ include(Fetch3rdParty)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-############################
-# Google benchmark library #
-############################
-#
-if (BUILD_GOOGLE_BENCH)
-  set(TEST_INCLUDE_DIRS ${THIRD_PARTY_DIR}/benchmark/include
-    CACHE INTERNAL "TESTING: Include Directories" FORCE)
-  set (BENCHMARK_LIB "${THIRD_PARTY_DIR}/benchmark/lib/libbenchmark.a")
-endif()
-
 #################################
 # Pre-built common dependencies #
 #################################

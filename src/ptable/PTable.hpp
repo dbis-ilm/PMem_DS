@@ -29,7 +29,7 @@
 #include "core/serialize.hpp"
 #include "core/utils.hpp"
 #include "core/VTableInfo.hpp"
-#include "PBPTree.hpp"
+#include "pbptree/PBPTree.hpp"
 
 namespace dbis::ptable {
 
