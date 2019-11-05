@@ -15,8 +15,14 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef utils_hpp_
-#define utils_hpp_
+#ifndef PTABLE_UTILS_HPP_
+#define PTABLE_UTILS_HPP_
+
+#include "DataNode.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <ostream>
 
 namespace dbis::ptable {
 
@@ -102,4 +108,4 @@ std::ostream &operator<<(std::ostream &os, std::tuple<Types...> tp) {
 
 } /* namespace dbis::ptable */
 
-#endif /* utils_hpp_ */
+#endif /* PTABLE_UTILS_HPP_ */

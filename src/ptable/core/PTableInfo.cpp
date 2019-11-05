@@ -24,8 +24,13 @@ PColumnInfo::PColumnInfo(pool_base pop) : PColumnInfo(pop, "", ColumnType::VoidT
 PColumnInfo::PColumnInfo(pool_base pop, Column col) : PColumnInfo(pop, col.first, col.second) {};
 
 PColumnInfo::PColumnInfo(pool_base pop, const std::string &n, ColumnType ct) : type(ct) {
-  transaction::run(pop, [&] {
+  if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+    transaction::run(pop, [&] {
+        name = make_persistent<char[]>(n.length() + 1);
+        strcpy(name.get(), n.c_str());
+        });
+  } else {
     name = make_persistent<char[]>(n.length() + 1);
     strcpy(name.get(), n.c_str());
-  });
+  }
 }

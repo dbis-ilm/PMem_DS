@@ -67,26 +67,28 @@ class PTableInfo {
 
   PTableInfo() {}
   PTableInfo(const VTableInfo<KeyType,TupleType> &_tInfo) {
-    auto pop = pool_by_vptr(this);
-    transaction::run(pop, [&] {
-      name.set(const_cast<std::string *>(&_tInfo.name));
-      columns = make_persistent<PColumnVector>();
-      for (const auto &c : _tInfo)
-        columns->push_back(PColumnInfo(pop, c.first, c.second));
-    });
+    initPTableInfo(_tInfo.name, _tInfo.columns);
   }
 
   PTableInfo(const std::string &_name, std::initializer_list<std::string> _columns) {
+    ColumnVector cv;
+    ColumnsConstructor<TupleType, std::tuple_size<TupleType>::value>::apply(cv, std::vector<std::string>{_columns});
+    initPTableInfo(_name, cv);
+  }
+
+  inline void initPTableInfo(const std::string &_name, const ColumnVector &_cv) {
     auto pop = pool_by_vptr(this);
-    transaction::run(pop, [&] {
+    auto initFun = [&]() {
       name.set(const_cast<std::string *>(&_name));
       columns = make_persistent<PColumnVector>();
-      ColumnVector cv;
-      ColumnsConstructor<TupleType, std::tuple_size<TupleType>::value>::apply(cv, std::vector<std::string>{_columns});
-      for (const auto &c : cv){
-        columns->push_back(PColumnInfo(pop, c.first, c.second)); // emplace_back?
-      }
-    });
+      for (const auto &c : _cv)
+        columns->push_back(PColumnInfo(pop, c.first, c.second));
+    };
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { initFun(); });
+    } else {
+      initFun();
+    }
   }
 
   std::string tableName() const { return std::string(name.data()); }

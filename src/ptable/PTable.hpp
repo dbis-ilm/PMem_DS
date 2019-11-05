@@ -29,7 +29,7 @@
 #include "core/serialize.hpp"
 #include "core/utils.hpp"
 #include "core/VTableInfo.hpp"
-#include "pbptree/PBPTree.hpp"
+#include "pbptrees/PBPTree.hpp"
 
 namespace dbis::ptable {
 
@@ -64,7 +64,7 @@ class PTable<KeyType, std::tuple<Types...>> {
   using VTableInfoType = VTableInfo<KeyType, Tuple>;
   using PTableInfoType = PTableInfo<KeyType, Tuple>;
   using ColumnIntMap = std::map<uint16_t, uint16_t>;
-  using IndexType = pbptree::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
+  using IndexType = pbptrees::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
   using DataNodePtr = persistent_ptr<DataNode<KeyType>>;
 
   /************************************************************************//**
@@ -80,14 +80,14 @@ class PTable<KeyType, std::tuple<Types...>> {
     uint16_t currentPos = 0u;
 
    public:
-    BlockIterator(const PTable<KeyType, Tuple> &_parent) :
+    explicit BlockIterator(const PTable<KeyType, Tuple> &_parent) :
       parent(_parent), currentNode(nullptr), currentPos(1) {}
 
-    BlockIterator(const PTable<KeyType, Tuple> &_parent,
+    explicit BlockIterator(const PTable<KeyType, Tuple> &_parent,
                   const ColumnRangeMap &_predicates) :
       BlockIterator(_parent, _predicates, _parent.getCandidateBlocks(_predicates)) {}
 
-    BlockIterator(const PTable<KeyType, Tuple> &_parent,
+    explicit BlockIterator(const PTable<KeyType, Tuple> &_parent,
                   const ColumnRangeMap &_predicates,
                   const DataNodeVector &_candidates) :
       parent(_parent),
@@ -139,12 +139,12 @@ class PTable<KeyType, std::tuple<Types...>> {
       return BlockIterator(parent);
     }
 
-    bool operator==(BlockIterator other) const {
+    bool operator==(const BlockIterator &other) const {
       return (
 //        currentBlock == other.currentBlock &&  // This prevents the comparison with end()
         currentPos == other.currentPos && currentCnt == other.currentCnt);
     }
-    bool operator!=(BlockIterator other) const { return !(*this == other); }
+    bool operator!=(const BlockIterator &other) const { return !(*this == other); }
 
     PTuple<KeyType, Tuple> operator*() {
       std::array<uint16_t, PTuple<KeyType, Tuple>::NUM_ATTRIBUTES> pTupleOffsets;
@@ -211,20 +211,20 @@ class PTable<KeyType, std::tuple<Types...>> {
     iterator(TreeIter _iter, TreeIter _end, Predicate _pred = [](const PTuple<KeyType, Tuple> &) { return true; })
       : treeIter(_iter), end(_end), pred(_pred) {
       while (isValid() && !pred((*treeIter).second))
-        treeIter++;
+        ++treeIter;
     }
 
     iterator &operator++() {
-      treeIter++;
+      ++treeIter;
       while (isValid() && !pred((*treeIter).second))
-        treeIter++;
+        ++treeIter;
       return *this;
     }
 
     iterator &next() {
-      treeIter++;
+      ++treeIter;
       while (isValid() && !pred((*treeIter).second))
-        treeIter++;
+        ++treeIter;
       return *this;
     }
 
@@ -264,26 +264,38 @@ class PTable<KeyType, std::tuple<Types...>> {
   /************************************************************************//**
    * \brief Default Constructor.
    ***************************************************************************/
-  PTable() {
+  explicit PTable() {
     auto pop = pool_by_vptr(this);
-    transaction::run(pop, [&] { init("", {}, Dimensions()); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { init("", {}, Dimensions()); });
+    } else {
+      init("", {}, Dimensions());
+    }
   }
 
   /************************************************************************//**
    * \brief Constructor for a given schema and dimension clustering.
    ***************************************************************************/
-  PTable(const std::string &tName, ColumnInitList columns,
-         const Dimensions &_bdccInfo = Dimensions()) {
+  explicit PTable(const std::string &tName, ColumnInitList columns,
+                  const Dimensions &_bdccInfo = Dimensions()) {
     auto pop = pool_by_vptr(this);
-    transaction::run(pop, [&] { init(tName, columns, _bdccInfo); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { init(tName, columns, _bdccInfo); });
+    } else {
+      init(tName, columns, _bdccInfo);
+    }
   }
 
   /************************************************************************//**
    * \brief Constructor for a given schema (using TableInfo) and dimension clustering.
    ***************************************************************************/
-  PTable(const VTableInfoType &tInfo, const Dimensions &_bdccInfo = Dimensions()) {
+  explicit PTable(const VTableInfoType &tInfo, const Dimensions &_bdccInfo = Dimensions()) {
     auto pop = pool_by_vptr(this);
-    transaction::run(pop, [&] { init(tInfo, _bdccInfo); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { init(tInfo, _bdccInfo); });
+    } else {
+      init(tInfo, _bdccInfo);
+    }
   }
 
   /************************************************************************//**
@@ -347,13 +359,15 @@ class PTable<KeyType, std::tuple<Types...>> {
         std::pair < DataNodePtr, DataNodePtr > newNodes;
         if (pmemobj_tx_stage() == TX_STAGE_NONE)
           transaction::run(pop, [&] { newNodes = splitBlock(targetNode); });
-        else
+        else {
           newNodes = splitBlock(targetNode);
+        }
         return insert(key, rec);
       } catch (std::exception &te) {
         std::cerr << te.what() << '\n'
                   << "Splitting table block failed. Tuple not inserted: "
                   << rec << '\n';
+        return -1;
       }
     }
 
@@ -414,27 +428,35 @@ class PTable<KeyType, std::tuple<Types...>> {
    ***************************************************************************/
   int deleteByKey(KeyType key) {
     std::size_t nres;
-    auto pop = pool_by_vptr(this);
-    transaction::run(pop, [&] {
-      auto ptp = getByKey(key);
+    auto ptp = getByKey(key);
 
-      // indicate the deleted tuple
-      const auto &dataPos = reinterpret_cast<const uint16_t &>(ptp.getNode()->block.get_ro()[gDataOffsetPos]);
-      const auto colSize = ColumnAttributes<toColumnType<typename std::tuple_element<0, Tuple>::type>()>::dataSize;
-      const auto pos = (ptp.getOffsetAt(0) - dataPos) / colSize;
+    /// indicate the deleted tuple
+    const auto &dataPos = reinterpret_cast<const uint16_t &>(ptp.getNode()->block.get_ro()[gDataOffsetPos]);
+    const auto colSize = ColumnAttributes<toColumnType<typename std::tuple_element<0, Tuple>::type>()>::dataSize;
+    const auto pos = (ptp.getOffsetAt(0) - dataPos) / colSize;
+
+    auto deleteFun = [&]() {
       ptp.getNode()->deleted.get_rw().emplace_back(pos);
-
       //TODO: Delete from histogram?
 //      const auto &ptp = getByKey(key);
 //      const auto xtr = static_cast<uint32_t>(getBDCCFromTuple(*ptp.createTuple()).to_ulong());
 //      ptp.getNode()->histogram[xtr]--;
 
-      // delete from index
+      /// delete from index
       nres = static_cast<std::size_t>(root->index->erase(key));
 
       // free space of PTuple
 //      delete_persistent<PTuple<KeyType, Tuple>>(ptp);
-    });
+    };
+
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      auto pop = pool_by_pptr(root);
+      transaction::run(pop, [&] { deleteFun(); });
+    } else {
+      deleteFun();
+    }
+
+    //});
     return nres;
   }
 
@@ -539,7 +561,6 @@ class PTable<KeyType, std::tuple<Types...>> {
 
       /* Body/Column/Minipage data */
       if (cnt > 0) {
-        size_t idx = 0;
         const auto nCols = std::tuple_size<Tuple>::value;
         auto printColumns = [&] (auto element, std::size_t idx) {
           const auto colName = tInfo.columnInfo(idx).getName();
@@ -778,21 +799,23 @@ class PTable<KeyType, std::tuple<Types...>> {
    * \return number of inserted elements.
    ***************************************************************************/
   int insertTuple(KeyType key, Tuple tp, DataNodePtr &targetNode) {
-    auto pop = pool_by_vptr(this);
-    auto &b = targetNode->block.get_rw();
-    const auto &tInfo = *this->root->tInfo;
-    auto recordSize = 0u;
-    auto recordOffset = 0u;
-    auto idx = 0u;
-    auto &cnt = reinterpret_cast<uint32_t &>(b[gCountPos]);
-    auto &freeSpace = reinterpret_cast<uint16_t &>(b[gFreeSpacePos]);
-    std::array<uint16_t, PTuple<KeyType, Tuple>::NUM_ATTRIBUTES> pTupleOffsets;
-    StreamType buf;
-    serialize(tp, buf);
+    auto pop = pool_by_pptr(root);
+    auto &nodeRef = *targetNode;
 
-    try {
-      transaction::run(pop, [&] {
-        // Each attribute (SMA + Data)
+    auto insertFun = [&]() {
+      auto &b = nodeRef.block.get_rw();
+      const auto &tInfo = *this->root->tInfo;
+      auto &cnt = reinterpret_cast<uint32_t &>(b[gCountPos]);
+      auto &freeSpace = reinterpret_cast<uint16_t &>(b[gFreeSpacePos]);
+      std::array<uint16_t, PTuple<KeyType, Tuple>::NUM_ATTRIBUTES> pTupleOffsets;
+      StreamType buf;
+      serialize(tp, buf);
+
+      try {
+        auto recordSize = 0u;
+        auto recordOffset = 0u;
+        auto idx = 0u;
+        /// Each attribute (SMA + Data)
         for (auto &c : tInfo) {
           const auto &smaPos = reinterpret_cast<const uint16_t &>(b[gSmaOffsetPos + idx * gAttrOffsetSize]);
           const auto &dataPos = reinterpret_cast<const uint16_t &>(b[gDataOffsetPos + idx * gAttrOffsetSize]);
@@ -820,8 +843,7 @@ class PTable<KeyType, std::tuple<Types...>> {
               recordSize += sizeof(int);
               pTupleOffsets[idx] = dataOffset;
 
-            }
-              break;
+            } break;
 
             case ColumnType::DoubleType: {
               /* Get Record Value */
@@ -844,8 +866,7 @@ class PTable<KeyType, std::tuple<Types...>> {
               recordSize += sizeof(double);
               pTupleOffsets[idx] = dataOffset;
 
-            }
-              break;
+            } break;
 
             case ColumnType::StringType: {
               /* Get Record Value */
@@ -860,9 +881,7 @@ class PTable<KeyType, std::tuple<Types...>> {
               if (cnt == 0) {
                 const auto end_minipage =
                   (PTuple<KeyType, Tuple>::NUM_ATTRIBUTES <= idx + 1) ? gBlockSize
-                                                                      : reinterpret_cast<const uint16_t &>(b[
-                    gSmaOffsetPos
-                      + (idx + 1) * gAttrOffsetSize]);
+                  : reinterpret_cast<const uint16_t &>(b[gSmaOffsetPos + (idx + 1) * gAttrOffsetSize]);
                 targetDataPos = end_minipage - stringSize;
               } else /* cnt != 0 */{
                 const auto &last_offset = reinterpret_cast<const uint16_t &>(b[targetOffsetPos - gOffsetSize]);
@@ -891,8 +910,7 @@ class PTable<KeyType, std::tuple<Types...>> {
               recordSize += stringSize + gOffsetSize;
               pTupleOffsets[idx] = targetDataPos;
 
-            }
-              break;
+            } break;
 
             default:throw PTableException("unsupported column type\n");
           } /* end of switch */
@@ -907,18 +925,23 @@ class PTable<KeyType, std::tuple<Types...>> {
         /* Update histogram */
         const auto xtr = static_cast<uint32_t>(getBDCCFromTuple(tp).to_ulong());
         targetNode->histogram.get_rw()[xtr]++;
-      }); /* end of transaction */
+      } catch (std::exception &te) {
+        std::cerr << te.what() << '\n' << "Inserting Tuple failed: " << tp << '\n';
+      }
+    }; ///< end insertFun
 
-    } catch (std::exception &te) {
-      std::cerr << te.what() << '\n' << "Inserting Tuple failed: " << tp << '\n';
+    /// Check if we are already in a transaction; if not, we need to start a new transaction
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { insertFun(); });
+    } else {
+      insertFun();
     }
-
     return 1;
   }
 
   std::pair<DataNodePtr, DataNodePtr> splitBlock(DataNodePtr &oldNode) {
-    auto pop = pool_by_vptr(this);
-    const auto &tInfo = *this->root->tInfo;
+    auto pop = pool_by_pptr(root);
+    const auto &tInfo = *root->tInfo;
     const auto &block0 = oldNode->block.get_ro();
 
     /* Calculate new ranges from histogram (at half for the beginning) */
@@ -934,14 +957,12 @@ class PTable<KeyType, std::tuple<Types...>> {
     /* Create two new blocks */
     newNode1 = make_persistent<struct DataNode<KeyType>>();
     newNode2 = make_persistent<struct DataNode<KeyType>>();
-    newNode1->block.get_rw() = initBlock(bdccMin, splitValue);
-    if (splitValue == bdccMax) {
-      newNode2->block.get_rw() = initBlock(bdccMax, bdccMax);
-    } else {
-      newNode2->block.get_rw() = initBlock(splitValue + 1, bdccMax);
-    }
-    const auto &block1 = newNode1->block.get_ro();
-    const auto &block2 = newNode2->block.get_ro();
+    auto &block1Ref = newNode1->block.get_rw();
+    auto &block2Ref = newNode2->block.get_rw();
+    block1Ref = initBlock(bdccMin, splitValue);
+    block2Ref = (splitValue == bdccMax) ?
+      initBlock(bdccMax, bdccMax) :
+      initBlock(splitValue + 1, bdccMax);
 
     /* Get, Calculate BDCC, Insert and delete all current values to corresponding block */
     const auto &cnt = reinterpret_cast<const uint16_t &>(block0[gCountPos]);
@@ -957,9 +978,7 @@ class PTable<KeyType, std::tuple<Types...>> {
       /*
       auto setPTupleOffsets = [&](auto element, std::size_t idx) {
         pTupleOffsets[idx] = ColumnAttributes<toColumnType<decltype(element)>()>::dataOffsetPos(
-          block0,
-          gDataOffsetPos + idx * gAttrOffsetSize,
-          tuplePos
+          block0, gDataOffsetPos + idx * gAttrOffsetSize, tuplePos
         );
       };
       forEachTypeInTuple<decltype(setPTupleOffsets), Types...>(setPTupleOffsets);
@@ -1001,19 +1020,21 @@ class PTable<KeyType, std::tuple<Types...>> {
       }
     } /* end of tuple loop */
 
-    // adapt pointers
+    /// adapt pointers
     if (root->dataNodes == oldNode) {
       root->dataNodes = newNode1;
     } else {
       auto prevBlock = root->dataNodes;
-      while (prevBlock->next != oldNode) {
-        prevBlock = prevBlock->next;
+      auto nextBlock = prevBlock->next;
+      while (nextBlock != oldNode) {
+        prevBlock = nextBlock;
+        nextBlock = prevBlock->next;
       }
       prevBlock->next = newNode1;
     }
     newNode1->next = newNode2;
     newNode2->next = oldNode->next;
-    delete_persistent<DataNode<KeyType>>(oldNode);
+    //delete_persistent<DataNode<KeyType>>(oldNode);  ///TODO: this results in a deadlock for PMDK...
 
     return std::make_pair(newNode1, newNode2);
   }
@@ -1021,7 +1042,7 @@ class PTable<KeyType, std::tuple<Types...>> {
   const std::bitset<32> getBDCCFromTuple(const Tuple &tp) const {
     const auto &bdccInfo = *this->root->bdccInfo;
     const auto &tInfo = *this->root->tInfo;
-    auto dimCnt = 0u;        //< dimension column counter
+    //auto dimCnt = 0u;        //< dimension column counter
     std::bitset<32> xtr = 0; //< extracted bdcc value
 
 
@@ -1132,9 +1153,9 @@ class PTable<KeyType, std::tuple<Types...>> {
   const bool isPTupleinRange(const PTuple<KeyType, Tuple> &ptp, const ColumnRangeMap &predicates) const {
     const auto &tInfo = *root->tInfo;
     const auto &b = ptp.getNode()->block.get_ro();
-    auto inRange = true;
 
     /*
+    auto inRange = true;
     auto isInRange = [&](auto element, std::size_t idx) {
       if (!inRange) return; // previous element already not in range
       if (predicates.find(idx) == predicates.end()) return; // check if column is used in predicates
@@ -1185,33 +1206,33 @@ class PTable<KeyType, std::tuple<Types...>> {
 
     auto bdcc_min = reinterpret_cast<const uint32_t &>(node->block.get_ro()[gBDCCRangePos1]);
     auto bdcc_max = reinterpret_cast<const uint32_t &>(node->block.get_ro()[gBDCCRangePos2]);
-    auto enoughSpace = hasEnoughSpace(node, tp);
+    auto needsSplit = !hasEnoughSpace(node, tp);
     auto splitNode = node;
 
     /* Loop for special case where multiple nodes share the same bdcc value */
-    while (bdcc_min == bdcc_max && !enoughSpace && splitNode->next != nullptr) {
+    while (bdcc_min == bdcc_max && needsSplit && splitNode->next != nullptr) {
       splitNode = splitNode->next;
       bdcc_min = reinterpret_cast<const uint32_t &>(splitNode->block.get_ro()[gBDCCRangePos1]);
       bdcc_max = reinterpret_cast<const uint32_t &>(splitNode->block.get_ro()[gBDCCRangePos2]);
-      enoughSpace = hasEnoughSpace(splitNode, tp);
+      needsSplit = !hasEnoughSpace(splitNode, tp);
     }
     /* reset if all nodes with same bdcc value are full */
     auto xtr = static_cast<uint32_t>(getBDCCFromTuple(tp).to_ulong());
     if (xtr < bdcc_min) {
       splitNode = node;
-      enoughSpace = false;
+      needsSplit = true;
     }
 
     /* set results */
     node = splitNode;
-    return enoughSpace ? false : true; // split or not
+    return needsSplit;
   }
 
   const bool hasEnoughSpace(const DataNodePtr &node, const Tuple &tp) const {
     StreamType buf;
     serialize(tp, buf);
 
-    const auto b = node->block.get_ro();
+    const auto &b = node->block.get_ro();
 
     /* first check total space of node */
     const auto globalSpace = reinterpret_cast<const uint16_t &>(b[gFreeSpacePos]);
@@ -1264,7 +1285,7 @@ class PTable<KeyType, std::tuple<Types...>> {
           uint16_t freeSpaceMiniPage;
           auto iterBegin = buf.cbegin() + recordOffset;
           const auto value = deserialize<std::string>(iterBegin, buf.end());
-          const auto cValue = value.c_str();
+          //const auto cValue = value.c_str();
           const auto stringSize = value.size() + 1;
 
           if (cnt != 0) {

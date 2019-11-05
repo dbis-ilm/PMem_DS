@@ -259,7 +259,7 @@ class PTuple {
   /************************************************************************//**
    * \brief the number of attributes for this tuple type.
    ***************************************************************************/
-  static const auto NUM_ATTRIBUTES = std::tuple_size<Tuple>::value;
+  static constexpr auto NUM_ATTRIBUTES = std::tuple_size<Tuple>::value;
 
   /************************************************************************//**
    * \brief Meta function returning the type of a specific tuple attribute.
