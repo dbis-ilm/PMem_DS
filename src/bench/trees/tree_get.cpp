@@ -19,8 +19,8 @@
 
 /* Get benchmarks on Tree */
 static void BM_TreeGet(benchmark::State &state) {
-  std::cout << "BRANCHKEYS: " << BRANCHKEYS
-    << "\nLEAFKEYS: " << LEAFKEYS
+  std::cout << "BRANCHKEYS: " << BRANCHKEYS << " - " << sizeof(TreeType::BranchNode)
+    << "\nLEAFKEYS: " << LEAFKEYS << " - " << sizeof(TreeType::LeafNode)
     << "\n";
   struct root {
     persistent_ptr<TreeType> tree;
@@ -49,11 +49,11 @@ static void BM_TreeGet(benchmark::State &state) {
   auto leaf = node.leaf;
 
   /* BENCHMARKING */
-  unsigned int p;
   for (auto _ : state) {
-   benchmark::DoNotOptimize(
-        p = treeRef.lookupPositionInLeafNode(leaf, LEAFKEYS)
-   );
+    unsigned int p;
+    benchmark::DoNotOptimize(
+      p = treeRef.lookupPositionInLeafNode(leaf, KEYPOS)
+    );
   }
 
   //treeRef.printBranchNode(0, treeRef.rootNode.branch);
@@ -64,5 +64,4 @@ static void BM_TreeGet(benchmark::State &state) {
   std::experimental::filesystem::remove_all(path);
 }
 BENCHMARK(BM_TreeGet);
-
 BENCHMARK_MAIN();

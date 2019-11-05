@@ -18,6 +18,8 @@
 #ifndef DBIS_PERSISTEMULATION_HPP
 #define DBIS_PERSISTEMULATION_HPP
 
+#include <cstddef>
+
 namespace dbis {
 
 static unsigned int bytesWritten = 0u;
@@ -29,8 +31,14 @@ class PersistEmulation {
       bytesWritten = 0;
       return bytes;
     }
-    static void writeBytes(unsigned int bytes) {
-      bytesWritten += bytes;
+
+    template<std::size_t B>
+    static void writeBytes() {
+      bytesWritten += B;
+    }
+
+    static void writeBytes(std::size_t B) {
+      bytesWritten += B;
     }
 
     static inline void persistStall() {

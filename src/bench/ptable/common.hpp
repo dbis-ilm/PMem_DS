@@ -21,7 +21,7 @@
 #include <chrono>
 #include <unistd.h>
 #include <experimental/filesystem>
-#include "PTable.hpp"
+#include "ptable/PTable.hpp"
 
 using pmem::obj::make_persistent;
 using pmem::obj::p;
@@ -89,7 +89,7 @@ const int hibit_pos(int n) noexcept {
 
 template<size_t SIZE>
 static inline VectorVector *createPointVector(VectorVector *v) {
-  if (SIZE >= 100) {
+  if constexpr (SIZE >= 100) {
     createPointVector<SIZE / 10>(v);
     v->emplace_back(Vector{SIZE, SIZE / 2});
   }
@@ -129,8 +129,8 @@ void insert (pool<root> &pop, const std::string &path, size_t entries) {
     measures.push_back(diff);
   }
 
-  auto avg = std::accumulate(measures.begin(), measures.end(), 0) / measures.size();
-  auto minmax = std::minmax_element(std::begin(measures), std::end(measures));
+  const auto avg = std::accumulate(measures.begin(), measures.end(), 0) / measures.size();
+  const auto minmax = std::minmax_element(std::begin(measures), std::end(measures));
   LOG("\nInsert Statistics in µs: "
          << "\n\tAvg: \t" << avg
          << "\n\tMin: \t" << *minmax.first

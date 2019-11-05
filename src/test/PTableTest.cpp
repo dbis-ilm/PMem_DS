@@ -66,10 +66,11 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
 
   SECTION("delete and get by key, update by using delete/insert") {
     for (auto i = 0u; i < 10; i++) {
-      REQUIRE(get<0>(pTable->getByKey(i + 1)) == i + 1);
-      REQUIRE(get<1>(pTable->getByKey(i + 1)) == (i + 1) * 100);
-      REQUIRE(get<2>(pTable->getByKey(i + 1)) == fmt::format("String #{0}", i));
-      REQUIRE(get<3>(pTable->getByKey(i + 1)) == (i + 1) * 12.345);
+      const auto tp = pTable->getByKey(i + 1);
+      REQUIRE(get<0>(tp) == i + 1);
+      REQUIRE(get<1>(tp) == (i + 1) * 100);
+      REQUIRE(get<2>(tp) == fmt::format("String #{0}", i));
+      REQUIRE(get<3>(tp) == (i + 1) * 12.345);
      }
 
     auto c = 0u;
@@ -80,10 +81,11 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
     REQUIRE(pTable->count() == 5);
 
     for (auto i = 5u; i < 10; i++) {
-      REQUIRE(get<0>(pTable->getByKey(i + 1)) == i + 1);
-      REQUIRE(get<1>(pTable->getByKey(i + 1)) == (i + 1) * 100);
-      REQUIRE(get<2>(pTable->getByKey(i + 1)) == fmt::format("String #{0}", i));
-      REQUIRE(get<3>(pTable->getByKey(i + 1)) == (i + 1) * 12.345);
+      const auto tp = pTable->getByKey(i + 1);
+      REQUIRE(get<0>(tp) == i + 1);
+      REQUIRE(get<1>(tp) == (i + 1) * 100);
+      REQUIRE(get<2>(tp) == fmt::format("String #{0}", i));
+      REQUIRE(get<3>(tp) == (i + 1) * 12.345);
     }
 
     for (auto i = 0u; i < 5; i++) {
@@ -103,10 +105,11 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
       pTable->updateComplete(i + 1, tup);
     }
     for (auto i = 5u; i < 10; i++) {
-      REQUIRE(get<0>(pTable->getByKey(i + 1)) == i + 1);
-      REQUIRE(get<1>(pTable->getByKey(i + 1)) == (i + 1) * 200);
-      REQUIRE(get<2>(pTable->getByKey(i + 1)) == fmt::format("String #{0}", i));
-      REQUIRE(get<3>(pTable->getByKey(i + 1)) == (i + 1) * 1.0);
+      const auto tp = pTable->getByKey(i + 1);
+      REQUIRE(get<0>(tp) == i + 1);
+      REQUIRE(get<1>(tp) == (i + 1) * 200);
+      REQUIRE(get<2>(tp) == fmt::format("String #{0}", i));
+      REQUIRE(get<3>(tp) == (i + 1) * 1.0);
     }
 
     for (auto i = 0u; i < 5; i++) {

@@ -23,7 +23,7 @@
 #define UNIT_TESTS 1
 #include "UnsortedPBPTree.hpp"
 
-using namespace dbis::pbptree;
+using namespace dbis::pbptrees;
 
 using pmem::obj::delete_persistent_atomic;
 using pmem::obj::pool;
@@ -773,13 +773,11 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     PBPTreeType4::SplitInfo splitInfo;
 
     const auto leaf1 = btree.newLeafNode();
-    auto &leaf1Ref = *leaf1;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
     btree.insertInLeafNode(leaf1, 2, 20, &splitInfo);
     btree.insertInLeafNode(leaf1, 3, 30, &splitInfo);
 
     const auto leaf2 = btree.newLeafNode();
-    auto &leaf2Ref = *leaf2;
     btree.insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree.insertInLeafNode(leaf2, 12, 120, &splitInfo);
 
@@ -794,7 +792,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree.depth.get_rw() = 2;
 
     btree.insertInBranchNode(node, 1, 11, 112, &splitInfo);
-    REQUIRE(leaf2Ref.numKeys.get_ro() == 3);
+    REQUIRE(leaf2->numKeys.get_ro() == 3);
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -803,13 +801,11 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     PBPTreeType4::SplitInfo splitInfo;
 
     const auto leaf1 = btree.newLeafNode();
-    auto &leaf1Ref = *leaf1;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
     btree.insertInLeafNode(leaf1, 2, 20, &splitInfo);
     btree.insertInLeafNode(leaf1, 3, 30, &splitInfo);
 
     const auto leaf2 = btree.newLeafNode();
-    auto &leaf2Ref = *leaf2;
     btree.insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree.insertInLeafNode(leaf2, 11, 110, &splitInfo);
     btree.insertInLeafNode(leaf2, 13, 130, &splitInfo);
@@ -826,8 +822,8 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree.depth.get_rw() = 2;
 
     btree.insertInBranchNode(node, 1, 12, 112, &splitInfo);
-    REQUIRE(leaf2Ref.numKeys.get_ro() == 2);
-    REQUIRE(nodeRef.numKeys.get_ro() == 2);
+    REQUIRE(leaf2->numKeys.get_ro() == 2);
+    REQUIRE(node->numKeys.get_ro() == 2);
 
     std::array<int, 2> expectedKeys{{10, 12}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),

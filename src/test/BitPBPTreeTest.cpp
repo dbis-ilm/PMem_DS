@@ -24,7 +24,7 @@
 #include "BitPBPTree.hpp"
 
 
-using namespace dbis::pbptree;
+using namespace dbis::pbptrees;
 
 using pmem::obj::delete_persistent_atomic;
 using pmem::obj::pool;
@@ -93,7 +93,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Looking up a key in a leaf node") {
     auto &btree = *rootRef.btree10;
-    const auto node = btree.newLeafNode();
+    auto node = btree.newLeafNode();
     auto &nodeRef = *node;
     for (auto i = 0; i < 10; i++) {
       nodeRef.keys.get_rw()[i] = i + 1;
@@ -346,7 +346,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
     btree.underflowAtBranchLevel(innerNodes[0], 0, innerNodes[1]);
 
     REQUIRE(node1Ref.bits.get_ro().count() == 1);
-    REQUIRE((node1Ref.keys.get_ro())[btree.findMinKeyInNode(innerNodes[0])] == 9);
+    REQUIRE((node1Ref.keys.get_ro())[dbis::findMinKeyAtPNode(innerNodes[0], node1Ref.bits.get_ro())] == 9);
 
     REQUIRE(node2Ref.bits.get_ro().count() == 2);
     REQUIRE(node3Ref.bits.get_ro().count() == 2);
@@ -498,8 +498,8 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
   SECTION("Handling of underflow at a leaf node by merge and replace the root node") {
     auto &btree = *rootRef.btree6;
 
-    const auto leaf1 = btree.newLeafNode();
-    const auto leaf2 = btree.newLeafNode();
+    auto leaf1 = btree.newLeafNode();
+    auto leaf2 = btree.newLeafNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
     leaf1Ref.nextLeaf = leaf2;
@@ -517,12 +517,12 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
 
     parentRef.keys.get_rw()[0] = 4;
     parentRef.children.get_rw()[0] = leaf1;
-    parentRef.children.get_rw()[1] = leaf2;
+    parentRef.children.get_rw()[6] = leaf2;
     parentRef.bits.get_rw().set(0);
     btree.rootNode = parent;
     btree.depth = 1;
 
-    btree.underflowAtLeafLevel(parent, 1, leaf2);
+    btree.underflowAtLeafLevel(parent, 6, leaf2);
     REQUIRE(leaf1Ref.bits.get_ro().count() == 5);
     REQUIRE(btree.rootNode.leaf == leaf1);
 
@@ -540,7 +540,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
     auto &btree = *rootRef.btree6;
 
     const auto leaf1 = btree.newLeafNode();
-    const auto leaf2 = btree.newLeafNode();
+    auto leaf2 = btree.newLeafNode();
     const auto leaf3 = btree.newLeafNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
@@ -573,6 +573,8 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
 
     btree.underflowAtLeafLevel(parent, 1, leaf2);
     REQUIRE(leaf1Ref.bits.get_ro().count() == 5);
+    REQUIRE(leaf2 == nullptr);
+    REQUIRE(leaf3Ref.bits.get_ro().count() == 3);
     REQUIRE(btree.rootNode.branch == parent);
     REQUIRE(parentRef.bits.get_ro().count() == 1);
   }
@@ -582,7 +584,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
     auto &btree = *rootRef.btree6;
 
     const auto leaf1 = btree.newLeafNode();
-    const auto leaf2 = btree.newLeafNode();
+    auto leaf2 = btree.newLeafNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
     leaf1Ref.nextLeaf = leaf2;
@@ -784,9 +786,9 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
       nodeRef.bits.get_rw().set(i);
     }
 
-    btree.insertInLeafNodeAtFreePosition(node, 5, 5000);
+    btree.insertInLeafNodeAtPosition(node, 9, 5, 5000);
     REQUIRE(nodeRef.bits.get_ro().count() == 10);
-    btree.insertInLeafNodeAtFreePosition(node, 1, 1);
+    btree.insertInLeafNodeAtPosition(node, 10, 1, 1);
     REQUIRE(nodeRef.bits.get_ro().count() == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
@@ -841,10 +843,8 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
     auto &btree = *rootRef.btree4;
     PBPTreeType4::SplitInfo splitInfo;
     const auto leaf1 = btree.newLeafNode();
-    const auto leaf2 = btree.newLeafNode();
+    auto leaf2 = btree.newLeafNode();
     const auto node = btree.newBranchNode();
-    auto &leaf1Ref = *leaf1;
-    auto &leaf2Ref = *leaf2;
     auto &nodeRef = *node;
 
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -862,18 +862,19 @@ TEST_CASE("Finding the leaf node containing a key", "[BitPBPTree]") {
     nodeRef.bits.get_rw().set(0);
 
     btree.rootNode = node;
-    btree.depth = 2;
+    btree.depth = 1;
 
-    btree.insertInBranchNode(node, 1, 12, 112, &splitInfo);
-    REQUIRE(leaf2Ref.bits.get_ro().count() == 2);
-    REQUIRE(nodeRef.bits.get_ro().count() == 2);
+    btree.insertInBranchNode(node, 1, 12, 120, &splitInfo);
+    REQUIRE(btree.rootNode.branch->bits.get_ro().count() == 2);
+    leaf2 = btree.findLeafNode(10);
+    REQUIRE(leaf2->bits.get_ro().count() == 2);
 
     std::array<int, 2> expectedKeys{{10, 12}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
                        std::begin(nodeRef.keys.get_ro())));
 
     std::array<int, 3> expectedKeys2{{12, 13, 14}};
-    const auto leaf3 = (nodeRef.children.get_ro())[4].leaf;
+    const auto leaf3 = nodeRef.children.get_ro()[4].leaf;
     auto &leaf3Ref = *leaf3;
     std::vector<int> leaf3Keys{};
     for (auto i = 0u; i < PBPTreeType4::LeafNode::NUM_KEYS; i++)

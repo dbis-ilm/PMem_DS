@@ -24,7 +24,7 @@
 #include "PBPTree.hpp"
 
 
-using namespace dbis::pbptree;
+using namespace dbis::pbptrees;
 
 using pmem::obj::delete_persistent;
 using pmem::obj::delete_persistent_atomic;
@@ -193,7 +193,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     std::array<pptr<PBPTreeType4::LeafNode>, 7> leafNodes = {
       { btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode(),
         btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode()}
-    }; 
+    };
 
     const auto node1 = btree.newBranchNode();
     const auto node2 = btree.newBranchNode();
@@ -471,7 +471,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     auto &btree = *rootRef.btree6;
 
     const auto leaf1 = btree.newLeafNode();
-    const auto leaf2 = btree.newLeafNode();
+    auto leaf2 = btree.newLeafNode();
     const auto parent = btree.newBranchNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
@@ -487,10 +487,10 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree.insertInLeafNode(leaf2, 4, 40, &splitInfo);
     btree.insertInLeafNode(leaf2, 5, 50, &splitInfo);
 
-    parent->keys.get_rw()[0] = 4;
-    parent->numKeys.get_rw() = 1;
-    parent->children.get_rw()[0] = leaf1;
-    parent->children.get_rw()[1] = leaf2;
+    parentRef.keys.get_rw()[0] = 4;
+    parentRef.numKeys.get_rw() = 1;
+    parentRef.children.get_rw()[0] = leaf1;
+    parentRef.children.get_rw()[1] = leaf2;
     btree.rootNode = parent;
     btree.depth = 1;
 
@@ -512,7 +512,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     auto &btree = *rootRef.btree6;
 
     const auto leaf1 = btree.newLeafNode();
-    const auto leaf2 = btree.newLeafNode();
+    auto leaf2 = btree.newLeafNode();
     const auto leaf3 = btree.newLeafNode();
     const auto parent = btree.newBranchNode();
     auto &leaf1Ref = *leaf1;
@@ -535,12 +535,12 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree.insertInLeafNode(leaf3, 8, 80, &splitInfo);
     btree.insertInLeafNode(leaf3, 9, 90, &splitInfo);
 
-    parent->keys.get_rw()[0] = 4;
-    parent->keys.get_rw()[1] = 7;
-    parent->numKeys.get_rw() = 2;
-    parent->children.get_rw()[0] = leaf1;
-    parent->children.get_rw()[1] = leaf2;
-    parent->children.get_rw()[1] = leaf3;
+    parentRef.keys.get_rw()[0] = 4;
+    parentRef.keys.get_rw()[1] = 7;
+    parentRef.numKeys.get_rw() = 2;
+    parentRef.children.get_rw()[0] = leaf1;
+    parentRef.children.get_rw()[1] = leaf2;
+    parentRef.children.get_rw()[1] = leaf3;
     btree.rootNode = parent;
 
     btree.underflowAtLeafLevel(parent, 1, leaf2);
@@ -554,7 +554,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     auto &btree = *rootRef.btree6;
 
     const auto leaf1 = btree.newLeafNode();
-    const auto leaf2 = btree.newLeafNode();
+    auto leaf2 = btree.newLeafNode();
     const auto parent = btree.newBranchNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
@@ -571,10 +571,10 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree.insertInLeafNode(leaf2, 5, 50, &splitInfo);
     btree.insertInLeafNode(leaf2, 6, 60, &splitInfo);
 
-    parent->keys.get_rw()[0] = 5;
-    parent->numKeys.get_rw() = 1;
-    parent->children.get_rw()[0] = leaf1;
-    parent->children.get_rw()[1] = leaf2;
+    parentRef.keys.get_rw()[0] = 5;
+    parentRef.numKeys.get_rw() = 1;
+    parentRef.children.get_rw()[0] = leaf1;
+    parentRef.children.get_rw()[1] = leaf2;
 
     btree.underflowAtLeafLevel(parent, 1, leaf2);
     REQUIRE(leaf1Ref.numKeys == 3);
@@ -771,8 +771,6 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     const auto leaf1 = btree.newLeafNode();
     const auto leaf2 = btree.newLeafNode();
     const auto node = btree.newBranchNode();
-    auto &leaf1Ref = *leaf1;
-    auto &leaf2Ref = *leaf2;
     auto &nodeRef = *node;
 
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -791,7 +789,7 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree.depth = 2;
 
     btree.insertInBranchNode(node, 1, 11, 112, &splitInfo);
-    REQUIRE(leaf2Ref.numKeys == 3);
+    REQUIRE(leaf2->numKeys == 3);
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -802,8 +800,6 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     auto leaf1 = btree.newLeafNode();
     auto leaf2 = btree.newLeafNode();
     auto node = btree.newBranchNode();
-    auto &leaf1Ref = *leaf1;
-    auto &leaf2Ref = *leaf2;
     auto &nodeRef = *node;
 
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -824,8 +820,8 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
     btree.depth = 2;
 
     btree.insertInBranchNode(node, 1, 12, 112, &splitInfo);
-    REQUIRE(leaf2Ref.numKeys == 2);
-    REQUIRE(nodeRef.numKeys == 2);
+    REQUIRE(leaf2->numKeys == 2);
+    REQUIRE(node->numKeys == 2);
 
     std::array<int, 2> expectedKeys{{10, 12}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
@@ -897,6 +893,47 @@ TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
       num++;
     }
     REQUIRE(num == 50);
+  }
+
+  /* -------------------------------------------------------------------------------------------- */
+  SECTION("A mixture of inserts and deletes") {
+    auto btree = rootRef.btree10;
+    auto &btreeRef = *rootRef.btree10;
+    transaction::run(pop, [&] {
+      if(btree) delete_persistent<PBPTreeType10>(btree);
+      btree = make_persistent<PBPTreeType10>();
+    });
+
+    for (auto i = 60; i >= 0; --i) {
+      btreeRef.insert(i, i* 10);
+    }
+    btreeRef.erase(1);
+    REQUIRE(btreeRef.depth.get_ro() == 2);
+    const auto &rootNode = *btreeRef.rootNode.branch;
+    REQUIRE(rootNode.numKeys == 1);
+
+    for (auto i = 0u; i < rootNode.numKeys; ++i) {
+      auto &branch = *rootNode.children.get_ro()[i].branch;
+      REQUIRE(branch.numKeys == 5);
+      for (auto j = 0u; j < branch.numKeys; ++j) {
+        auto &leaf = *branch.children.get_ro()[j].leaf;
+        REQUIRE(leaf.numKeys == 5);
+      }
+
+    }
+
+    btreeRef.erase(0);
+    REQUIRE(btreeRef.depth.get_ro() == 1);
+
+    const auto &newRoot = *btreeRef.rootNode.branch;
+    auto k = 2u;
+    for (auto i = 0u; i < newRoot.numKeys; ++i) {
+      auto &leaf = *newRoot.children.get_ro()[i].leaf;
+      for (auto j = 0u; j < leaf.numKeys; ++j) {
+        REQUIRE(leaf.keys.get_ro()[j] == k++);
+      }
+    }
+
   }
 
   /* Clean up ----------------------------------------------------------------------------------- */

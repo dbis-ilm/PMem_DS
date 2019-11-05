@@ -32,7 +32,7 @@
 #include "benchmark/benchmark.h"
 #include "PBPTree.hpp"
 
-using namespace dbis::pbptree;
+using namespace dbis::pbptrees;
 
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
@@ -45,11 +45,11 @@ using pmem::obj::transaction;
 using MyTuple = std::tuple <int, int, double>;
 using MyKey = unsigned long long;
 constexpr auto TARGET_BRANCH_SIZE = 512;
-constexpr auto TARGET_LEAF_SIZE = 512; //< 512B best performance
+constexpr auto TARGET_LEAF_SIZE = 256; //< 512B best performance
 constexpr auto TARGET_DEPTH = 1;
-constexpr auto IS_HYBRID = false;
-const std::string path = dbis::gPmemPath + "tree_bench.data";
-constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 1ull; //< 1GB
+constexpr auto IS_HYBRID = 0;
+const std::string path = dbis::gPmemPath + "tree_benchSp.data";
+constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull; //< 1GB
 constexpr auto LAYOUT = "Tree";
 
 /* wBPTree pre-calculations */
@@ -58,12 +58,12 @@ constexpr unsigned int getBranchKeyswBPTree() {
   constexpr auto keys = getBranchKeyswBPTree<N-1>();
   constexpr auto CL_h = keys + ((keys + 63) / 64) * 8;
   constexpr auto CL = ((CL_h + 63) / 64) * 64;
-  constexpr auto SIZE = CL + keys * (sizeof(MyKey) + 16) + 16; //< CacheLine structure & n keys & n+1 children
-  return (SIZE <= TARGET_BRANCH_SIZE)? keys : ((TARGET_BRANCH_SIZE - CL - 16) / (sizeof(MyKey) + 16));
+  constexpr auto SIZE = CL + keys * (sizeof(MyKey) + 24) + 24; //< CacheLine structure & n keys & n+1 children
+  return (SIZE <= TARGET_BRANCH_SIZE)? keys : ((TARGET_BRANCH_SIZE - CL - 24) / (sizeof(MyKey) + 24));
 }
 template<>
 constexpr unsigned int getBranchKeyswBPTree<1>() {
-  return ((TARGET_BRANCH_SIZE - 64 - 16) / (sizeof(MyKey) + 16));
+  return ((TARGET_BRANCH_SIZE - 64 - 24) / (sizeof(MyKey) + 24));
 }
 template<unsigned int N>
 constexpr unsigned int getLeafKeyswBPTree() {
@@ -91,7 +91,7 @@ constexpr unsigned int getLeafKeysPBPTree() {
 /* FPTree pre-calculations */
 template<unsigned int N>
 constexpr unsigned int getBranchKeysFPTree() {
-  return ((TARGET_BRANCH_SIZE - 28) / (sizeof(MyKey) + 24)); //< lowest branch uses actually less space
+  return ((TARGET_BRANCH_SIZE - 28) / (sizeof(MyKey) + 24));
 }
 template<unsigned int N>
 constexpr unsigned int getLeafKeysFPTree() {
@@ -106,6 +106,33 @@ constexpr unsigned int getLeafKeysFPTree<1>() {
   return ((TARGET_LEAF_SIZE - 64 - 32) / (sizeof(MyKey) + sizeof(MyTuple)));
 }
 
+/* BitPBPTree pre-calculations */
+template<unsigned int N>
+constexpr unsigned int getBranchKeysBitPBPTree() {
+  constexpr auto keys = getBranchKeysBitPBPTree<N-1>();
+  constexpr auto word = sizeof(unsigned long) * 8;
+  constexpr auto BM = (keys + word - 1) / word * 8;
+  constexpr auto SIZE = BM + keys * (sizeof(MyKey) + 24) + 24; //< bitmap structure & n keys & n+1 children
+  return (SIZE <= TARGET_BRANCH_SIZE)? keys : ((TARGET_BRANCH_SIZE - BM - 24) / (sizeof(MyKey) + 24));
+}
+template<>
+constexpr unsigned int getBranchKeysBitPBPTree<1>() {
+  return ((TARGET_BRANCH_SIZE - sizeof(unsigned long) - 24) / (sizeof(MyKey) + 24));
+}
+
+template<unsigned int N>
+constexpr unsigned int getLeafKeysBitPBPTree() {
+  constexpr auto keys = getLeafKeysBitPBPTree<N-1>();
+  constexpr auto word = sizeof(unsigned long) * 8;
+  constexpr auto BM = (keys + word - 1) / word * 8;
+  constexpr auto SIZE = BM + 32 + keys * (sizeof(MyKey) + sizeof(MyTuple));
+  return (SIZE <= TARGET_LEAF_SIZE)? keys : ((TARGET_LEAF_SIZE - BM - 32) / (sizeof(MyKey) + sizeof(MyTuple)));
+}
+template<>
+constexpr unsigned int getLeafKeysBitPBPTree<1>() {
+  return ((TARGET_LEAF_SIZE - sizeof(unsigned long) - 32) / (sizeof(MyKey) + sizeof(MyTuple)));
+}
+
 /* Power of function */
 constexpr uint64_t ipow(uint64_t base, int exp, uint64_t result = 1) {
   return exp < 1 ? result : ipow(base*base, exp/2, (exp % 2) ? result*base : result);
@@ -115,7 +142,7 @@ constexpr uint64_t ipow(uint64_t base, int exp, uint64_t result = 1) {
 constexpr auto LEAFKEYS = getLeafKeysPBPTree<5>(); ///< 5 iterations should be enough
 constexpr auto BRANCHKEYS = getBranchKeysPBPTree<5>() & ~1; ///< make this one even
 constexpr auto ELEMENTS = LEAFKEYS*ipow(BRANCHKEYS+1, TARGET_DEPTH);
-constexpr auto KEYPOS = ELEMENTS/ELEMENTS;
+constexpr auto KEYPOS = 1;
 
 using TreeType = PBPTree<MyKey, MyTuple, BRANCHKEYS, LEAFKEYS>;
 
@@ -149,7 +176,7 @@ class HybridWrapper {
     return node.branch->children.get_ro()[pos];
   }
 
-  inline void recover(const T &tree, Int2Type<true>) const {
+  inline void recover(T &tree, Int2Type<true>) const {
     tree.recover();
   }
   inline void recover(const T &tree, Int2Type<false>) const {
@@ -169,7 +196,7 @@ class HybridWrapper {
     return getChildAt(node, pos, Int2Type<isHybrid>());
   }
 
-  inline void recover(const T &tree) const {
+  inline void recover(T &tree) const {
     recover(tree, Int2Type<isHybrid>());
   }
 };

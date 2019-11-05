@@ -31,27 +31,27 @@ static void BM_TreeScan(benchmark::State &state) {
   if (access(path.c_str(), F_OK) != 0) {
     pop = pool<root>::create(path, LAYOUT, POOL_SIZE);
     transaction::run(pop, [&] {
-        pop.root()->tree = make_persistent<TreeType>();
-        });
-    insert(pop.root()->tree);
+      pop.root()->tree = make_persistent<TreeType>();
+      insert(pop.root()->tree);
+    });
   } else {
     LOG("Warning: " << path << " already exists");
     pop = pool<root>::open(path, LAYOUT);
-    hybridWrapper.recover(*pop.root()->tree);
+    transaction::run(pop, [&] {
+      hybridWrapper.recover(*pop.root()->tree);
+    });
   }
   auto tree = pop.root()->tree;
   auto &treeRef = *tree;
   auto node = treeRef.rootNode;
+  MyKey key;
 
   /* BENCHMARKING */
   for (auto _ : state) {
-
     //benchmark::DoNotOptimize(
-      treeRef.scan([](const auto& k, const auto& v) {
-         const auto key = k;
-        });
-    //);
-    //auto p = treeRef.lookupPositionInLeafNode(leaf, 1);
+    treeRef.scan([&key](const auto& k, const auto& v) {
+        benchmark::DoNotOptimize(key = k);
+    });
   }
   //treeRef.printBranchNode(0, treeRef.rootNode.branch);
   std::cout << "Elements:" << ELEMENTS << "\n";

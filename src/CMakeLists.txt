@@ -6,7 +6,7 @@ project (nvm-DS)
 ################################################################################
 
 # Set the mount path of your pmem device where the structures should be stored
-set(PMEM_MNT_PATH "/mnt/pmem/test")
+set(PMEM_MNT_PATH "/mnt/pmem0/test")
 
 # Installation path (creates include and lib within this directory)
 if(NOT PROJECT_INSTALL_DIR)
@@ -39,6 +39,10 @@ set(CMAKE_CXX_FLAGS_RELEASE -O3)
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Setting build type to 'Release' as none was specified.")
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+endif()
+if(CMAKE_BUILD_TYPE EQUAL "Release")
+  # this disables asserts for release builds
+  add_definitions("-DNDEBUG")
 endif()
 
 # show used compiler
@@ -88,9 +92,9 @@ set(PROJECT_INCLUDE_DIR ${PROJECT_INSTALL_DIR}/include)
 # Including Data Structures #
 #############################
 #
-add_subdirectory(pbptree) # Persistent version of B⁺-Tree
-add_subdirectory(fptree)  # Remake of the FPTree
-add_subdirectory(wbtree)  # Remake of the wB+Tree
+add_subdirectory(pbptrees) # Persistent versions of B⁺-Tree, contains also:
+                           # - Remake of the FPTree
+                           # - Remake of the wB+Tree
 add_subdirectory(ptable)  # BDCC-based analytical table structure
 
 #########################

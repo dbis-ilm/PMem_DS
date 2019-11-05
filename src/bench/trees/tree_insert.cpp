@@ -66,7 +66,9 @@ static void BM_TreeInsert(benchmark::State &state) {
     dbis::PersistEmulation::getBytesWritten();
     state.ResumeTiming();
 
-    split = treeRef.insertInLeafNode(leaf, KEYPOS, reqTup, &splitInfo);
+    transaction::run(pop, [&] {
+      split = treeRef.insertInLeafNode(leaf, KEYPOS, reqTup, &splitInfo);
+    });
 
     state.PauseTiming();
     assert(split == false);
@@ -99,6 +101,6 @@ void prepare(const persistent_ptr<TreeType> tree) {
   switch (KEYPOS) {
     case 1 /*first*/: insertLoop(2, LEAFKEYS); break;
     case ELEMENTS /*last*/:  insertLoop(1, LEAFKEYS-1);break;
-    case ELEMENTS/2 /*middle*/: {insertLoop(1, KEYPOS-1); insertLoop(KEYPOS+1, LEAFKEYS);}
+    case (ELEMENTS+1)/2 /*middle*/: {insertLoop(1, KEYPOS-1); insertLoop(KEYPOS+1, LEAFKEYS);}
   }
 }

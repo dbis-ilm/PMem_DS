@@ -30,9 +30,9 @@
 #include <libpmemobj++/utils.hpp>
 
 #include "config.h"
-#include "utils/ElementOfRankK.hpp"
+#include "utils/BitOperations.hpp"
 
-namespace dbis::wbptree {
+namespace dbis::pbptrees {
 
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
@@ -125,17 +125,15 @@ class wHBPTree {
     std::array<uint8_t, E+1> slot; ///< slot array for indirection, first = num
     std::bitset<E> b;              ///< bitset for valid entries
 
-    unsigned int getFreeZero() const {
-      unsigned int idx = 0;
-      while (idx < E && b.test(idx)) ++idx;
-      return idx;
+    inline const auto getFreeZero() const {
+      return BitOperations::getFreeZero(b);
     }
   };
 
   /**
    * A structure for representing a leaf node of a B+ tree.
    */
-  struct LeafNode {
+  struct alignas(64) LeafNode {
     /**
      * Constructor for creating a new empty leaf node.
      */
@@ -153,7 +151,7 @@ class wHBPTree {
   /**
    * A structure for representing an branch node (branch node) of a B+ tree.
    */
-  struct BranchNode {
+  struct alignas(64) BranchNode {
     /**
      * Constructor for creating a new empty branch node.
      */
@@ -207,8 +205,8 @@ class wHBPTree {
     Node rightChild; ///< the resulting rhs child node
   };
 
-  unsigned int                depth; ///< the depth of the tree, i.e. the number of levels (0 => rootNode is LeafNode)
-  Node                     rootNode; ///< pointer to the root node
+  unsigned int      depth; ///< the depth of the tree, i.e. the number of levels (0 => rootNode is LeafNode)
+  Node           rootNode; ///< pointer to the root node
   pptr<LeafNode> leafList; ///< pointer to the most left leaf node. Necessary for recovery
 
   public:
@@ -297,34 +295,31 @@ class wHBPTree {
    * @param val the value that is associated with the key
    */
   void insert(const KeyType &key, const ValueType &val) {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] {
-      SplitInfo splitInfo;
+    SplitInfo splitInfo;
 
-      bool wasSplit = false;
-      if (depth == 0) {
-        /// the root node is a leaf node
-        auto n = rootNode.leaf;
-        wasSplit = insertInLeafNode(n, key, val, &splitInfo);
-      } else {
-        /// the root node is a branch node
-        auto n = rootNode.branch;
-        wasSplit = insertInBranchNode(n, depth, key, val, &splitInfo);
-      }
-      if (wasSplit) {
-        /* we had an overflow in the node and therefore the node is split */
-        const auto root = newBranchNode();
-        auto &rootRef = *root;
-        rootRef.keys[0] = splitInfo.key;
-        rootRef.children[0] = splitInfo.leftChild;
-        rootRef.children[N] = splitInfo.rightChild;
-        rootRef.search.slot[1] = 0;
-        rootRef.search.b.set(0);
-        rootRef.search.slot[0] = 1;
-        rootNode.branch = root;
-        ++depth;
-      }
-    });
+    bool wasSplit = false;
+    if (depth == 0) {
+      /// the root node is a leaf node
+      auto n = rootNode.leaf;
+      wasSplit = insertInLeafNode(n, key, val, &splitInfo);
+    } else {
+      /// the root node is a branch node
+      auto n = rootNode.branch;
+      wasSplit = insertInBranchNode(n, depth, key, val, &splitInfo);
+    }
+    if (wasSplit) {
+      /* we had an overflow in the node and therefore the node is split */
+      const auto root = newBranchNode();
+      auto &rootRef = *root;
+      rootRef.keys[0] = splitInfo.key;
+      rootRef.children[0] = splitInfo.leftChild;
+      rootRef.children[N] = splitInfo.rightChild;
+      rootRef.search.slot[1] = 0;
+      rootRef.search.b.set(0);
+      rootRef.search.slot[0] = 1;
+      rootNode.branch = root;
+      ++depth;
+    }
   }
 
   /**
@@ -358,8 +353,6 @@ class wHBPTree {
    */
   bool erase(const KeyType &key) {
     bool deleted = false;
-    auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] {
       if (depth == 0) {
         /* special case: the root node is a leaf node and there is no need to
          * handle underflow */
@@ -371,7 +364,6 @@ class wHBPTree {
         assert(node != nullptr);
         deleted = eraseFromBranchNode(node, depth, key);
       }
-    });
     return deleted;
   }
  /**
@@ -430,14 +422,14 @@ class wHBPTree {
     /// we traverse to the leftmost leaf node
     auto node = rootNode;
     auto d = depth;
-    while ( d-- > 0) node = node.branch->children[0];
+    while (d-- > 0) node = node.branch->children[0];
     auto leaf = node.leaf;
-
     while (leaf != nullptr) {
       const auto &leafRef = *leaf;
       /// for each key-value pair call func
+      const auto &bits = leafRef.search.get_ro().b;
       for (auto i = 0u; i < M; i++) {
-        if (!leafRef.search.get_ro().b.test(i)) continue;
+        if (!bits.test(i)) continue;
         const auto &key = leafRef.keys.get_ro()[i];
         const auto &val = leafRef.values.get_ro()[i];
         func(key, val);
@@ -462,8 +454,9 @@ class wHBPTree {
     while (!higherThanMax && leaf != nullptr) {
       const auto &leafRef = *leaf;
       /// for each key-value pair within the range call func
+      const auto &bits = leafRef.search.get_ro().b;
       for (auto i = 0u; i < M; i++) {
-        if (!leafRef.search.get_ro().b.test(i)) continue;
+        if (!bits.test(i)) continue;
         auto &key = leafRef.keys.get_ro()[i];
         if (key < minKey) continue;
         if (key > maxKey) { higherThanMax = true; continue; }
@@ -509,7 +502,7 @@ class wHBPTree {
 
       /// move all entries behind this position to a new sibling node
       pptr<LeafNode> sibling = newLeafNode();
-      auto &sibRef = *sibling; 
+      auto &sibRef = *sibling;
       auto &sibSlots = sibRef.search.get_rw().slot;
       sibSlots[0] = slotArray[0] - middle;
       for (auto i = 1u; i < sibSlots[0] + 1; i++) {
@@ -1351,6 +1344,6 @@ class wHBPTree {
   }
 
 }; /* end class wHBPTree */
-} /* namespace dbis::wbptree */
+} /* namespace dbis::pbptrees */
 
 #endif /* DBIS_wHBPTree_hpp_ */

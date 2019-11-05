@@ -13,7 +13,7 @@ do_test(PBPTreeTest)
 do_test(UnsortedPBPTreeTest)
 do_test(BitPBPTreeTest)
 # FPTree
-do_test(PTreeTest)
+do_test(HPBPTreeTest)
 do_test(FPTreeTest)
 # wBPTree
 do_test(wBPTreeTest)

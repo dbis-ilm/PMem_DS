@@ -24,7 +24,7 @@
 #include "wHBPTree.hpp"
 
 
-using namespace dbis::wbptree;
+using namespace dbis::pbptrees;
 
 using pmem::obj::delete_persistent;
 using pmem::obj::delete_persistent_atomic;

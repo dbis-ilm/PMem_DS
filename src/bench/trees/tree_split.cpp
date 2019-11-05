@@ -64,7 +64,9 @@ static void BM_TreeSplit(benchmark::State &state) {
     dbis::PersistEmulation::getBytesWritten();
     state.ResumeTiming();
 
-    treeRef.splitLeafNode(leaf, &splitInfo);
+    transaction::run(pop, [&] {
+      treeRef.splitLeafNode(leaf, &splitInfo);
+    });
 
     state.PauseTiming();
     //treeRef.printLeafNode(0, leaf);

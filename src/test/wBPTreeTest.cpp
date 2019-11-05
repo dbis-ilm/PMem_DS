@@ -23,7 +23,7 @@
 #define UNIT_TESTS 1
 #include "wBPTree.hpp"
 
-using namespace dbis::wbptree;
+using namespace dbis::pbptrees;
 
 using pmem::obj::delete_persistent_atomic;
 using pmem::obj::pool;
@@ -74,8 +74,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Looking up a key in an inner node") {
     auto &btree = *rootRef.btree10;
-    const auto node = btree.newBranchNode();
-		auto &nodeRef = *node;
+    auto node = btree.newBranchNode();
+    auto &nodeRef = *node;
     for (auto i = 0; i < 10; i++) {
       nodeRef.keys.get_rw()[i] = i + 1;
       nodeRef.search.get_rw().b.set(i);
@@ -95,8 +95,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Looking up a key in a leaf node") {
     auto &btree = *rootRef.btree10;
-    const auto node = btree.newLeafNode();
-		auto &nodeRef = *node;
+    auto node = btree.newLeafNode();
+    auto &nodeRef = *node;
     for (auto i = 0; i < 10; i++) {
       nodeRef.keys.get_rw()[i] = i + 1;
       nodeRef.search.get_rw().b.set(i);
@@ -121,11 +121,11 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     };
 
     const auto node1 = btree.newBranchNode();
-		auto &node1Ref = *node1;
+    auto &node1Ref = *node1;
     const auto node2 = btree.newBranchNode();
-		auto &node2Ref = *node2;
+    auto &node2Ref = *node2;
     const auto node3 = btree.newBranchNode();
-		auto &node3Ref = *node3;
+    auto &node3Ref = *node3;
 
     node1Ref.keys.get_rw()[0] = 8;
     node1Ref.keys.get_rw()[1] = 20;
@@ -223,11 +223,11 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     };
 
     const auto node1 = btree.newBranchNode();
-		auto &node1Ref = *node1;
+    auto &node1Ref = *node1;
     const auto node2 = btree.newBranchNode();
-		auto &node2Ref = *node2;
+    auto &node2Ref = *node2;
     const auto node3 = btree.newBranchNode();
-		auto &node3Ref = *node3;
+    auto &node3Ref = *node3;
 
     node1Ref.keys.get_rw()[0] = 4;
     node1Ref.keys.get_rw()[1] = 20;
@@ -412,9 +412,9 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     };
 
     const auto node1 = btree.newBranchNode();
-		auto &node1Ref = *node1;
+    auto &node1Ref = *node1;
     const auto node2 = btree.newBranchNode();
-		auto &node2Ref = *node2;
+    auto &node2Ref = *node2;
 
     node1Ref.keys.get_rw()[0] = 5;
     node1Ref.children.get_rw()[0] = leafNodes[0];
@@ -435,7 +435,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     node2Ref.search.get_rw().slot[0] = 2;
 
     auto root = btree.newBranchNode();
-		auto &root1Ref = *root;
+    auto &root1Ref = *root;
     root1Ref.keys.get_rw()[0] = 15;
     root1Ref.children.get_rw()[0] = node1;
     root1Ref.children.get_rw()[4] = node2;
@@ -467,9 +467,9 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto &btree = *rootRef.btree10;
 
     const auto node1 = btree.newLeafNode();
-		auto &node1Ref = *node1;
+    auto &node1Ref = *node1;
     const auto node2 = btree.newLeafNode();
-		auto &node2Ref = *node2;
+    auto &node2Ref = *node2;
 
     for (auto i = 0; i < 4; i++) {
       node1Ref.keys.get_rw()[i] = i;
@@ -508,9 +508,9 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto &btree = *rootRef.btree10;
 
     const auto node1 = btree.newLeafNode();
-		auto &node1Ref = *node1;
+    auto &node1Ref = *node1;
     const auto node2 = btree.newLeafNode();
-		auto &node2Ref = *node2;
+    auto &node2Ref = *node2;
 
     for (auto i = 0; i < 8; i++) {
       node1Ref.keys.get_rw()[i] = i + 1;
@@ -559,13 +559,13 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto &btree = *rootRef.btree3;
 
     const auto leaf1 = btree.newLeafNode();
-		auto &leaf1Ref = *leaf1;
-    const auto leaf2 = btree.newLeafNode();
-		auto &leaf2Ref = *leaf2;
+    auto &leaf1Ref = *leaf1;
+    auto leaf2 = btree.newLeafNode();
+    auto &leaf2Ref = *leaf2;
     leaf1Ref.nextLeaf = leaf2;
     leaf2Ref.prevLeaf = leaf1;
     const auto parent = btree.newBranchNode();
-		auto &parentRef = *parent;
+    auto &parentRef = *parent;
 
     wBPTreeType6::SplitInfo splitInfo;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -601,17 +601,17 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto &btree = *rootRef.btree3;
 
     const auto leaf1 = btree.newLeafNode();
-		auto &leaf1Ref = *leaf1;
-    const auto leaf2 = btree.newLeafNode();
-		auto &leaf2Ref = *leaf2;
+    auto &leaf1Ref = *leaf1;
+    auto leaf2 = btree.newLeafNode();
+    auto &leaf2Ref = *leaf2;
     const auto leaf3 = btree.newLeafNode();
-		auto &leaf3Ref = *leaf3;
+    auto &leaf3Ref = *leaf3;
     leaf1Ref.nextLeaf = leaf2;
     leaf2Ref.prevLeaf = leaf1;
     leaf2Ref.nextLeaf = leaf3;
     leaf3Ref.prevLeaf = leaf2;
     const auto parent = btree.newBranchNode();
-		auto &parentRef = *parent;
+    auto &parentRef = *parent;
 
     wBPTreeType6::SplitInfo splitInfo;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -646,13 +646,13 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto &btree = *rootRef.btree3;
 
     const auto leaf1 = btree.newLeafNode();
-		auto &leaf1Ref = *leaf1;
-    const auto leaf2 = btree.newLeafNode();
-		auto &leaf2Ref = *leaf2;
+    auto &leaf1Ref = *leaf1;
+    auto leaf2 = btree.newLeafNode();
+    auto &leaf2Ref = *leaf2;
     leaf1Ref.nextLeaf = leaf2;
     leaf2Ref.prevLeaf = leaf1;
     const auto parent = btree.newBranchNode();
-		auto &parentRef = *parent;
+    auto &parentRef = *parent;
 
     wBPTreeType6::SplitInfo splitInfo;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -701,34 +701,34 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     wBPTreeType4::SplitInfo splitInfo;
 
     const auto leaf1 = btree.newLeafNode();
-		auto &leaf1Ref = *leaf1;
+    auto &leaf1Ref = *leaf1;
     btree.insertInLeafNode(leaf1, 1, 1, &splitInfo);
     btree.insertInLeafNode(leaf1, 2, 2, &splitInfo);
     btree.insertInLeafNode(leaf1, 3, 3, &splitInfo);
 
     const auto leaf2 = btree.newLeafNode();
-		auto &leaf2Ref = *leaf2;
+    auto &leaf2Ref = *leaf2;
     btree.insertInLeafNode(leaf2, 5, 5, &splitInfo);
     btree.insertInLeafNode(leaf2, 6, 6, &splitInfo);
     leaf1Ref.nextLeaf = leaf2;
     leaf2Ref.prevLeaf = leaf1;
 
     const auto leaf3 = btree.newLeafNode();
-		auto &leaf3Ref = *leaf3;
+    auto &leaf3Ref = *leaf3;
     btree.insertInLeafNode(leaf3, 10, 10, &splitInfo);
     btree.insertInLeafNode(leaf3, 11, 11, &splitInfo);
     leaf2Ref.nextLeaf = leaf3;
     leaf3Ref.prevLeaf = leaf2;
 
     const auto leaf4 = btree.newLeafNode();
-		auto &leaf4Ref = *leaf4;
+    auto &leaf4Ref = *leaf4;
     btree.insertInLeafNode(leaf4, 15, 15, &splitInfo);
     btree.insertInLeafNode(leaf4, 16, 16, &splitInfo);
     leaf3Ref.nextLeaf = leaf4;
     leaf4Ref.prevLeaf = leaf3;
 
     const auto leaf5 = btree.newLeafNode();
-		auto &leaf5Ref = *leaf5;
+    auto &leaf5Ref = *leaf5;
     btree.insertInLeafNode(leaf5, 20, 20, &splitInfo);
     btree.insertInLeafNode(leaf5, 21, 21, &splitInfo);
     btree.insertInLeafNode(leaf5, 22, 22, &splitInfo);
@@ -736,7 +736,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     leaf5Ref.prevLeaf = leaf4;
 
     const auto leaf6 = btree.newLeafNode();
-		auto &leaf6Ref = *leaf6;
+    auto &leaf6Ref = *leaf6;
     btree.insertInLeafNode(leaf6, 31, 31, &splitInfo);
     btree.insertInLeafNode(leaf6, 32, 32, &splitInfo);
     btree.insertInLeafNode(leaf6, 33, 33, &splitInfo);
@@ -744,7 +744,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     leaf6Ref.prevLeaf = leaf5;
 
     const auto inner1 = btree.newBranchNode();
-		auto &inner1Ref = *inner1;
+    auto &inner1Ref = *inner1;
     inner1Ref.keys.get_rw()[0] = 5;
     inner1Ref.keys.get_rw()[1] = 10;
     inner1Ref.children.get_rw()[0] = leaf1;
@@ -757,7 +757,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     inner1Ref.search.get_rw().slot[0] = 2;
 
     const auto inner2 = btree.newBranchNode();
-		auto &inner2Ref = *inner2;
+    auto &inner2Ref = *inner2;
     inner2Ref.keys.get_rw()[0] = 20;
     inner2Ref.keys.get_rw()[1] = 30;
     inner2Ref.children.get_rw()[0] = leaf4;
@@ -770,7 +770,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     inner2Ref.search.get_rw().slot[0] = 2;
 
     auto root = btree.newBranchNode();
-		auto &root1Ref = *root;
+    auto &root1Ref = *root;
     root1Ref.keys.get_rw()[0] = 15;
     root1Ref.children.get_rw()[0] = inner1;
     root1Ref.children.get_rw()[4] = inner2;
@@ -805,7 +805,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     wBPTreeType12::SplitInfo splitInfo;
     auto res = false;
     const auto node = btree.newLeafNode();
-		auto &nodeRef = *node;
+    auto &nodeRef = *node;
 
     for (auto i = 0; i < 9; i++) {
       nodeRef.keys.get_rw()[i] = (i + 1) * 2;
@@ -852,7 +852,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto &btree = *rootRef.btree20;
 
     const auto node = btree.newLeafNode();
-		auto &nodeRef = *node;
+    auto &nodeRef = *node;
 
     for (auto i = 0; i < 9; i++) {
       nodeRef.keys.get_rw()[i] = (i + 1) * 2;
@@ -887,18 +887,16 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     wBPTreeType4::SplitInfo splitInfo;
 
     const auto leaf1 = btree.newLeafNode();
-		auto &leaf1Ref = *leaf1;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
     btree.insertInLeafNode(leaf1, 2, 20, &splitInfo);
     btree.insertInLeafNode(leaf1, 3, 30, &splitInfo);
 
     const auto leaf2 = btree.newLeafNode();
-		auto &leaf2Ref = *leaf2;
     btree.insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree.insertInLeafNode(leaf2, 12, 120, &splitInfo);
 
     const auto node = btree.newBranchNode();
-		auto &nodeRef = *node;
+    auto &nodeRef = *node;
     nodeRef.keys.get_rw()[0] = 10;
     nodeRef.children.get_rw()[0] = leaf1;
     nodeRef.children.get_rw()[4] = leaf2;
@@ -910,7 +908,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     btree.depth = 2;
 
     btree.insertInBranchNode(node, 1, 11, 112, &splitInfo);
-    REQUIRE(leaf2Ref.search.get_ro().slot[0] == 3);
+    REQUIRE(leaf2->search.get_ro().slot[0] == 3);
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -919,20 +917,18 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     wBPTreeType4::SplitInfo splitInfo;
 
     const auto leaf1 = btree.newLeafNode();
-		auto &leaf1Ref = *leaf1;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
     btree.insertInLeafNode(leaf1, 2, 20, &splitInfo);
     btree.insertInLeafNode(leaf1, 3, 30, &splitInfo);
 
     const auto leaf2 = btree.newLeafNode();
-		auto &leaf2Ref = *leaf2;
     btree.insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree.insertInLeafNode(leaf2, 11, 110, &splitInfo);
     btree.insertInLeafNode(leaf2, 13, 130, &splitInfo);
     btree.insertInLeafNode(leaf2, 14, 140, &splitInfo);
 
     const auto node = btree.newBranchNode();
-		auto &nodeRef = *node;
+    auto &nodeRef = *node;
     nodeRef.keys.get_rw()[0] = 10;
     nodeRef.children.get_rw()[0] = leaf1;
     nodeRef.children.get_rw()[4] = leaf2;
@@ -944,7 +940,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     btree.depth = 2;
 
     btree.insertInBranchNode(node, 1, 12, 112, &splitInfo);
-    REQUIRE(leaf2Ref.search.get_ro().slot[0] == 2);
+    REQUIRE(leaf2->search.get_ro().slot[0] == 2);
     REQUIRE(nodeRef.search.get_ro().slot[0] == 2);
 
     std::array<int, 2> expectedKeys{{10, 12}};
@@ -969,7 +965,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     auto &btree = *rootRef.btree20;
 
     const auto node = btree.newLeafNode();
-		auto &nodeRef = *node;
+    auto &nodeRef = *node;
 
     for (auto i = 0; i < 9; i++) {
       nodeRef.keys.get_rw()[i] = i + 1;
