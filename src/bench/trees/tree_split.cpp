@@ -46,6 +46,7 @@ static void BM_TreeSplit(benchmark::State &state) {
       pop.root()->tree = make_persistent<TreeType>();
     });
   }
+  pop.drain();
   auto tree = pop.root()->tree;
   auto &treeRef = *tree;
   auto &leaf = treeRef.rootNode.leaf;

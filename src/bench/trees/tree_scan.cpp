@@ -32,15 +32,14 @@ static void BM_TreeScan(benchmark::State &state) {
     pop = pool<root>::create(path, LAYOUT, POOL_SIZE);
     transaction::run(pop, [&] {
       pop.root()->tree = make_persistent<TreeType>();
-      insert(pop.root()->tree);
     });
+    insert(pop.root()->tree);
   } else {
     LOG("Warning: " << path << " already exists");
     pop = pool<root>::open(path, LAYOUT);
-    transaction::run(pop, [&] {
-      hybridWrapper.recover(*pop.root()->tree);
-    });
+    hybridWrapper.recover(*pop.root()->tree);
   }
+  pop.drain(); ///< wait for preparations to be persistent
   auto tree = pop.root()->tree;
   auto &treeRef = *tree;
   auto node = treeRef.rootNode;

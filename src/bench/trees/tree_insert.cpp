@@ -46,6 +46,7 @@ static void BM_TreeInsert(benchmark::State &state) {
       pop.root()->tree = make_persistent<TreeType>();
     });
   }
+  pop.drain();
   const auto tree = pop.root()->tree;
   auto &treeRef = *tree;
 
