@@ -100,31 +100,30 @@ findSplitKey(const std::array<KeyType, M> &data) {
  * @return position of the minimum key
  */
 template<typename Node>
-static inline auto findMinKeyAtPNode(const pptr<Node> &node) {
+static inline auto findMinKey(const pptr<Node> &node) {
   const auto &nodeRef = *node;
   const auto &keysRef = nodeRef.keys.get_ro();
   auto pos = 0u;
   auto currMinKey = keysRef[0];
   /// with partitioning this could be done in O(log n) - but necessary?
-  for (auto i = 1u; i < nodeRef.numKeys; ++i) {
+  for (auto i = 1u; i < nodeRef.numKeys.get_ro(); ++i) {
     if (keysRef[i] < currMinKey) { currMinKey = keysRef[i]; pos = i; }
   }
   return pos;
 }
 
 /**
- * Find the minimum key in a persistent node with bitmap.
+ * Find the minimum key in a key array with bitmap.
  *
  * @param node the node to find the minimum key in
  * @return position of the minimum key
  */
-template<typename Node, size_t N>
-static inline auto findMinKeyAtPNode(const pptr<Node> &node, const std::bitset<N> &bitsRef) {
-  const auto &nodeRef = *node;
-  const auto &keysRef = nodeRef.keys.get_ro();
+template<typename KeyType, size_t N>
+static inline auto findMinKey(const std::array<KeyType, N> &keysRef,
+                              const std::bitset<N> &bitsRef) {
   auto pos = 0u;
-  auto currMinKey = std::numeric_limits<typename Node::KEY_TYPE>::max();
-  for (auto i = 0u; i < Node::NUM_KEYS; ++i) {
+  auto currMinKey = std::numeric_limits<KeyType>::max();
+  for (auto i = 0u; i < N; ++i) {
     if (bitsRef.test(i) && keysRef[i] < currMinKey) {
       currMinKey = keysRef[i]; pos = i;
     }
@@ -139,31 +138,31 @@ static inline auto findMinKeyAtPNode(const pptr<Node> &node, const std::bitset<N
  * @return position of the maximum key
  */
 template<typename Node>
-static inline auto findMaxKeyAtPNode(const pptr<Node> &node) {
+static inline auto findMaxKey(const pptr<Node> &node) {
   const auto &nodeRef = *node;
   const auto &keysRef = nodeRef.keys.get_ro();
   auto pos = 0u;
   auto currMaxKey = keysRef[0];
   /// with partitioning this could be done in O(log n) - but necessary?
-  for (auto i = 1u; i < nodeRef.numKeys; ++i) {
+  for (auto i = 1u; i < nodeRef.numKeys.get_ro(); ++i) {
     if (keysRef[i] > currMaxKey) { currMaxKey = keysRef[i]; pos = i; }
   }
   return pos;
 }
 
 /**
- * Find the maximum key in a persistent node with bitmap.
+ * Find the maximum key in a key array with bitmap.
  *
- * @param node the node to find the maximum key in
+ * @param keysRef a reference to the node's keys to find the maximum key in
+ * @param bitsRef a reference to the bitset of the node
  * @return position of the maximum key
  */
-template<typename Node, size_t N>
-static inline auto findMaxKeyAtPNode(const pptr<Node> &node, const std::bitset<N> &bitsRef) {
-  const auto &nodeRef = *node;
-  const auto &keysRef = nodeRef.keys.get_ro();
+template<typename KeyType, size_t N>
+static inline auto findMaxKey(const std::array<KeyType, N> &keysRef,
+                              const std::bitset<N> &bitsRef) {
   auto pos = 0u;
-  auto currMaxKey = std::numeric_limits<typename Node::KEY_TYPE>::min();
-  for (auto i = 0u; i < Node::NUM_KEYS; ++i) {
+  auto currMaxKey = std::numeric_limits<KeyType>::min();
+  for (auto i = 0u; i < N; ++i) {
     if (bitsRef.test(i) && keysRef[i] > currMaxKey) {
       currMaxKey = keysRef[i]; pos = i;
     }
@@ -172,54 +171,50 @@ static inline auto findMaxKeyAtPNode(const pptr<Node> &node, const std::bitset<N
 }
 
 /**
- * Searches for the next greater key than @key in persistent node with bitmap.
+ * Searches for the next greater key than @key in a key array with bitmap.
  *
- * @param node the node to find the key in
+ * @param keysRef a reference to the node's keys to find the key in
  * @param bitsRef a reference to the bitset of the node
  * @param key the current minimum key
  * @return position of the next minimum key
  */
-template<typename Node, size_t N, typename KeyType>
-static inline auto findMinKeyGreaterThanAtPNode(const pptr<Node> &node,
-                                                const std::bitset<N> &bitsRef,
-                                                const KeyType &key) {
-  const auto &nodeRef = *node;
-  const auto &keysRef = nodeRef.keys.get_ro();
+template<size_t N, typename KeyType>
+static inline auto findMinKeyGreaterThan(const std::array<KeyType, N> &keysRef,
+                                         const std::bitset<N> &bitsRef,
+                                         const KeyType &key) {
   auto pos = 0ul;
-  auto currMinKey = std::numeric_limits<typename Node::KEY_TYPE>::max();
-  for (auto i = 0u; i < Node::NUM_KEYS; ++i) {
+  constexpr auto maxLmt = std::numeric_limits<KeyType>::max();
+  auto currMinKey = maxLmt;
+  for (auto i = 0u; i < N; ++i) {
     if (bitsRef.test(i) && keysRef[i] < currMinKey && keysRef[i] > key) {
       currMinKey = keysRef[i]; pos = i;
     }
   }
-  if (currMinKey == std::numeric_limits<typename Node::KEY_TYPE>::max())
-    return Node::NUM_KEYS;
+  if (currMinKey == maxLmt) return N;
   return pos;
 }
 
 /**
- * Searches for the next smaller key than @key in persistent node with bitmap.
+ * Searches for the next smaller key than @key in a key array with bitmap.
  *
- * @param node the node to find the key in
+ * @param keysRef a reference to the node's keys to find the key in
  * @param bitsRef a reference to the bitset of the node
  * @param key the current maximum key
  * @return position of the next maximum key
  */
-template<typename Node, size_t N, typename KeyType>
-static inline auto findMaxKeySmallerThanAtPNode(const pptr<Node> &node,
-                                                const std::bitset<N> &bitsRef,
-                                                const KeyType &key) {
-  const auto &nodeRef = *node;
-  const auto &keysRef = nodeRef.keys.get_ro();
+template<size_t N, typename KeyType>
+static inline auto findMaxKeySmallerThan(const std::array<KeyType, N> &keysRef,
+                                         const std::bitset<N> &bitsRef,
+                                         const KeyType &key) {
   auto pos = 0ul;
-  auto currMaxKey = std::numeric_limits<typename Node::KEY_TYPE>::min();
-  for (auto i = 0u; i < Node::NUM_KEYS; ++i) {
+  constexpr auto minLmt = std::numeric_limits<KeyType>::min();
+  auto currMaxKey = minLmt;
+  for (auto i = 0u; i < N; ++i) {
     if (bitsRef.test(i) && keysRef[i] > currMaxKey && keysRef[i] < key) {
       currMaxKey = keysRef[i]; pos = i;
     }
   }
-  if (currMaxKey == std::numeric_limits<typename Node::KEY_TYPE>::min())
-    return Node::NUM_KEYS;
+  if (currMaxKey == minLmt) return N;
   return pos;
 }
 

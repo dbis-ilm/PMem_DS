@@ -991,6 +991,70 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
     REQUIRE(num == 50);
   }
 
+  /* -------------------------------------------------------------------------------------------- */
+  SECTION("Constructing a LeafList and recover the branches") {
+    auto btree = q->btree2;
+
+    transaction::run(pop, [&] {
+      if (btree) delete_persistent<wHBPTreeType2>(btree);
+      btree = make_persistent<wHBPTreeType2>();
+
+      auto &btreeRef = *btree;
+
+      auto prevLeaf = btreeRef.newLeafNode();
+      auto &pLeafRef = *prevLeaf;
+      for (auto k = 0u; k < 4; ++k) {
+        pLeafRef.keys.get_rw()[k] = k + 1;
+        pLeafRef.values.get_rw()[k] = k + 1;
+        pLeafRef.search.get_rw().b.set(k);
+        pLeafRef.search.get_rw().slot[0]++;
+        pLeafRef.search.get_rw().slot[k+1] = k;
+      }
+      btreeRef.leafList = prevLeaf;
+
+      for (auto l = 1u; l < 25; ++l) {
+        auto newLeaf = btreeRef.newLeafNode();
+        prevLeaf->nextLeaf = newLeaf;
+        auto &leafRef = *newLeaf;
+        for (auto k = 0u; k < 4; ++k) {
+          leafRef.keys.get_rw()[k] = k + 1 + l * 4;
+          leafRef.values.get_rw()[k] = k + 1 + l * 4;
+          leafRef.search.get_rw().b.set(k);
+          leafRef.search.get_rw().slot[0]++;
+          leafRef.search.get_rw().slot[k+1] = k;
+        }
+        prevLeaf = newLeaf;
+      }
+    });
+
+    auto &btreeRef = *btree;
+    btreeRef.recover();
+    REQUIRE(btreeRef.depth == 2);
+    const auto &rootNodeRef = *btreeRef.rootNode.branch;
+    REQUIRE(rootNodeRef.keys == std::array<int, 4>{{21, 41, 61, 81}});
+    REQUIRE(rootNodeRef.search.slot[0] == 4);
+    REQUIRE(rootNodeRef.search.b.all());
+
+    for (auto b1 = 0; b1 < 4; ++b1) {
+      const auto &branchRef = *rootNodeRef.children[b1].branch;
+      std::array<int, 4> expectedKeys {{5, 9, 13, 17}};
+      std::transform(expectedKeys.begin(), expectedKeys.end(), expectedKeys.begin(),
+          [b1](int k) { return (k + b1 * 20); });
+      REQUIRE(branchRef.keys == expectedKeys);
+      REQUIRE(branchRef.search.slot[0] == 4);
+      REQUIRE(branchRef.search.b.all());
+      for (auto b2 = 0; b2 < 4; ++b2) {
+        const auto &leafRef = *branchRef.children[b2].leaf;
+        std::array<int, 4> expectedKeys2 {{1, 2, 3, 4}};
+        std::transform(expectedKeys2.begin(), expectedKeys2.end(), expectedKeys2.begin(),
+            [b1, b2](int k) { return (k + b2 * 4 + b1 * 20); });
+        REQUIRE(leafRef.keys.get_ro() == expectedKeys2);
+        REQUIRE(leafRef.search.get_ro().slot[0] == 4);
+        REQUIRE(leafRef.search.get_ro().b.all());
+      }
+    }
+  }
+
   /* Clean up */
   delete_persistent_atomic<wHBPTreeType>(q->btree1);
   delete_persistent_atomic<wHBPTreeType2>(q->btree2);

@@ -416,7 +416,7 @@ class wBPTree {
         const auto &key = keys[i];
         if (key < minKey) continue;
         if (key > maxKey) { higherThanMax = true; continue; }
-        auto &val = vals[i];
+        const auto &val = vals[i];
         func(key, val);
       }
       /// move to the next leaf node
@@ -482,65 +482,65 @@ class wBPTree {
    * @param splitInfo[out] information about the split
    */
   void splitLeafNode(const pptr<LeafNode> &node, SplitInfo *splitInfo) {
-      auto &nodeRef = *node;
-      /// determine the split position
-      constexpr auto middle = (M + 1) / 2;
+    auto &nodeRef = *node;
+    /// determine the split position
+    constexpr auto middle = (M + 1) / 2;
 
-      /// move all entries behind this position to a new sibling node
-      const auto sibling = newLeafNode();
-      auto &sibRef = *sibling;
-      auto &sibSearch = sibRef.search.get_rw();
-      auto &sibKeys = sibRef.keys.get_rw();
-      auto &sibVals = sibRef.values.get_rw();
-      auto &nodeSearch = nodeRef.search.get_rw();
-      const auto &nodeKeys = nodeRef.keys.get_ro();
-      const auto &nodeVals = nodeRef.values.get_ro();
-      sibSearch.slot[0] = nodeSearch.slot[0] - middle;
-      nodeSearch.slot[0] = middle;
-      for (auto i = 1u; i < sibSearch.slot[0] + 1; ++i) {
-        sibSearch.slot[i] = i - 1;
-        sibSearch.b.set(sibSearch.slot[i]);
-        sibKeys[sibSearch.slot[i]] = nodeKeys[nodeSearch.slot[i + middle]];
-        sibVals[sibSearch.slot[i]] = nodeVals[nodeSearch.slot[i + middle]];
-      }
-      for (auto i = middle; i < M; ++i)
-        nodeSearch.b.reset(nodeSearch.slot[i+1]);
-      PersistEmulation::writeBytes(((M-middle+ sibSearch.slot[0]  +7)>>3) +
-      (sizeof(KeyType)+sizeof(ValueType)+1)*sibSearch.slot[0] + 2); //bits ceiled + entries/slots + numKeys
+    /// move all entries behind this position to a new sibling node
+    const auto sibling = newLeafNode();
+    auto &sibRef = *sibling;
+    auto &sibSearch = sibRef.search.get_rw();
+    auto &sibKeys = sibRef.keys.get_rw();
+    auto &sibVals = sibRef.values.get_rw();
+    auto &nodeSearch = nodeRef.search.get_rw();
+    const auto &nodeKeys = nodeRef.keys.get_ro();
+    const auto &nodeVals = nodeRef.values.get_ro();
+    sibSearch.slot[0] = nodeSearch.slot[0] - middle;
+    nodeSearch.slot[0] = middle;
+    for (auto i = 1u; i < sibSearch.slot[0] + 1; ++i) {
+      sibSearch.slot[i] = i - 1;
+      sibSearch.b.set(sibSearch.slot[i]);
+      sibKeys[sibSearch.slot[i]] = nodeKeys[nodeSearch.slot[i + middle]];
+      sibVals[sibSearch.slot[i]] = nodeVals[nodeSearch.slot[i + middle]];
+    }
+    for (auto i = middle; i < M; ++i)
+      nodeSearch.b.reset(nodeSearch.slot[i+1]);
+    PersistEmulation::writeBytes(((M-middle+ sibSearch.slot[0]  +7)>>3) +
+        (sizeof(KeyType)+sizeof(ValueType)+1)*sibSearch.slot[0] + 2); //bits ceiled + entries/slots + numKeys
 
-      /// Alternative: copy node, inverse bitmap and shift slots
-      /*
-      const auto sibling = newLeafNode(node);
-      auto &sibRef = *sibling;
-      auto &sibSearch = sibRef.search.get_rw();
-      auto &nodeSearch = nodeRef.search.get_rw();
-      sibSearch.slot[0] = sibSearch.slot[0] - middle;
-      nodeSearch.slot[0] = middle;
-      for (auto i = middle; i < M; ++i)
-        nodeSearch.b.reset(sibSearch.slot[i+1]);
-      auto b = nodeSearch.b;
-      sibSearch.b = b.flip();
-      for (auto i = 1u; i < sibSearch.slot[0] + 1; ++i)
-        sibSearch.slot[i] = sibSearch.slot[sibSearch.slot[0]+i];
-      //std::copy(std::begin(sibSlots)+sibSearch.slot[0], std::end(sibSlots), std::begin(sibSlots)+1);
-      PersistEmulation::writeBytes(sizeof(LeafNode) +
-      ((M-middle+M+7)>>3) + sibSearch.slot[0] + 2); //copy leaf + bits ceiled + slots + numKeys
-      */
+    /// Alternative: copy node, inverse bitmap and shift slots
+    /*
+       const auto sibling = newLeafNode(node);
+       auto &sibRef = *sibling;
+       auto &sibSearch = sibRef.search.get_rw();
+       auto &nodeSearch = nodeRef.search.get_rw();
+       sibSearch.slot[0] = sibSearch.slot[0] - middle;
+       nodeSearch.slot[0] = middle;
+       for (auto i = middle; i < M; ++i)
+       nodeSearch.b.reset(sibSearch.slot[i+1]);
+       auto b = nodeSearch.b;
+       sibSearch.b = b.flip();
+       for (auto i = 1u; i < sibSearch.slot[0] + 1; ++i)
+       sibSearch.slot[i] = sibSearch.slot[sibSearch.slot[0]+i];
+    //std::copy(std::begin(sibSlots)+sibSearch.slot[0], std::end(sibSlots), std::begin(sibSlots)+1);
+    PersistEmulation::writeBytes(sizeof(LeafNode) +
+    ((M-middle+M+7)>>3) + sibSearch.slot[0] + 2); //copy leaf + bits ceiled + slots + numKeys
+    */
 
-      /// setup the list of leaf nodes
-      if (nodeRef.nextLeaf != nullptr) {
-        sibRef.nextLeaf = nodeRef.nextLeaf;
-        nodeRef.nextLeaf->prevLeaf = sibling;
-        PersistEmulation::writeBytes<16*2>();
-      }
-      nodeRef.nextLeaf = sibling;
-      sibRef.prevLeaf = node;
+    /// setup the list of leaf nodes
+    if (nodeRef.nextLeaf != nullptr) {
+      sibRef.nextLeaf = nodeRef.nextLeaf;
+      nodeRef.nextLeaf->prevLeaf = sibling;
       PersistEmulation::writeBytes<16*2>();
+    }
+    nodeRef.nextLeaf = sibling;
+    sibRef.prevLeaf = node;
+    PersistEmulation::writeBytes<16*2>();
 
-      auto &splitRef = *splitInfo;
-      splitRef.leftChild = node;
-      splitRef.rightChild = sibling;
-      splitRef.key = sibKeys[sibSearch.slot[1]];
+    auto &splitRef = *splitInfo;
+    splitRef.leftChild = node;
+    splitRef.rightChild = sibling;
+    splitRef.key = sibKeys[sibSearch.slot[1]];
   }
 
   /**
@@ -753,9 +753,10 @@ class wBPTree {
     auto &nodeRef = *node;
     auto &nodeSearch = nodeRef.search.get_rw();
     if (nodeRef.keys.get_ro()[nodeSearch.slot[pos]] == key) {
-      nodeSearch.b.reset(pos);
-      for (auto i = pos; i < nodeSearch.slot[0] + 1; ++i)
+      nodeSearch.b.reset(nodeSearch.slot[pos]);
+      for (auto i = pos; i < nodeSearch.slot[0] + 1; ++i) {
         nodeSearch.slot[i] = nodeSearch.slot[i + 1];
+      }
       --nodeSearch.slot[0];
       return true;
     }
@@ -921,7 +922,6 @@ class wBPTree {
     /// 2. if this fails we have to merge two branch nodes
     else {
       auto newChild = child;
-
       auto ppos = pos;
       if (prevNumKeys > 0) {
         auto &lSibling = nodeChilds[nodeSearch.slot[pos-1]].branch;
@@ -941,8 +941,9 @@ class wBPTree {
 
       /// remove key/children ppos from node
       auto &nodeSearchW = nodeRef.search.get_rw();
-      for (auto i = ppos; i < nodeSearch.slot[0] - 1; ++i)
+      for (auto i = ppos; i < nodeSearch.slot[0] - 1; ++i) {
         nodeSearchW.slot[i] = nodeSearch.slot[i + 1];
+      }
       --nodeSearchW.slot[0];
       return newChild;
     }
@@ -1114,11 +1115,11 @@ class wBPTree {
 
     /// we move all keys/values from node2 to node1
     for (auto i = 1u; i < node2Search.slot[0] + 1; ++i) {
-        const auto u = BitOperations::getFreeZero(node1Search.b);
-        node1Keys[u] = node2Keys[node2Search.slot[i]];
-        node1Vals[u] = node2Vals[node2Search.slot[i]];
-        node1Search.slot[node1Search.slot[0] + i] = u;
-        node1Search.b.set(u);
+      const auto u = BitOperations::getFreeZero(node1Search.b);
+      node1Keys[u] = node2Keys[node2Search.slot[i]];
+      node1Vals[u] = node2Vals[node2Search.slot[i]];
+      node1Search.slot[node1Search.slot[0] + i] = u;
+      node1Search.b.set(u);
     }
     node1Search.slot[0] += node2Search.slot[0];
     node1Ref.nextLeaf = node2Ref.nextLeaf;

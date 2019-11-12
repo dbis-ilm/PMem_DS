@@ -404,11 +404,11 @@ class UnsortedPBPTree {
     if (pos > 0 && (prevNumKeys = leafRef.prevLeaf->numKeys.get_ro()) > middle) {
       /// we have a sibling at the left for rebalancing the keys
       balanceLeafNodes(leafRef.prevLeaf, leaf);
-      nodeKeys[pos-1] = leafRef.keys.get_ro()[findMinKeyAtPNode(leaf)];
+      nodeKeys[pos-1] = leafRef.keys.get_ro()[findMinKey(leaf)];
     } else if (pos < nNumKeys && (nextNumKeys = leafRef.nextLeaf->numKeys.get_ro() > middle)) {
       /// we have a sibling at the right for rebalancing the keys
       balanceLeafNodes(leafRef.nextLeaf, leaf);
-      nodeKeys[pos] = leafRef.nextLeaf->keys.get_ro()[findMinKeyAtPNode(leafRef.nextLeaf)];
+      nodeKeys[pos] = leafRef.nextLeaf->keys.get_ro()[findMinKey(leafRef.nextLeaf)];
     } else {
       /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
       //     direct parent
@@ -500,7 +500,7 @@ class UnsortedPBPTree {
       /// move from one node to a node with larger keys
       /// move toMove keys/values from donor to receiver
       for (auto i = 0u; i < toMove; ++i) {
-        const auto max = findMaxKeyAtPNode(donor);
+        const auto max = findMaxKey(donor);
         /// move the donor's maximum key to the receiver
         receiverKeys[rNumKeys] = donorKeys[max];
         receiverVals[rNumKeys] = donorVals[max];
@@ -515,7 +515,7 @@ class UnsortedPBPTree {
       /// mode from one node to a node with smaller keys
       /// move toMove keys/values from donor to receiver
       for (auto i = 0u; i < toMove; ++i) {
-        const auto min = findMinKeyAtPNode(donor);
+        const auto min = findMinKey(donor);
         /// move the donor's minimum key to the receiver
         receiverKeys[rNumKeys] = donorKeys[min];
         receiverVals[rNumKeys] = donorVals[min];
@@ -880,7 +880,7 @@ class UnsortedPBPTree {
       if (key > splitRef.key) {
         insertInLeafNodeAtLastPosition(sibling, key, val);
       } else {
-        if (key > findMaxKeyAtPNode(node)) {
+        if (key > findMaxKey(node)) {
           /// Special case: new key would be the middle, thus must be right
           insertInLeafNodeAtLastPosition(sibling, key, val);
           splitRef.key = key;
@@ -890,7 +890,7 @@ class UnsortedPBPTree {
       }
 
       /* inform the caller about the split */
-      splitRef.key = sibling->keys.get_ro()[findMinKeyAtPNode(sibling)];
+      splitRef.key = sibling->keys.get_ro()[findMinKey(sibling)];
       split = true;
     } else {
       /* otherwise, we can simply insert the new entry at the last position */
@@ -1181,7 +1181,7 @@ class UnsortedPBPTree {
   };
 
   /**
-   * A structure for representing an branch node (branch node) of a B+ tree.
+   * A structure for representing a branch node (branch node) of a B+ tree.
    */
   struct alignas(64) BranchNode {
     /**

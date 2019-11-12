@@ -31,6 +31,8 @@
 
 #include "config.h"
 #include "utils/BitOperations.hpp"
+#include "utils/PersistEmulation.hpp"
+#include "utils/SearchFunctions.hpp"
 
 namespace dbis::pbptrees {
 
@@ -124,10 +126,6 @@ class wHBPTree {
   struct alignas(64) Search {
     std::array<uint8_t, E+1> slot; ///< slot array for indirection, first = num
     std::bitset<E> b;              ///< bitset for valid entries
-
-    inline const auto getFreeZero() const {
-      return BitOperations::getFreeZero(b);
-    }
   };
 
   /**
@@ -142,8 +140,8 @@ class wHBPTree {
     }
 
     p<Search<M>>                search; ///< helper structure for faster searches
-    pptr<LeafNode>  nextLeaf; ///< pointer to the subsequent sibling
-    pptr<LeafNode>  prevLeaf; ///< pointer to the preceeding sibling
+    pptr<LeafNode>            nextLeaf; ///< pointer to the subsequent sibling
+    pptr<LeafNode>            prevLeaf; ///< pointer to the preceeding sibling
     p<std::array<KeyType, M>>     keys; ///< the actual keys
     p<std::array<ValueType, M>> values; ///< the actual values
   };
@@ -179,9 +177,10 @@ class wHBPTree {
     return newNode;
   }
 
-  void deleteLeafNode(pptr<LeafNode> node) {
+  void deleteLeafNode(pptr<LeafNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
     transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
+    node = nullptr;
   }
 
   /**
@@ -191,8 +190,9 @@ class wHBPTree {
     return new BranchNode();
   }
 
-  void deleteBranchNode(BranchNode* node) {
+  void deleteBranchNode(BranchNode*& node) {
     delete node;
+    node = nullptr;
   }
 
   /**
@@ -232,9 +232,9 @@ class wHBPTree {
       }
       currentNode = node.leaf;
       currentPosition = 0;
-      const auto &nodeRef = *currentNode;
+      const auto &nodeBits = currentNode->search.get_ro().b;
       /// Can not overflow as there are at least M/2 entries
-      while(!nodeRef.search.get_ro().b.test(currentPosition)) ++currentPosition;
+      while(!nodeBits.test(currentPosition)) ++currentPosition;
     }
 
     iterator& operator++() {
@@ -242,8 +242,8 @@ class wHBPTree {
         currentNode = currentNode->nextLeaf;
         currentPosition = 0;
         if (currentNode == nullptr) return *this;
-        const auto &nodeRef = *currentNode;
-        while(!nodeRef.search.get_ro().b.test(currentPosition)) ++currentPosition;
+        const auto &nodeBits = currentNode->search.get_ro().b;
+        while(!nodeBits.test(currentPosition)) ++currentPosition;
       } else if (!currentNode->search.get_ro().b.test(++currentPosition)) ++(*this);
       return *this;
     }
@@ -257,8 +257,9 @@ class wHBPTree {
     bool operator!=(iterator other) const { return !(*this == other); }
 
     std::pair<KeyType, ValueType> operator*() {
-      return std::make_pair(currentNode->keys.get_ro()[currentPosition],
-                            currentNode->values.get_ro()[currentPosition]);
+      const auto &nodeRef = *currentNode;
+      return std::make_pair(nodeRef.keys.get_ro()[currentPosition],
+                            nodeRef.values.get_ro()[currentPosition]);
     }
 
     /// iterator traits
@@ -336,10 +337,10 @@ class wHBPTree {
     const auto leaf = findLeafNode(key);
     const auto pos = lookupPositionInLeafNode(leaf, key);
     const auto &leafRef = *leaf;
-    if (pos <= leafRef.search.get_ro().slot[0] &&
-        leafRef.keys.get_ro()[leafRef.search.get_ro().slot[pos]] == key) {
+    const auto &leafSearch = leafRef.search.get_ro();
+    if (pos <= leafSearch.slot[0] && leafRef.keys.get_ro()[leafSearch.slot[pos]] == key) {
       /// we found it!
-      *val = leafRef.values.get_ro()[leafRef.search.get_ro().slot[pos]];
+      *val = leafRef.values.get_ro()[leafSearch.slot[pos]];
       return true;
     }
     return false;
@@ -428,10 +429,12 @@ class wHBPTree {
       const auto &leafRef = *leaf;
       /// for each key-value pair call func
       const auto &bits = leafRef.search.get_ro().b;
-      for (auto i = 0u; i < M; i++) {
+      const auto &keys = leafRef.keys.get_ro();
+      const auto &vals = leafRef.values.get_ro();
+      for (auto i = 0u; i < M; ++i) {
         if (!bits.test(i)) continue;
-        const auto &key = leafRef.keys.get_ro()[i];
-        const auto &val = leafRef.values.get_ro()[i];
+        const auto &key = keys[i];
+        const auto &val = vals[i];
         func(key, val);
       }
       /// move to the next leaf node
@@ -455,13 +458,14 @@ class wHBPTree {
       const auto &leafRef = *leaf;
       /// for each key-value pair within the range call func
       const auto &bits = leafRef.search.get_ro().b;
-      for (auto i = 0u; i < M; i++) {
+      const auto &keys = leafRef.keys.get_ro();
+      const auto &vals = leafRef.values.get_ro();
+      for (auto i = 0u; i < M; ++i) {
         if (!bits.test(i)) continue;
-        auto &key = leafRef.keys.get_ro()[i];
+        const auto &key = keys[i];
         if (key < minKey) continue;
         if (key > maxKey) { higherThanMax = true; continue; }
-
-        auto &val = leafRef.values.get_ro()[i];
+        const auto &val = vals[i];
         func(key, val);
       }
       /// move to the next leaf node
@@ -497,49 +501,94 @@ class wHBPTree {
 
     if (slotArray[0] == M) {
       /// the node is full, so we must split it
-      /// determine the split position by finding median in unsorted array of keys
-      const auto middle = (M + 1) / 2;
-
-      /// move all entries behind this position to a new sibling node
-      pptr<LeafNode> sibling = newLeafNode();
-      auto &sibRef = *sibling;
-      auto &sibSlots = sibRef.search.get_rw().slot;
-      sibSlots[0] = slotArray[0] - middle;
-      for (auto i = 1u; i < sibSlots[0] + 1; i++) {
-        sibSlots[i] = i - 1;
-        sibRef.search.get_rw().b.set(sibSlots[i]);
-        sibRef.keys.get_rw()[sibSlots[i]] = nodeRef.keys.get_ro()[slotArray[i + middle]];
-        sibRef.values.get_rw()[sibSlots[i]] = nodeRef.values.get_ro()[slotArray[i + middle]];
-      }
-      for (auto i = middle; i < M; i++)
-        nodeRef.search.get_rw().b.reset(slotArray[i+1]);
-      nodeRef.search.get_rw().slot[0] = middle;
-
-      /* insert the new entry */
-      if (slotPos-1 <= middle)
-        insertInLeafNodeAtPosition(node, slotPos, key, val);
-      else
-        insertInLeafNodeAtPosition(sibling, slotPos-middle, key, val);
-
-      /// setup the list of leaf nodes
-      if (nodeRef.nextLeaf != nullptr) {
-        sibRef.nextLeaf = nodeRef.nextLeaf;
-        nodeRef.nextLeaf->prevLeaf = sibling;
-      }
-      nodeRef.nextLeaf = sibling;
-      sibRef.prevLeaf = node;
-
-      /// and inform the caller about the split
-      split = true;
+      splitLeafNode(node, splitInfo);
       auto &splitRef = *splitInfo;
-      splitRef.leftChild = node;
-      splitRef.rightChild = sibling;
-      splitRef.key = sibRef.keys.get_ro()[sibSlots[1]];
+
+      /// insert the new entry
+      if (slotPos-1 <= (M + 1) / 2)
+        insertInLeafNodeAtPosition(splitRef.leftChild.leaf, slotPos, key, val);
+      else
+        insertInLeafNodeAtPosition(splitRef.rightChild.leaf,
+            lookupPositionInLeafNode(splitRef.rightChild.leaf, key), key, val);
+
+      /// inform the caller about the split
+      splitRef.key =
+        splitRef.rightChild.leaf->keys.get_ro()[splitRef.rightChild.leaf->search.get_ro().slot[1]];
+      split = true;
     } else {
       /// otherwise, we can simply insert the new entry at the given position
       insertInLeafNodeAtPosition(node, slotPos, key, val);
     }
     return split;
+  }
+
+  /**
+   * Split the given leaf node @c node in the middle and move half of the
+   * sibling node.
+   *
+   * @param node the leaf node to be split
+   * @param splitInfo[out] information about the split
+   */
+  void splitLeafNode(const pptr<LeafNode> &node, SplitInfo *splitInfo) {
+    auto &nodeRef = *node;
+    /// determine the split position by finding median in unsorted array of keys
+    constexpr auto middle = (M + 1) / 2;
+
+    /// move all entries behind this position to a new sibling node
+    const auto sibling = newLeafNode();
+    auto &sibRef = *sibling;
+    auto &sibSearch = sibRef.search.get_rw();
+    auto &sibKeys = sibRef.keys.get_rw();
+    auto &sibVals = sibRef.values.get_rw();
+    auto &nodeSearch = nodeRef.search.get_rw();
+    const auto &nodeKeys = nodeRef.keys.get_ro();
+    const auto &nodeVals = nodeRef.values.get_ro();
+    sibSearch.slot[0] = nodeSearch.slot[0] - middle;
+    nodeSearch.slot[0] = middle;
+    for (auto i = 1u; i < sibSearch.slot[0] + 1; ++i) {
+      sibSearch.slot[i] = i - 1;
+      sibSearch.b.set(sibSearch.slot[i]);
+      sibKeys[sibSearch.slot[i]] = nodeKeys[nodeSearch.slot[i + middle]];
+      sibVals[sibSearch.slot[i]] = nodeVals[nodeSearch.slot[i + middle]];
+    }
+    for (auto i = middle; i < M; ++i)
+      nodeSearch.b.reset(nodeSearch.slot[i+1]);
+    PersistEmulation::writeBytes(((M-middle+ sibSearch.slot[0]  +7)>>3) +
+        (sizeof(KeyType)+sizeof(ValueType)+1)*sibSearch.slot[0] + 2); //bits ceiled + entries/slots + numKeys
+
+    /// Alternative: copy node, inverse bitmap and shift slots
+    /*
+    const auto sibling = newLeafNode(node);
+    auto &sibRef = *sibling;
+    auto &sibSearch = sibRef.search.get_rw();
+    auto &nodeSearch = nodeRef.search.get_rw();
+    sibSearch.slot[0] = sibSearch.slot[0] - middle;
+    nodeSearch.slot[0] = middle;
+    for (auto i = middle; i < M; ++i)
+      nodeSearch.b.reset(sibSearch.slot[i+1]);
+    auto b = nodeSearch.b;
+    sibSearch.b = b.flip();
+    for (auto i = 1u; i < sibSearch.slot[0] + 1; ++i)
+    sibSearch.slot[i] = sibSearch.slot[sibSearch.slot[0]+i];
+    //std::copy(std::begin(sibSlots)+sibSearch.slot[0], std::end(sibSlots), std::begin(sibSlots)+1);
+    PersistEmulation::writeBytes(sizeof(LeafNode) +
+    ((M-middle+M+7)>>3) + sibSearch.slot[0] + 2); //copy leaf + bits ceiled + slots + numKeys
+    */
+
+   /// setup the list of leaf nodes
+    if (nodeRef.nextLeaf != nullptr) {
+      sibRef.nextLeaf = nodeRef.nextLeaf;
+      nodeRef.nextLeaf->prevLeaf = sibling;
+      PersistEmulation::writeBytes<16*2>();
+    }
+    nodeRef.nextLeaf = sibling;
+    sibRef.prevLeaf = node;
+    PersistEmulation::writeBytes<16*2>();
+
+    auto &splitRef = *splitInfo;
+    splitRef.leftChild = node;
+    splitRef.rightChild = sibling;
+    splitRef.key = sibRef.keys.get_ro()[sibSearch.slot[1]];
   }
 
   /**
@@ -558,18 +607,21 @@ class wHBPTree {
                                   const ValueType &val) {
     assert(pos <= M);
     auto &nodeRef = *node;
-    const auto u = nodeRef.search.get_ro().getFreeZero(); ///< unused Entry
+    auto &search = nodeRef.search.get_rw();
+    const auto u = BitOperations::getFreeZero(search.b); ///< unused Entry
 
     /* insert the new entry at unused position */
     nodeRef.keys.get_rw()[u] = key;
     nodeRef.values.get_rw()[u] = val;
 
     /* adapt slot array */
-    for (auto j = nodeRef.search.get_ro().slot[0]; j >= pos; j--)
-      nodeRef.search.get_rw().slot[j+1] = nodeRef.search.get_ro().slot[j];
-    nodeRef.search.get_rw().slot[pos] = u;
-    nodeRef.search.get_rw().slot[0] = nodeRef.search.get_ro().slot[0] + 1;
-    nodeRef.search.get_rw().b.set(u);
+    for (auto j = search.slot[0]; j >= pos; --j)
+      search.slot[j+1] = search.slot[j];
+    PersistEmulation::writeBytes(search.slot[0]-pos+1);
+    search.slot[pos] = u;
+    ++search.slot[0];
+    search.b.set(u);
+    PersistEmulation::writeBytes<3>();
   }
 
   /**
@@ -592,19 +644,13 @@ class wHBPTree {
     auto pos = lookupPositionInBranchNode(node, key);
     if (depth == 1) {
       /* case #1: our children are leaf node */
-      pptr<LeafNode> child;
-      if (pos == nodeRef.search.slot[0] + 1)
-        child = nodeRef.children[N].leaf;
-      else
-        child = nodeRef.children[nodeRef.search.slot[pos]].leaf;
+      auto child = (pos == nodeRef.search.slot[0] + 1) ? nodeRef.children[N].leaf
+                                : nodeRef.children[nodeRef.search.slot[pos]].leaf;
       hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
     } else {
       /* case #2: our children are branch nodes */
-      BranchNode *child;
-      if (pos == nodeRef.search.slot[0] + 1)
-        child = nodeRef.children[N].branch;
-      else
-        child = nodeRef.children[nodeRef.search.slot[pos]].branch;
+      auto child = (pos == nodeRef.search.slot[0] + 1) ? nodeRef.children[N].branch
+                                : nodeRef.children[nodeRef.search.slot[pos]].branch;
       hasSplit = insertInBranchNode(child, depth - 1, key, val, &childSplitInfo);
     }
 
@@ -615,21 +661,20 @@ class wHBPTree {
         /// this node is also full and needs to be split
         splitBranchNode(node, childSplitInfo.key, splitInfo);
         const auto &splitRef = *splitInfo;
-        host = (key < splitRef.key ? splitRef.leftChild
-                                     : splitRef.rightChild).branch;
+        host = (key < splitRef.key ? splitRef.leftChild : splitRef.rightChild).branch;
         split = true;
         pos = lookupPositionInBranchNode(host, key);
       }
       /// Insert new key and children
       auto &hostRef = *host;
-      const auto u = hostRef.search.getFreeZero();
+      const auto u = BitOperations::getFreeZero(hostRef.search.b);
       hostRef.keys[u] = childSplitInfo.key;
       hostRef.children[u] = childSplitInfo.leftChild;
 
       /// adapt slot array
       if (pos <= hostRef.search.slot[0]) {
         /// if the child isn't inserted at the rightmost position then we have to make space for it
-        for(auto j = hostRef.search.slot[0]; j >= pos; j--)
+        for(auto j = hostRef.search.slot[0]; j >= pos; --j)
           hostRef.search.slot[j+1] = hostRef.search.slot[j];
         hostRef.children[hostRef.search.slot[pos+1]] = childSplitInfo.rightChild;
       } else {
@@ -650,26 +695,25 @@ class wHBPTree {
    * @param splitKey the key on which the split of the child occured
    * @param splitInfo information about the split
    */
-  void splitBranchNode(BranchNode *node, const KeyType &splitKey,
-                       SplitInfo *splitInfo) {
+  void splitBranchNode(BranchNode *node, const KeyType &splitKey, SplitInfo *splitInfo) {
     /// determine the split position
     auto middle = (N + 1) / 2;
     auto &nodeRef = *node;
     if (splitKey > nodeRef.keys[nodeRef.search.slot[middle]])
-      middle++;
+      ++middle;
 
     /// move all entries behind this position to a new sibling node
     const auto sibling = newBranchNode();
     auto &sibRef = *sibling;
     sibRef.search.slot[0] = nodeRef.search.slot[0] - middle;
-    for (auto i = 0u; i < sibRef.search.slot[0]; i++) {
+    for (auto i = 0u; i < sibRef.search.slot[0]; ++i) {
       sibRef.search.slot[i+1] = i;  ///< set slot
       sibRef.search.b.set(i);       ///< set bit
       /// set key and children
       sibRef.keys[i] = nodeRef.keys[nodeRef.search.slot[middle + i + 1]];
       sibRef.children[i] = nodeRef.children[nodeRef.search.slot[middle + i + 1]];
     }
-    for (auto i = middle; i <= N; i++)
+    for (auto i = middle; i <= N; ++i)
       nodeRef.search.b.reset(nodeRef.search.slot[i]);
     nodeRef.search.slot[0] = middle-1;
 
@@ -694,12 +738,10 @@ class wHBPTree {
    */
   pptr<LeafNode> findLeafNode(const KeyType &key) const {
     auto node = rootNode;
-
     auto d = depth;
     while (d-- > 0) {
-      auto n = node.branch;
-      auto pos = lookupPositionInBranchNode(n, key);
-      node = n->children[pos];
+      auto pos = lookupPositionInBranchNode(node.branch, key);
+      node = node.branch->children[pos];
     }
     return node.leaf;
   }
@@ -711,20 +753,11 @@ class wHBPTree {
    * @param key the search key
    * @return the position of the key  (or @c M if not found)
    */
-  unsigned int lookupPositionInLeafNode(const pptr<LeafNode> &node, const KeyType &key) const {
-    auto pos = 1u;
+  auto lookupPositionInLeafNode(const pptr<LeafNode> &node, const KeyType &key) const {
     const auto &nodeRef = *node;
-    const auto &slotArray = nodeRef.search.get_ro().slot;
     const auto &keys = nodeRef.keys.get_ro();
-    auto l = 1;
-    auto r = slotArray[0]; ///< num keys
-    while (l <= r) {
-      pos = (l + r) / 2;
-      if (keys[slotArray[pos]] == key) return pos;
-      if (keys[slotArray[pos]] < key) l = ++pos;
-      else r = pos - 1;
-    }
-    return pos;
+    const auto &slots = nodeRef.search.get_ro().slot;
+    return binarySearch<false>(keys, slots, 1, slots[0], key);
   }
 
   /**
@@ -739,20 +772,11 @@ class wHBPTree {
    * @param key the search key
    * @return the position of the key + 1 (or 0 or @c numKey)
    */
-  unsigned int lookupPositionInBranchNode(BranchNode *node, const KeyType &key) const {
-    auto pos = 1u;
+  auto lookupPositionInBranchNode(const BranchNode *node, const KeyType &key) const {
     const auto &nodeRef = *node;
-    const auto &slotArray = nodeRef.search.slot;
     const auto &keys = nodeRef.keys;
-    auto l = 1;
-    auto r = slotArray[0]; ///< num keys
-    while (l <= r) {
-      pos = (l + r) / 2;
-      if (keys[slotArray[pos]] == key) return ++pos;
-      if (keys[slotArray[pos]] < key) l = ++pos;
-      else r = pos - 1;
-    }
-    return pos;
+    const auto &slots = nodeRef.search.slot;
+    return binarySearch<true>(keys, slots, 1, slots[0], key);
   }
 
   /**
@@ -765,12 +789,13 @@ class wHBPTree {
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
     auto &nodeRef = *node;
-    if (nodeRef.keys.get_ro()[nodeRef.search.get_ro().slot[pos]] == key) {
-      nodeRef.search.get_rw().b.reset(nodeRef.search.get_ro().slot[pos]);
-      for (auto i = pos; i < nodeRef.search.get_ro().slot[0] + 1; i++)
-        nodeRef.search.get_rw().slot[i] =
-          nodeRef.search.get_rw().slot[i + 1];
-      nodeRef.search.get_rw().slot[0] = nodeRef.search.get_ro().slot[0] - 1;
+    auto &nodeSearch = nodeRef.search.get_rw();
+    if (nodeRef.keys.get_ro()[nodeSearch.slot[pos]] == key) {
+      nodeSearch.b.reset(nodeSearch.slot[pos]);
+      for (auto i = pos; i < nodeSearch.slot[0] + 1; ++i) {
+        nodeSearch.slot[i] = nodeSearch.slot[i + 1];
+      }
+      --nodeSearch.slot[0];
       return true;
     }
     return false;
@@ -793,26 +818,20 @@ class wHBPTree {
     auto pos = lookupPositionInBranchNode(node, key);
     if (d == 1) {
       /* the next level is the leaf level */
-      pptr<LeafNode> leaf;
-      if (pos == nodeRef.search.slot[0] + 1)
-        leaf = nodeRef.children[N].leaf;
-      else
-        leaf = nodeRef.children[nodeRef.search.slot[pos]].leaf;
+      auto leaf = (pos == nodeRef.search.slot[0] + 1) ? nodeRef.children[N].leaf
+                               : nodeRef.children[nodeRef.search.slot[pos]].leaf;
       assert(leaf != nullptr);
       deleted = eraseFromLeafNode(leaf, key);
-      auto middle = (M + 1) / 2;
+      constexpr auto middle = (M + 1) / 2;
       /// handle possible underflow
       if (leaf->search.get_ro().slot[0] < middle)
         underflowAtLeafLevel(node, pos, leaf);
     } else {
-      BranchNode *child;
-      if (pos == nodeRef.search.slot[0] + 1)
-        child = nodeRef.children[N].branch;
-      else
-        child = nodeRef.children[nodeRef.search.slot[pos]].branch;
+      auto child = (pos == nodeRef.search.slot[0] + 1) ? nodeRef.children[N].branch
+                                : nodeRef.children[nodeRef.search.slot[pos]].branch;
       deleted = eraseFromBranchNode(child, d - 1, key);
       pos = lookupPositionInBranchNode(node, key);
-      auto middle = (N + 1) / 2;
+      constexpr auto middle = (N + 1) / 2;
 
       /// handle possible underflow
       if (child->search.slot[0] < middle) {
@@ -838,23 +857,19 @@ class wHBPTree {
    *  of the key from the left child node @leaf in the @c children array of the branch node
    * @param leaf the node at which the underflow occured
    */
-  void underflowAtLeafLevel(BranchNode *node, unsigned int pos,
-                            const pptr<LeafNode> &leaf) {
+  void underflowAtLeafLevel(BranchNode *node, unsigned int pos, pptr<LeafNode> &leaf) {
       auto &nodeRef = *node;
       auto &leafRef = *leaf;
       assert(pos <= nodeRef.search.slot[0] + 1);
-      const auto middle = (M + 1) / 2;
+      constexpr auto middle = (M + 1) / 2;
       /* 1. we check whether we can rebalance with one of the siblings but only
        *    if both nodes have the same direct parent */
       if (pos > 1 && leafRef.prevLeaf->search.get_ro().slot[0] > middle) {
         /* we have a sibling at the left for rebalancing the keys */
         balanceLeafNodes(leafRef.prevLeaf, leaf);
-        if (pos == nodeRef.search.slot[0] + 1) ///< rightmost leaf
-          nodeRef.keys[nodeRef.search.slot[nodeRef.search.slot[0]]] =
-            leafRef.keys.get_ro()[nodeRef.search.slot[1]];
-        else
-          nodeRef.keys[nodeRef.search.slot[pos]] =
-            leafRef.keys.get_ro()[nodeRef.search.slot[1]];
+        const auto keyPos = (pos == nodeRef.search.slot[0] + 1) ?
+          nodeRef.search.slot[nodeRef.search.slot[0]] : nodeRef.search.slot[pos];
+        nodeRef.keys[keyPos] = leafRef.keys.get_ro()[nodeRef.search.slot[1]];
       }
       else if (pos <= nodeRef.search.slot[0] && leafRef.nextLeaf->search.get_ro().slot[0] > middle) {
         /* we have a sibling at the right for rebalancing the keys */
@@ -876,21 +891,17 @@ class wHBPTree {
           auto l = leafRef.nextLeaf;
           survivor = mergeLeafNodes(leaf, l);
           deleteLeafNode(l);
-        } else {
-          /* this shouldn't happen?! */
-          assert(false);
-        }
+        } else assert(false); ///< this shouldn't happen?!
+
         if (nodeRef.search.slot[0] > 1) {
           /* just remove the child node from the current branch node */
           nodeRef.search.b.reset(nodeRef.search.slot[pos]);
-          for (auto i = pos; i < nodeRef.search.slot[0]; i++) {
+          for (auto i = pos; i < nodeRef.search.slot[0]; ++i) {
             nodeRef.search.slot[i] = nodeRef.search.slot[i + 1];
           }
-          if (pos == nodeRef.search.slot[0]) ///< merged with rightmost
-            nodeRef.children[N] = survivor;
-          else
-            nodeRef.children[nodeRef.search.slot[pos]] = survivor;
-          nodeRef.search.slot[0] = nodeRef.search.slot[0] - 1;
+          const auto surPos = (pos == nodeRef.search.slot[0]) ? N : nodeRef.search.slot[pos];
+          nodeRef.children[surPos] = survivor;
+          --nodeRef.search.slot[0];
         } else {
           /* This is a special case that happens only if the current node is the
            * root node. Now, we have to replace the branch root node by a leaf
@@ -919,66 +930,51 @@ class wHBPTree {
     assert(node != nullptr);
     assert(child != nullptr);
     auto &nodeRef = *node;
-    auto newChild = child;
-    auto middle = (N + 1) / 2;
+    auto prevKeys = 0u, nextKeys = 0u;
+    constexpr auto middle = (N + 1) / 2;
     /* 1. we check whether we can rebalance with one of the siblings */
-    if (pos > 1 && nodeRef.children[nodeRef.search.slot[pos-1]].branch->search.slot[0] > middle) {
+    if (pos > 1 && (prevKeys =
+          nodeRef.children[nodeRef.search.slot[pos-1]].branch->search.slot[0]) > middle) {
       /* we have a sibling at the left for rebalancing the keys */
       auto sibling = nodeRef.children[nodeRef.search.slot[pos-1]].branch;
       balanceBranchNodes(sibling, child, node, pos-1);
-      return newChild;
-    } else if (pos < nodeRef.search.slot[0] &&
-        nodeRef.children[nodeRef.search.slot[pos + 1]].branch->search.slot[0] > middle) {
+      return child;
+    } else if (pos < nodeRef.search.slot[0] && (nextKeys =
+          nodeRef.children[nodeRef.search.slot[pos + 1]].branch->search.slot[0]) > middle) {
       /* we have a sibling at the right for rebalancing the keys */
       auto sibling = nodeRef.children[nodeRef.search.slot[pos+1]].branch;
       balanceBranchNodes(sibling, child, node, pos);
-      return newChild;
-    } else if (pos == nodeRef.search.slot[0] &&
-        nodeRef.children[N].branch->search.slot[0] > middle) {
+      return child;
+    } else if (pos == nodeRef.search.slot[0] && (nextKeys =
+          nodeRef.children[N].branch->search.slot[0]) > middle) {
       auto sibling = nodeRef.children[N].branch;
       balanceBranchNodes(sibling, child, node, pos);
-      return newChild;
+      return child;
     }
     /* 2. if this fails we have to merge two branch nodes */
     else {
-      BranchNode *lSibling = nullptr, *rSibling = nullptr;
-      auto prevKeys = 0u, nextKeys = 0u;
-
-      if (pos > 1) {
-        lSibling = nodeRef.children[nodeRef.search.slot[pos - 1]].branch;
-        prevKeys = lSibling->search.slot[0];
-      }
-      if (pos < nodeRef.search.slot[0]) {
-        rSibling = nodeRef.children[nodeRef.search.slot[pos + 1]].branch;
-        nextKeys = rSibling->search.slot[0];
-      }
-      if (pos == nodeRef.search.slot[0]) {
-        rSibling = nodeRef.children[N].branch;
-        nextKeys = rSibling->search.slot[0];
-      }
-
-      BranchNode *witnessNode = nullptr;
+      auto newChild = child;
       auto ppos = pos;
       if (prevKeys > 0) {
+        auto &lSibling = nodeRef.children[nodeRef.search.slot[pos - 1]].branch;
         mergeBranchNodes(lSibling, nodeRef.keys[nodeRef.search.slot[pos-1]], child);
         ppos = pos - 1;
-        witnessNode = child;
+        deleteBranchNode(child);
         newChild = lSibling;
       } else if (nextKeys > 0) {
+        const auto rPos = (pos == nodeRef.search.slot[0]) ? N : nodeRef.search.slot[pos + 1];
+        auto &rSibling = nodeRef.children[rPos].branch;
         mergeBranchNodes(child, nodeRef.keys[nodeRef.search.slot[pos]], rSibling);
-        witnessNode = rSibling;
-      } else ///< shouldn't happen
-        assert(false);
+        if (pos == nodeRef.search.slot[0])
+          nodeRef.children[N] = child; ///< new rightmost children
+        deleteBranchNode(rSibling);
+      } else assert(false); ///< shouldn't happen
 
       /// remove key/children ppos from node
-      for (auto i = ppos; i < nodeRef.search.slot[0] - 1; i++)
+      for (auto i = ppos; i < nodeRef.search.slot[0] - 1; ++i) {
         nodeRef.search.slot[i] = nodeRef.search.slot[i + 1];
-
-      if (pos == nodeRef.search.slot[0])
-        nodeRef.children[N] = child; ///< new rightmost children
-
-      nodeRef.search.slot[0] = nodeRef.search.slot[0] - 1;
-      deleteBranchNode(witnessNode);
+      }
+      --nodeRef.search.slot[0];
       return newChild;
     }
   }
@@ -995,50 +991,50 @@ class wHBPTree {
   void balanceLeafNodes(const pptr<LeafNode> &donor, const pptr<LeafNode> &receiver) {
     auto &donorRef = *donor;
     auto &receiverRef = *receiver;
-    const auto dNumKeys = donorRef.search.get_ro().slot[0];
-    const auto rNumKeys = receiverRef.search.get_ro().slot[0];
-    assert(dNumKeys > rNumKeys);
-    auto balancedNum = (dNumKeys + rNumKeys) / 2;
-    auto toMove = dNumKeys - balancedNum;
+    auto &receiverSearch = receiverRef.search.get_rw();
+    auto &donorSearch = donorRef.search.get_rw();
+    assert(donorSearch.slot[0] > receiverSearch.slot[0]);
+
+    auto balancedNum = (donorSearch.slot[0] + receiverSearch.slot[0]) / 2;
+    auto toMove = donorSearch.slot[0] - balancedNum;
     if (toMove == 0) return;
 
-    if (donorRef.keys.get_ro()[donorRef.search.get_ro().slot[1]] <
-        receiverRef.keys.get_ro()[receiverRef.search.get_ro().slot[1]]) {
+    auto &receiverKeys = receiverRef.keys.get_rw();
+    auto &receiverValues = receiverRef.values.get_rw();
+    const auto &donorKeys = donorRef.keys.get_ro();
+    const auto &donorValues = donorRef.values.get_ro();
+    if (donorKeys[donorSearch.slot[1]] < receiverKeys[receiverSearch.slot[1]]) {
       /// move to a node with larger keys
       auto i = 0u, j = 1u;
       /// reserve space
-      for (i = rNumKeys; i > 0; i--)
-        receiverRef.search.get_rw().slot[i + toMove] =
-          receiverRef.search.get_ro().slot[i];
+      for (i = receiverSearch.slot[0]; i > 0; --i)
+        receiverSearch.slot[i + toMove] = receiverSearch.slot[i];
       /// move from donor to receiver
-      for (i = balancedNum+1; i <= dNumKeys; i++, j++) {
-        const auto u = receiverRef.search.get_ro().getFreeZero();
-        const auto dPos = donorRef.search.get_ro().slot[i];
-        receiverRef.keys.get_rw()[u] = donorRef.keys.get_ro()[dPos];
-        receiverRef.values.get_rw()[u] = donorRef.values.get_ro()[dPos];
-        receiverRef.search.get_rw().slot[j] = u;
-        receiverRef.search.get_rw().b.set(u);
-        donorRef.search.get_rw().b.reset(dPos);
+      for (i = balancedNum + 1; i <= donorSearch.slot[0]; i++, ++j) {
+        const auto u = BitOperations::getFreeZero(receiverSearch.b);
+        receiverKeys[u] = donorKeys[donorSearch.slot[i]];
+        receiverValues[u] = donorValues[donorSearch.slot[i]];
+        receiverSearch.slot[j] = u;
+        receiverSearch.b.set(u);
+        donorSearch.b.reset(donorSearch.slot[i]);
       }
     } else {
       /// move to a node with smaller keys
-      for (auto i = 1u; i < toMove + 1; i++) {
-        const auto u = receiverRef.search.get_ro().getFreeZero();
-        const auto dPos = donorRef.search.get_ro().slot[i];
-        receiverRef.keys.get_rw()[u] = donorRef.keys.get_ro()[dPos];
-        receiverRef.values.get_rw()[u] = donorRef.values.get_ro()[dPos];
-        receiverRef.search.get_rw().slot[rNumKeys + i] = u;
-        receiverRef.search.get_rw().b.set(u);
-        donorRef.search.get_rw().b.reset(dPos);
+      for (auto i = 1u; i < toMove + 1; ++i) {
+        const auto u = BitOperations::getFreeZero(receiverSearch.b);
+        receiverKeys[u] = donorKeys[donorSearch.slot[i]];
+        receiverValues[u] = donorValues[donorSearch.slot[i]];
+        receiverSearch.slot[receiverSearch.slot[0] + i] = u;
+        receiverSearch.b.set(u);
+        donorSearch.b.reset(donorSearch.slot[i]);
       }
       /// move to left on donor node
-      for (auto i = 1; i < dNumKeys - toMove + 1; i++) {
-        donorRef.search.get_rw().slot[i] =
-          donorRef.search.get_ro().slot[toMove + i];
+      for (auto i = 1; i < donorSearch.slot[0] - toMove + 1; ++i) {
+        donorSearch.slot[i] = donorSearch.slot[toMove + i];
       }
     }
-    donorRef.search.get_rw().slot[0] = dNumKeys - toMove;
-    receiverRef.search.get_rw().slot[0] = rNumKeys + toMove;
+    donorSearch.slot[0] -= toMove;
+    receiverSearch.slot[0] += toMove;
   }
 
   /**
@@ -1060,28 +1056,26 @@ class wHBPTree {
     const auto rNumKeys = receiverRef.search.slot[0];
     assert(dNumKeys > rNumKeys);
 
-    unsigned int balancedNum = (dNumKeys + rNumKeys) / 2;
-    unsigned int toMove = dNumKeys - balancedNum;
+    const auto balancedNum = (dNumKeys + rNumKeys) / 2;
+    const auto toMove = dNumKeys - balancedNum;
     if (toMove == 0) return;
 
     /// 1. move from one node to a node with larger keys
-    if (donorRef.keys[donorRef.search.slot[1]]
-        < receiverRef.keys[receiverRef.search.slot[1]]) {
+    if (donorRef.keys[donorRef.search.slot[1]] < receiverRef.keys[receiverRef.search.slot[1]]) {
       /// 1.1. make room
-      for (auto i = rNumKeys; i > 0; i--) {
-        receiverRef.search.slot[i + toMove] =
-          receiverRef.search.slot[i];
+      for (auto i = rNumKeys; i > 0; --i) {
+        receiverRef.search.slot[i + toMove] = receiverRef.search.slot[i];
       }
       /// 1.2. move toMove keys/children from donor to receiver
       /// the most right child first
-      const auto u = receiverRef.search.getFreeZero();
+      const auto u = BitOperations::getFreeZero(receiverRef.search.b);
       receiverRef.keys[u] = parent->keys[parent->search.slot[pos]];
       receiverRef.children[u] = donorRef.children[N];
       receiverRef.search.slot[toMove] = u;
       receiverRef.search.b.set(u);
       /// now the rest
-      for (auto i = 2u; i <= toMove; i++) {
-        const auto u2 = receiverRef.search.getFreeZero();
+      for (auto i = 2u; i <= toMove; ++i) {
+        const auto u2 = BitOperations::getFreeZero(receiverRef.search.b);
         const auto dPos = donorRef.search.slot[balancedNum + i];
         receiverRef.keys[u2] = donorRef.keys[dPos];
         receiverRef.children[u2] = donorRef.children[dPos];
@@ -1090,23 +1084,21 @@ class wHBPTree {
         donorRef.search.b.reset(dPos);
       }
       /// 1.3 set donors new rightmost child and new parent key
-      donorRef.children[N] =
-        donorRef.children[donorRef.search.slot[balancedNum + 1]];
-      parent->keys[parent->search.slot[pos]] =
-        donorRef.keys[donorRef.search.slot[balancedNum + 1]];
+      donorRef.children[N] = donorRef.children[donorRef.search.slot[balancedNum + 1]];
+      parent->keys[parent->search.slot[pos]] = donorRef.keys[donorRef.search.slot[balancedNum + 1]];
     }
     /// 2. move from one node to a node with smaller keys
     else {
       /// 2.1. copy parent key and rightmost child of receiver
-      const auto u = receiverRef.search.getFreeZero();
+      const auto u = BitOperations::getFreeZero(receiverRef.search.b);
       receiverRef.keys[u] = parent->keys[parent->search.slot[pos]];
       receiverRef.children[u] = receiverRef.children[N];
       receiverRef.search.slot[rNumKeys + 1] = u;
       receiverRef.search.b.set(u);
 
       /// 2.2. move toMove keys/children from donor to receiver
-      for (auto i = 2u; i <= toMove; i++) {
-        const auto u2 = receiverRef.search.getFreeZero();
+      for (auto i = 2u; i <= toMove; ++i) {
+        const auto u2 = BitOperations::getFreeZero(receiverRef.search.b);
         const auto dPos = donorRef.search.slot[i - 1];
         receiverRef.keys[u2] = donorRef.keys[dPos];
         receiverRef.children[u2] = donorRef.children[dPos];
@@ -1116,16 +1108,15 @@ class wHBPTree {
       }
       /// 2.3. set receivers new rightmost child and new parent key
       receiverRef.children[N] = donorRef.children[donorRef.search.slot[toMove]];
-      parent->keys[parent->search.slot[pos]] =
-        donorRef.keys[donorRef.search.slot[toMove]];
+      parent->keys[parent->search.slot[pos]] = donorRef.keys[donorRef.search.slot[toMove]];
 
       /// 2.4. on donor node move all keys and values to the left
-      for (auto i = 1u; i <= dNumKeys - toMove; i++) {
+      for (auto i = 1u; i <= dNumKeys - toMove; ++i) {
         donorRef.search.slot[i] = donorRef.search.slot[toMove + i];
       }
     }
-    receiverRef.search.slot[0] = rNumKeys + toMove;
-    donorRef.search.slot[0] = dNumKeys - toMove;
+    receiverRef.search.slot[0] += toMove;
+    donorRef.search.slot[0] -= toMove;
   }
 
   /**
@@ -1140,20 +1131,24 @@ class wHBPTree {
     assert(node1 != nullptr);
     assert(node2 != nullptr);
     auto &node1Ref = *node1;
-    const auto &node2Ref = *node2;
-    const auto n1NumKeys = node1Ref.search.get_ro().slot[0];
-    const auto n2NumKeys = node2Ref.search.get_ro().slot[0];
-    assert(n1NumKeys + n2NumKeys <= M);
+    auto &node2Ref = *node2;
+    auto &node1Keys = node1Ref.keys.get_rw();
+    auto &node1Vals = node1Ref.values.get_rw();
+    auto &node1Search = node1Ref.search.get_rw();
+    const auto &node2Keys = node2Ref.keys.get_rw();
+    const auto &node2Vals = node2Ref.values.get_rw();
+    const auto &node2Search = node2Ref.search.get_rw();
+    assert(node1Search.slot[0] + node2Search.slot[0] <= M);
 
     /// we move all keys/values from node2 to node1
-    for (auto i = 1u; i < n2NumKeys + 1; i++) {
-        const auto u = node1Ref.search.get_ro().getFreeZero();
-        node1Ref.keys.get_rw()[u] = node2Ref.keys.get_ro()[node2Ref.search.get_ro().slot[i]];
-        node1Ref.values.get_rw()[u] = node2Ref.values.get_ro()[node2Ref.search.get_ro().slot[i]];
-        node1Ref.search.get_rw().slot[n1NumKeys + i] = u;
-        node1Ref.search.get_rw().b.set(u);
+    for (auto i = 1u; i < node2Search.slot[0] + 1; ++i) {
+      const auto u = BitOperations::getFreeZero(node1Search.b);
+      node1Keys[u] = node2Keys[node2Search.slot[i]];
+      node1Vals[u] = node2Vals[node2Search.slot[i]];
+      node1Search.slot[node1Search.slot[0] + i] = u;
+      node1Search.b.set(u);
     }
-    node1Ref.search.get_rw().slot[0] = n1NumKeys + n2NumKeys;
+    node1Search.slot[0] += node2Search.slot[0];
     node1Ref.nextLeaf = node2Ref.nextLeaf;
     if (node2Ref.nextLeaf != nullptr) node2Ref.nextLeaf->prevLeaf = node1;
     return node1;
@@ -1179,15 +1174,15 @@ class wHBPTree {
     assert(sibRef.keys[sibRef.search.slot[sNumKeys]] < key);
 
     /// merge parent key and drag rightmost child forward
-    auto u = sibRef.search.getFreeZero();
+    auto u = BitOperations::getFreeZero(sibRef.search.b);
     sibRef.keys[u] = key;
     sibRef.children[u] = sibRef.children[N];
     sibRef.search.b.set(u);
     sibRef.search.slot[sNumKeys+1] = u;
 
     /// merge node
-    for (auto i = 1u; i < nodeRef.search.slot[0] + 1; i++) {
-      u = sibRef.search.getFreeZero();
+    for (auto i = 1u; i < nodeRef.search.slot[0] + 1; ++i) {
+      u = BitOperations::getFreeZero(sibRef.search.b);
       sibRef.keys[u] = nodeRef.keys[nodeRef.search.slot[i]];
       sibRef.children[u] = nodeRef.children[nodeRef.search.slot[i]];
       sibRef.search.b.set(u);
@@ -1302,10 +1297,10 @@ class wHBPTree {
    */
   void printLeafNode(unsigned int d, const pptr<LeafNode> &node) const {
     const auto &nodeRef = *node;
-    for (auto i = 0u; i < d; i++) std::cout << "  ";
+    for (auto i = 0u; i < d; ++i) std::cout << "  ";
     std::cout << "[\033[1m" << std::hex << node << std::dec << "\033[0m #"
       << (int)nodeRef.search.get_ro().slot[0] << ": ";
-    for (auto i = 1u; i <= nodeRef.search.get_ro().slot[0]; i++) {
+    for (auto i = 1u; i <= nodeRef.search.get_ro().slot[0]; ++i) {
       if (i > 1) std::cout << ", ";
       std::cout << "{(" << nodeRef.search.get_ro().b[nodeRef.search.get_ro().slot[i]] << ")"
                 << nodeRef.keys.get_ro()[nodeRef.search.get_ro().slot[i]] << "}";
@@ -1322,15 +1317,15 @@ class wHBPTree {
    */
   void printBranchNode(unsigned int d, BranchNode *node) const {
     const auto &nodeRef = *node;
-    for (auto i = 0u; i < d; i++) std::cout << "  ";
+    for (auto i = 0u; i < d; ++i) std::cout << "  ";
     std::cout << d << " BN { ["<<node<<"] #" << (int)nodeRef.search.slot[0] << ": ";
-    for (auto k = 1u; k <= nodeRef.search.slot[0]; k++) {
+    for (auto k = 1u; k <= nodeRef.search.slot[0]; ++k) {
       if (k > 1) std::cout << ", ";
       std::cout << "(" << nodeRef.search.b[nodeRef.search.slot[k]] << ")"
                 << nodeRef.keys[nodeRef.search.slot[k]];
     }
     std::cout << " }" << std::endl;
-    for (auto k = 1u; k <= nodeRef.search.slot[0] + 1; k++) {
+    for (auto k = 1u; k <= nodeRef.search.slot[0] + 1; ++k) {
       const auto pos = (k == nodeRef.search.slot[0] + 1)? N
         : nodeRef.search.slot[k];
       if (d + 1 < depth) {

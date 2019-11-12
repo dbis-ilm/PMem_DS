@@ -6,7 +6,9 @@ project (nvm-DS)
 ################################################################################
 
 # Set the mount path of your pmem device where the structures should be stored
-set(PMEM_MNT_PATH "/mnt/pmem0/test")
+if(NOT PMEM_MNT_PATH)
+  set(PMEM_MNT_PATH "/mnt/pmem0/test")
+endif()
 
 # Installation path (creates include and lib within this directory)
 if(NOT PROJECT_INSTALL_DIR)

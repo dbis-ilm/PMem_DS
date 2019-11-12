@@ -12,6 +12,7 @@ target_link_libraries(MainTest INTERFACE Catch2::Catch)
 do_test(PBPTreeTest)
 do_test(UnsortedPBPTreeTest)
 do_test(BitPBPTreeTest)
+do_test(BitHPBPTreeTest)
 # FPTree
 do_test(HPBPTreeTest)
 do_test(FPTreeTest)

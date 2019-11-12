@@ -502,7 +502,7 @@ class FPTree {
       if (key > splitRef.key) {
         insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.search.get_ro().b), key, val);
       } else {
-        if (key > findMaxKeyAtPNode(node, nodeRef.search.get_ro().b)) {
+        if (key > findMaxKey(nodeRef.keys.get_ro(), nodeRef.search.get_ro().b)) {
           /// Special case: new key would be the middle, thus must be right
           insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.search.get_ro().b), key, val);
           splitRef.key = key;
@@ -747,6 +747,9 @@ class FPTree {
   auto lookupPositionInBranchNode(const BranchNode * const node, const KeyType &key) const {
     const auto num = node->numKeys;
     const auto &keys = node->keys;
+    //auto pos = 0u;
+    //for (; pos < num && keys[pos] <= key; ++pos);
+    //return pos;
     return binarySearch<true>(keys, 0, num - 1, key);
   }
 
@@ -832,12 +835,14 @@ class FPTree {
       /// we have a sibling at the left for rebalancing the keys
       balanceLeafNodes(leafRef.prevLeaf, leaf);
 
-      nodeRef.keys[pos - 1] = leafRef.keys.get_ro()[findMinKeyAtPNode(leaf, leafRef.search.get_ro().b)];
+      nodeRef.keys[pos - 1] = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
+                                                               leafRef.search.get_ro().b)];
     } else if (pos < nodeRef.numKeys && leafRef.nextLeaf->search.get_ro().b.count() > middle) {
       /// we have a sibling at the right for rebalancing the keys
       balanceLeafNodes(leafRef.nextLeaf, leaf);
       auto &nextLeaf = *leafRef.nextLeaf;
-      nodeRef.keys[pos] = nextLeaf.keys.get_ro()[findMinKeyAtPNode(leafRef.nextLeaf, nextLeaf.search.get_ro().b)];
+      nodeRef.keys[pos] = nextLeaf.keys.get_ro()[findMinKey(nextLeaf.keys.get_ro(),
+                                                            nextLeaf.search.get_ro().b)];
     } else {
       /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
       ///    direct parent
@@ -971,7 +976,7 @@ class FPTree {
     if (donorKeys[0] < receiverKeys[0]) {
       /// move to a node with larger keys
       for (auto i = 0u; i < toMove; ++i) {
-        const auto max = findMaxKeyAtPNode(donor, donorSearch.b);
+        const auto max = findMaxKey(donorKeys, donorSearch.b);
         const auto pos = BitOperations::getFreeZero(receiverSearch.b);
         receiverSearch.b.set(pos);
         receiverSearch.fp[pos] = fpHash(donorKeys[max]);
@@ -982,7 +987,7 @@ class FPTree {
     } else {
       /// move to a node with smaller keys
       for (auto i = 0u; i < toMove; ++i) {
-        const auto min = findMinKeyAtPNode(donor, donorSearch.b);
+        const auto min = findMinKey(donorKeys, donorSearch.b);
         const auto pos = BitOperations::getFreeZero(receiverSearch.b);
         receiverSearch.b.set(pos);
         receiverSearch.fp[pos] = fpHash(donorKeys[min]);
@@ -1171,12 +1176,14 @@ class FPTree {
         /* we have to insert a new right child, as the keys in the leafList are sorted */
         auto newNode = newBranchNode();
         newNode->children[0] = leaf;
-        splitRef.key = leafRef.keys.get_ro()[findMinKeyAtPNode(leaf, leafRef.search.get_ro().b)];
+        splitRef.key = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
+                                                        leafRef.search.get_ro().b)];
         splitRef.leftChild = node;
         splitRef.rightChild = newNode;
         return true;
       } else {
-        nodeRef.keys[nodeRef.numKeys] = leafRef.keys.get_ro()[findMinKeyAtPNode(leaf, leafRef.search.get_ro().b)];
+        nodeRef.keys[nodeRef.numKeys] = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
+                                                                        leafRef.search.get_ro().b)];
         ++nodeRef.numKeys;
         nodeRef.children[nodeRef.numKeys] = leaf;
         return false;

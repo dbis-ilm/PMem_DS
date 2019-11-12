@@ -1112,13 +1112,21 @@ class PBPTree {
   pptr<LeafNode> newLeafNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
+    } else {
+      newNode = make_persistent<LeafNode>();
+    }
     return newNode;
   }
 
   void deleteLeafNode(pptr<LeafNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
+    } else {
+      delete_persistent<LeafNode>(node);
+    }
     node = nullptr;
   }
 
@@ -1128,13 +1136,21 @@ class PBPTree {
   pptr<BranchNode> newBranchNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<BranchNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<BranchNode>(); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { newNode = make_persistent<BranchNode>(); });
+    } else {
+      newNode = make_persistent<BranchNode>();
+    }
     return newNode;
   }
 
   void deleteBranchNode(pptr<BranchNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] { delete_persistent<BranchNode>(node); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { delete_persistent<BranchNode>(node); });
+    } else {
+      delete_persistent<BranchNode>(node);
+    }
     node = nullptr;
   }
 

@@ -15,8 +15,8 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef DBIS_BitPBPTree_hpp_
-#define DBIS_BitPBPTree_hpp_
+#ifndef DBIS_BitHPBPTree_hpp_
+#define DBIS_BitHPBPTree_hpp_
 
 #include <array>
 #include <iostream>
@@ -51,7 +51,7 @@ using pptr = persistent_ptr<Object>;
   * @tparam M the maximum number of keys on a leaf node
   */
 template<typename KeyType, typename ValueType, size_t N, size_t M>
-class BitPBPTree {
+class BitHPBPTree {
   /// we need at least two keys on a branch node to be able to split
   static_assert(N > 2, "number of branch keys has to be >2.");
   /// we need an even order for branch nodes to be able to merge
@@ -73,7 +73,7 @@ class BitPBPTree {
     Node() : tag(BLANK) {};
 
     explicit Node(const pptr<LeafNode> &leaf_) : tag(LEAF), leaf(leaf_) {};
-    explicit Node(const pptr<BranchNode> &branch_) : tag(BRANCH), branch(branch_) {};
+    explicit Node(const BranchNode *branch_) : tag(BRANCH), branch(branch_) {};
     Node(const Node &other) { copy(other); };
 
     void copy(const Node &other) {
@@ -93,7 +93,7 @@ class BitPBPTree {
     Node &operator=(const pptr<LeafNode> &leaf_) {
       tag = LEAF; leaf = leaf_; return *this;
     }
-    Node &operator=(const pptr<BranchNode> &branch_) {
+    Node &operator=(BranchNode *const branch_) {
       tag = BRANCH; branch = branch_; return *this;
     }
 
@@ -103,7 +103,7 @@ class BitPBPTree {
 
     union {
       pptr<LeafNode> leaf;
-      pptr<BranchNode> branch;
+      BranchNode *branch;
     };
   };
 
@@ -143,10 +143,55 @@ class BitPBPTree {
      */
     BranchNode(){}
 
-    p<std::bitset<N>>              bits; ///< bitset for valid entries
-    p<std::array<KeyType, N>>      keys; ///< the actual keys
-    p<std::array<Node, N + 1>> children; ///< pointers to child nodes (BranchNode or LeafNode)
+    std::bitset<N>              bits; ///< bitset for valid entries
+    std::array<KeyType, N>      keys; ///< the actual keys
+    std::array<Node, N + 1> children; ///< pointers to child nodes (BranchNode or LeafNode)
   };
+
+  /**
+   * Create a new empty leaf node.
+   */
+  pptr<LeafNode> newLeafNode() {
+    auto pop = pmem::obj::pool_by_vptr(this);
+    pptr<LeafNode> newNode = nullptr;
+    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
+    return newNode;
+  }
+
+  pptr<LeafNode> newLeafNode(const pptr<LeafNode> &other) {
+    auto pop = pmem::obj::pool_by_vptr(this);
+    pptr<LeafNode> newNode = nullptr;
+    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(*other); });
+    return newNode;
+  }
+
+  /**
+   * Remove/delete an existing leaf node.
+   */
+  void deleteLeafNode(pptr<LeafNode> &node) {
+    auto pop = pmem::obj::pool_by_vptr(this);
+    transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
+    node = nullptr;
+  }
+
+  /**
+   * Create a new empty branch node.
+   */
+  BranchNode *newBranchNode() {
+    return new BranchNode();
+  }
+
+  BranchNode *newBranchNode(const BranchNode *other) {
+    return new BranchNode(*other);
+  }
+
+  /**
+   * Remove/delete an existing branch node.
+   */
+  void deleteBranchNode(BranchNode *&node) {
+    delete node;
+    node = nullptr;
+  }
 
   /* -------------------------------------------------------------------------------------------- */
 
@@ -159,11 +204,13 @@ class BitPBPTree {
     Node rightChild; ///< the resulting rhs child node
   };
 
-  p<unsigned int> depth; /**< the depth of the tree, i.e. the number of levels
-                              (0 => rootNode is LeafNode) */
+  unsigned int depth; /**< the depth of the tree, i.e. the number of levels
+                           (0 => rootNode is LeafNode) */
 
   Node rootNode; /**< pointer to the root node (an instance of @c LeafNode or @c BranchNode).
                       This pointer is never @c nullptr. */
+  pptr<LeafNode> leafList; /**< Pointer to the leaf at the most left position.
+                                Neccessary for recovery */
 
   public:
 
@@ -180,9 +227,7 @@ class BitPBPTree {
     iterator(const Node &root, size_t d) {
       /// traverse to left-most key
       auto node = root;
-      while (d-- > 0) {
-        node = node.branch->children.get_ro()[0];
-      }
+      while (d-- > 0) node = node.branch->children[0];
       currentNode = node.leaf;
       currentPosition = 0;
       const auto &nodeBits = currentNode->bits.get_ro();
@@ -195,9 +240,7 @@ class BitPBPTree {
         currentPosition = 0;
         if (currentNode == nullptr) return *this;
         const auto &nodeBits = currentNode->bits.get_ro();
-        while(!nodeBits.test(currentPosition)) {
-          ++currentPosition;
-        };
+        while(!nodeBits.test(currentPosition)) ++currentPosition;
       } else {
         if (!currentNode->bits.get_ro().test(++currentPosition)) ++(*this);
       }
@@ -243,8 +286,9 @@ class BitPBPTree {
   /**
    * Constructor for creating a new B+ tree.
    */
-  BitPBPTree() : depth(0) {
+  BitHPBPTree() : depth(0) {
     rootNode = newLeafNode();
+    leafList = rootNode.leaf;
     LOG("created new tree with sizeof(BranchNode) = " << sizeof(BranchNode) <<
         ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
@@ -252,7 +296,7 @@ class BitPBPTree {
   /**
    * Destructor for the B+ tree.
    */
-  ~BitPBPTree() {}
+  ~BitHPBPTree() {}
 
   /**
    * Insert an element (a key-value pair) into the B+ tree. If the key @c key already exists, the
@@ -278,13 +322,12 @@ class BitPBPTree {
       /// we had an overflow in the node and therefore the node is split
       auto root = newBranchNode();
       auto &rootRef = *root;
-      auto &rootChilds = rootRef.children.get_rw();
-      rootRef.keys.get_rw()[0] = splitInfo.key;
-      rootChilds[0] = splitInfo.leftChild;
-      rootChilds[N] = splitInfo.rightChild;
-      rootRef.bits.get_rw().set(0);
+      rootRef.keys[0] = splitInfo.key;
+      rootRef.children[0] = splitInfo.leftChild;
+      rootRef.children[N] = splitInfo.rightChild;
+      rootRef.bits.set(0);
       rootNode.branch = root;
-      ++depth.get_rw();
+      ++depth;
     }
   }
 
@@ -330,9 +373,30 @@ class BitPBPTree {
   }
 
   /**
-   * Nothing to do as everything is persistent and failure-atomic(?).
+   * Recover the BitHPBPTree by iterating over the LeafList and using the recoveryInsert method.
    */
-  void recover() { return; }
+  void recover() {
+    LOG("Starting RECOVERY of BitHPBPTree");
+    pptr<LeafNode> currentLeaf = leafList;
+    if(leafList == nullptr){
+      LOG("No data to recover HPBPTree");
+    }
+    if(leafList->nextLeaf == nullptr){
+      /// The index has only one node, so the leaf node becomes the root node
+      rootNode = leafList;
+      depth = 0;
+    } else {
+      rootNode = newBranchNode();
+      depth = 1;
+      rootNode.branch->children[0] = currentLeaf;
+      currentLeaf = currentLeaf->nextLeaf;
+      while (currentLeaf != nullptr) {
+        recoveryInsert(currentLeaf);
+        currentLeaf = currentLeaf->nextLeaf;
+      }
+    }
+    LOG("RECOVERY Done")
+  }
 
   /**
    * Print the structure and content of the B+ tree to stdout.
@@ -352,9 +416,9 @@ class BitPBPTree {
   void scan(ScanFunc func) const {
     /// we traverse to the leftmost leaf node
     auto node = rootNode;
-    auto d = depth.get_ro();
+    auto d = depth;
     /// as long as we aren't at the leaf level we follow the path down
-    while (d-- > 0) node = node.branch->children.get_ro()[0];
+    while (d-- > 0) node = node.branch->children[0];
     auto leaf = node.leaf;
     while (leaf != nullptr) {
       const auto &leafRef = *leaf;
@@ -440,12 +504,10 @@ class BitPBPTree {
    * @param pos the position of the child node @leaf in the @c children array of the branch node
    * @param leaf the node at which the underflow occured
    */
-  void underflowAtLeafLevel(const pptr<BranchNode> &node, const unsigned int pos,
-                            pptr<LeafNode> &leaf) {
+  void underflowAtLeafLevel(BranchNode * const node, const unsigned int pos, pptr<LeafNode> &leaf) {
       assert(pos <= N);
       auto &nodeRef = *node;
       auto &leafRef = *leaf;
-      auto &nodeKeys = nodeRef.keys.get_rw();
       auto prevNumKeys = 0u;
       constexpr auto middle = (M + 1) / 2;
 
@@ -456,49 +518,45 @@ class BitPBPTree {
         balanceLeafNodes(leafRef.prevLeaf, leaf);
         const auto newMin = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
                                                              leafRef.bits.get_ro())];
-        const auto prevPos = findMinKeyGreaterThan(leafRef.keys.get_ro(),
-                                                   leafRef.bits.get_ro(), newMin);
-        nodeKeys[prevPos] = newMin;
+        const auto prevPos = findMinKeyGreaterThan(leafRef.keys.get_ro(), leafRef.bits.get_ro(),
+                                                   newMin);
+        nodeRef.keys[prevPos] = newMin;
       } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() > middle) {
         /// we have a sibling at the right for rebalancing the keys
         balanceLeafNodes(leafRef.nextLeaf, leaf);
         const auto &nextLeaf = *leafRef.nextLeaf;
-        nodeKeys[pos] =
+        nodeRef.keys[pos] =
           nextLeaf.keys.get_ro()[findMinKey(nextLeaf.keys.get_ro(), nextLeaf.bits.get_ro())];
       } else {
         /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
         ///    direct parent
         pptr<LeafNode> survivor = nullptr;
-        auto &nodeChilds = nodeRef.children.get_rw();
-        auto &nodeBits = nodeRef.bits.get_rw();
 
-        if (findMinKey(nodeKeys, nodeBits) != pos && prevNumKeys <= middle) {
+        if (findMinKey(nodeRef.keys, nodeRef.bits) != pos && prevNumKeys <= middle) {
           /// merge left
           survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
           deleteLeafNode(leaf);
           /// move to next left slot
           const auto prevPos = (pos == N) ?
-            findMaxKey(nodeKeys, nodeBits) : ///< we need a new rightmost node
-            findMaxKeySmallerThan(nodeKeys, nodeBits, nodeKeys[pos]);
-          nodeChilds[pos] = nodeChilds[prevPos];
-          nodeBits.reset(prevPos);
+            findMaxKey(nodeRef.keys, nodeRef.bits) : ///< we need a new rightmost node
+            findMaxKeySmallerThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
+          nodeRef.children[pos] = nodeRef.children[prevPos];
+          nodeRef.bits.reset(prevPos);
         } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() <= middle) {
           /// merge right
           survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
           deleteLeafNode(leafRef.nextLeaf);
           /// move to next right slot
-          const auto nextPos = findMinKeyGreaterThan(nodeKeys, nodeBits, nodeKeys[pos]);
-          nodeChilds[nextPos] = nodeChilds[pos];
-          nodeBits.reset(pos);
-        } else {
-          /// this shouldn't happen?!
-          assert(false);
-        }
-        if (nodeBits.count() == 0) {
+          const auto nextPos = findMinKeyGreaterThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
+          nodeRef.children[nextPos] = nodeRef.children[pos];
+          nodeRef.bits.reset(pos);
+        } else  assert(false); ///< this shouldn't happen?!
+
+        if (nodeRef.bits.count() == 0) {
           /// This is a special case that happens only if the current node is the root node. Now, we
           /// have to replace the branch root node by a leaf node.
           rootNode = survivor;
-          --depth.get_rw();
+          --depth;
         }
       }
     }
@@ -600,16 +658,15 @@ class BitPBPTree {
    * @param key the key to be deleted
    * @return true if the entry was deleted
    */
-  bool eraseFromBranchNode(const pptr<BranchNode> &node, const unsigned int d, const KeyType &key) {
+  bool eraseFromBranchNode(BranchNode * const node, const unsigned int d, const KeyType &key) {
     assert(d >= 1);
-    const auto &nodeRef = *node;
+    auto &nodeRef = *node;
     bool deleted = false;
     /// try to find the branch
     auto pos = lookupPositionInBranchNode(node, key);
-    auto n = nodeRef.children.get_ro()[pos];
     if (d == 1) {
       /// the next level is the leaf level
-      auto &leaf = n.leaf;
+      auto &leaf = nodeRef.children[pos].leaf;
       deleted = eraseFromLeafNode(leaf, key);
       constexpr auto middle = (M + 1) / 2;
       if (leaf->bits.get_ro().count() < middle) {
@@ -617,18 +674,18 @@ class BitPBPTree {
         underflowAtLeafLevel(node, pos, leaf);
       }
     } else {
-      auto child = n.branch;
+      auto &child = nodeRef.children[pos].branch;
       deleted = eraseFromBranchNode(child, d - 1, key);
 
       pos = lookupPositionInBranchNode(node, key);
       constexpr auto middle = (N + 1) / 2;
-      if (child->bits.get_ro().count() < middle) {
+      if (child->bits.count() < middle) {
         /// handle underflow
         child = underflowAtBranchLevel(node, pos, child);
-        if (d == depth && nodeRef.bits.get_ro().count() == 0) {
+        if (d == depth && nodeRef.bits.count() == 0) {
           /// special case: the root node is empty now
           rootNode = child;
-          --depth.get_rw();
+          --depth;
         }
       }
     }
@@ -646,52 +703,49 @@ class BitPBPTree {
    * @param child the node at which the underflow occured
    * @return the (possibly new) child node (in case of a merge)
    */
-  pptr<BranchNode> underflowAtBranchLevel(const pptr<BranchNode> &node, const unsigned int pos,
-                                          pptr<BranchNode> &child) {
+  BranchNode *underflowAtBranchLevel(BranchNode * const node, const unsigned int pos,
+                                     BranchNode * child) {
     assert(node != nullptr);
     assert(child != nullptr);
     auto &nodeRef = *node;
-    const auto &nodeKeys = nodeRef.keys.get_ro();
-    const auto &nodeChilds = nodeRef.children.get_ro();
-    auto &nodeBits = nodeRef.bits.get_rw();
-    const auto nMinKeyPos = findMinKey(nodeKeys, nodeBits);
-    const auto prevPos = findMaxKeySmallerThan(nodeKeys, nodeBits, nodeKeys[pos]); //could be N
-    const auto prevNumKeys = nodeChilds[prevPos].branch->bits.get_ro().count();
-    const auto nextPos = findMinKeyGreaterThan(nodeKeys, nodeBits, nodeKeys[pos]);
-    const auto nextNumKeys = nodeChilds[nextPos].branch->bits.get_ro().count();
+    const auto nMinKeyPos = findMinKey(nodeRef.keys, nodeRef.bits);
+    const auto prevPos = findMaxKeySmallerThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]); //could be N
+    const auto prevNumKeys = nodeRef.children[prevPos].branch->bits.count();
+    const auto nextPos = findMinKeyGreaterThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
+    const auto nextNumKeys = nodeRef.children[nextPos].branch->bits.count();
     constexpr auto middle = (N + 1) / 2;
 
     /// 1. we check whether we can rebalance with one of the siblings
     if (nMinKeyPos != pos && prevNumKeys > middle) {
       /// we have a sibling at the left for rebalancing the keys
       assert(prevPos != N);
-      const auto sibling = nodeChilds[prevPos].branch;
+      const auto sibling = nodeRef.children[prevPos].branch;
       balanceBranchNodes(sibling, child, node, pos);
       return child;
     } else if (pos < N && nextNumKeys > middle) {
       /// we have a sibling at the right for rebalancing the keys
-      const auto sibling = nodeChilds[nextPos].branch;
+      const auto sibling = nodeRef.children[nextPos].branch;
       balanceBranchNodes(sibling, child, node, pos);
       return child;
     }
     /// 2. if this fails we have to merge two branch nodes
     if (nMinKeyPos != pos && prevNumKeys <= middle) {
       /// merge to left
-      auto &lSibling = nodeChilds[prevPos].branch;
-      mergeBranchNodes(lSibling, nodeKeys[pos], child);
+      auto &lSibling = nodeRef.children[prevPos].branch;
+      mergeBranchNodes(lSibling, nodeRef.keys[pos], child);
       deleteBranchNode(child);
-      nodeBits.reset(pos);
+      nodeRef.bits.reset(pos);
       if (pos == N)
-        nodeRef.children.get_rw()[N] = child; ///< new rightmost child
+        nodeRef.children[N] = child; ///< new rightmost child
       return lSibling;
     } else if (pos < N && nextNumKeys <= middle) {
       /// merge from right
-      auto &rSibling = nodeRef.children.get_rw()[nextPos].branch;
-      mergeBranchNodes(child, nodeKeys[pos], rSibling);
+      auto &rSibling = nodeRef.children[nextPos].branch;
+      mergeBranchNodes(child, nodeRef.keys[pos], rSibling);
       deleteBranchNode(rSibling);
-      nodeBits.reset(pos);
-      if (pos == findMaxKey(nodeKeys, nodeBits))
-        nodeRef.children.get_rw()[N] = child; ///< new rightmost child
+      nodeRef.bits.reset(pos);
+      if (pos == findMaxKey(nodeRef.keys, nodeRef.bits))
+        nodeRef.children[N] = child; ///< new rightmost child
       return child;
     } else assert(false); ///< shouldn't happen
   }
@@ -704,36 +758,29 @@ class BitPBPTree {
    * @param key the key from the parent node that is between sibling and node
    * @param node the node from which we move all keys/children
    */
-  void mergeBranchNodes(const pptr<BranchNode> &sibling, const KeyType &key,
-                        const pptr<BranchNode> &node) {
+  void mergeBranchNodes(BranchNode * const sibling, const KeyType &key, const BranchNode * node) {
     assert(sibling != nullptr);
     assert(node != nullptr);
 
     const auto &nodeRef = *node;
     auto &sibRef = *sibling;
-    const auto &nodeKeys = nodeRef.keys.get_ro();
-    const auto &nodeChilds = nodeRef.children.get_ro();
-    const auto &nodeBits = nodeRef.bits.get_ro();
-    auto &sibKeys = sibRef.keys.get_rw();
-    auto &sibChilds = sibRef.children.get_rw();
-    auto &sibBits = sibRef.bits.get_rw();
 
-    assert(key <= nodeKeys[findMinKey(nodeKeys, nodeBits)]);
-    assert(sibKeys[findMaxKey(sibKeys, sibBits)] < key);
+    assert(key <= nodeRef.keys[findMinKey(nodeRef.keys, nodeRef.bits)]);
+    assert(sibRef.keys[findMaxKey(sibRef.keys, sibRef.bits)] < key);
 
-    auto u = BitOperations::getFreeZero(sibBits);
-    sibKeys[u] = key;
-    sibChilds[u] = sibChilds[N];
-    sibBits.set(u);
+    auto u = BitOperations::getFreeZero(sibRef.bits);
+    sibRef.keys[u] = key;
+    sibRef.children[u] = sibRef.children[N];
+    sibRef.bits.set(u);
     for (auto i = 0u; i < M; ++i) {
-      if (nodeBits.test(i)) {
-        u = BitOperations::getFreeZero(sibBits);
-        sibKeys[u] = nodeKeys[i];
-        sibChilds[u] = nodeChilds[i];
-        sibBits.set(u);
+      if (nodeRef.bits.test(i)) {
+        u = BitOperations::getFreeZero(sibRef.bits);
+        sibRef.keys[u] = nodeRef.keys[i];
+        sibRef.children[u] = nodeRef.children[i];
+        sibRef.bits.set(u);
       }
     }
-    sibChilds[N] = nodeChilds[N];
+    sibRef.children[N] = nodeRef.children[N];
   }
 
   /**
@@ -746,20 +793,13 @@ class BitPBPTree {
    * @param parent the parent node of @c donor and @c receiver
    * @param pos the position of the key in node @c parent that lies between @c donor and @c receiver
    */
-  void balanceBranchNodes(const pptr<BranchNode> &donor, const pptr<BranchNode> &receiver,
-                          const pptr<BranchNode> &parent, const unsigned int pos) {
+  void balanceBranchNodes(BranchNode * const donor, BranchNode * const receiver,
+                          BranchNode * const parent, const unsigned int pos) {
     auto &donorRef = *donor;
     auto &receiverRef = *receiver;
     auto &parentRef = *parent;
-    const auto &donorKeys = donorRef.keys.get_ro();
-    auto &donorChilds = donorRef.children.get_rw();
-    auto &donorBits = donorRef.bits.get_rw();
-    auto &receiverKeys = receiverRef.keys.get_rw();
-    auto &receiverChilds = receiverRef.children.get_rw();
-    auto &receiverBits = receiverRef.bits.get_rw();
-    auto &parentKeys = parentRef.keys.get_rw();
-    const auto dNumKeys = donorBits.count();
-    const auto rNumKeys = receiverBits.count();
+    const auto dNumKeys = donorRef.bits.count();
+    const auto rNumKeys = receiverRef.bits.count();
     assert(dNumKeys > rNumKeys);
 
     const auto balancedNum = (dNumKeys + rNumKeys) / 2;
@@ -767,49 +807,49 @@ class BitPBPTree {
     if (toMove == 0) return;
 
     /// 1. move from one node to a node with larger keys
-    if (donorKeys[BitOperations::getFirstSet(donorBits)] <
-        receiverKeys[BitOperations::getFirstSet(receiverBits)]) {
+    if (donorRef.keys[BitOperations::getFirstSet(donorRef.bits)] <
+        receiverRef.keys[BitOperations::getFirstSet(receiverRef.bits)]) {
       /// 1.1. copy parent key and rightmost child from donor
-      auto u = BitOperations::getFreeZero(receiverBits);
-      receiverKeys[u] = parentKeys[pos];
-      receiverChilds[u] = donorChilds[N];
-      receiverBits.set(u);
+      auto u = BitOperations::getFreeZero(receiverRef.bits);
+      receiverRef.keys[u] = parentRef.keys[pos];
+      receiverRef.children[u] = donorRef.children[N];
+      receiverRef.bits.set(u);
       /// 1.2. move toMove-1 keys/children from donor to receiver
       for (auto i = 1u; i < toMove; ++i) {
-        const auto max = findMaxKey(donorKeys, donorBits);
-        u = BitOperations::getFreeZero(receiverBits);
-        receiverKeys[u] = donorKeys[max];
-        receiverChilds[u] = donorChilds[max];
-        receiverBits.set(u);
-        donorBits.reset(max);
+        const auto max = findMaxKey(donorRef.keys, donorRef.bits);
+        u = BitOperations::getFreeZero(receiverRef.bits);
+        receiverRef.keys[u] = donorRef.keys[max];
+        receiverRef.children[u] = donorRef.children[max];
+        receiverRef.bits.set(u);
+        donorRef.bits.reset(max);
       }
       /// 1.3 set donors new rightmost child and new parent key
-      const auto dPos = findMaxKey(donorKeys, donorBits);
-      donorChilds[N] = donorChilds[dPos];
-      parentKeys[pos] = donorKeys[dPos];
-      donorBits.reset(dPos);
+      const auto dPos = findMaxKey(donorRef.keys, donorRef.bits);
+      donorRef.children[N] = donorRef.children[dPos];
+      parentRef.keys[pos] = donorRef.keys[dPos];
+      donorRef.bits.reset(dPos);
 
     /// 2. move from one node to a node with smaller keys
     } else {
       /// 2.1. copy parent key and rightmost child of receiver
-      auto u = BitOperations::getFreeZero(receiverBits);
-      receiverKeys[u] = parentKeys[pos];
-      receiverChilds[u] = receiverChilds[N];
-      receiverBits.set(u);
+      auto u = BitOperations::getFreeZero(receiverRef.bits);
+      receiverRef.keys[u] = parentRef.keys[pos];
+      receiverRef.children[u] = receiverRef.children[N];
+      receiverRef.bits.set(u);
       /// 2.2. move toMove-1 keys/children from donor to receiver
       for (auto i = 1u; i < toMove; ++i) {
-        u = BitOperations::getFreeZero(receiverBits);
-        const auto min = findMinKey(donorKeys, donorBits);
-        receiverKeys[u] = donorKeys[min];
-        receiverChilds[u] = donorChilds[min];
-        receiverBits.set(u);
-        donorBits.reset(min);
+        u = BitOperations::getFreeZero(receiverRef.bits);
+        const auto min = findMinKey(donorRef.keys, donorRef.bits);
+        receiverRef.keys[u] = donorRef.keys[min];
+        receiverRef.children[u] = donorRef.children[min];
+        receiverRef.bits.set(u);
+        donorRef.bits.reset(min);
       }
       /// 2.3. set receivers new rightmost child and new parent key
-      const auto dPos = findMinKey(donorKeys, donorBits);
-      receiverChilds[N] = donorChilds[dPos];
-      parentKeys[pos] = donorKeys[dPos];
-      donorBits.reset(dPos);
+      const auto dPos = findMinKey(donorRef.keys, donorRef.bits);
+      receiverRef.children[N] = donorRef.children[dPos];
+      parentRef.keys[pos] = donorRef.keys[dPos];
+      donorRef.bits.reset(dPos);
     }
   }
 
@@ -955,26 +995,23 @@ class BitPBPTree {
    * @param childSplitKey the key on which the split of the child occured
    * @param splitInfo information about the split
    */
-  void splitBranchNode(const pptr<BranchNode> &node, const KeyType &childSplitKey,
-                       SplitInfo *splitInfo) {
+  void splitBranchNode(BranchNode * const node, const KeyType &childSplitKey, SplitInfo *splitInfo) {
     auto &nodeRef = *node;
-    const auto &nodeKeys = nodeRef.keys.get_ro();
-    auto &nodeChilds = nodeRef.children.get_rw();
 
     /// determine the split position (by finding median in unsorted array of keys)
-    auto data = nodeKeys;
+    auto data = nodeRef.keys;
     auto [b, splitPos] = findSplitKey(data);
-    const auto &splitKey = nodeKeys[splitPos];
+    const auto &splitKey = nodeRef.keys[splitPos];
 
     /// copy node and flip bits
     const auto sibling = newBranchNode(node);
     auto &sibRef = *sibling;
-    nodeRef.bits.get_rw() = b.reset(splitPos);
-    sibRef.bits.get_rw() = b.flip().reset(splitPos);
+    nodeRef.bits = b.reset(splitPos);
+    sibRef.bits = b.flip().reset(splitPos);
 
     /// setup the list of nodes
-    sibRef.children.get_rw()[N] = nodeChilds[N];
-    nodeChilds[N] = nodeChilds[splitPos];
+    sibRef.children[N] = nodeRef.children[N];
+    nodeRef.children[N] = nodeRef.children[splitPos];
     auto &splitRef = *splitInfo;
     splitRef.key = splitKey;
     splitRef.leftChild = node;
@@ -992,7 +1029,7 @@ class BitPBPTree {
    * @param splitInfo information about the split
    * @return true if a split was performed
    */
-  bool insertInBranchNode(const pptr<BranchNode> &node, const unsigned int depth,
+  bool insertInBranchNode(BranchNode * const node, const unsigned int depth,
                           const KeyType &key, const ValueType &val, SplitInfo *splitInfo) {
     SplitInfo childSplitInfo;
     bool split = false, hasSplit = false;
@@ -1001,37 +1038,33 @@ class BitPBPTree {
     auto pos = lookupPositionInBranchNode(node, key);
     if (depth == 1) {
       /// case #1: our children are leaf nodes
-      const auto child = nodeRef.children.get_ro()[pos].leaf;
+      const auto child = nodeRef.children[pos].leaf;
       hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
     } else {
       /// case #2: our children are branch nodes
-      const auto child = nodeRef.children.get_ro()[pos].branch;
+      const auto child = nodeRef.children[pos].branch;
       hasSplit = insertInBranchNode(child, depth - 1, key, val, &childSplitInfo);
     }
 
     if (hasSplit) {
       /// the child node was split, thus we have to add a new entry to our branch node
       auto host = node;
-      if (nodeRef.bits.get_ro().count() == N) {
+      if (nodeRef.bits.count() == N) {
         /// this node is also full and needs to be split
         splitBranchNode(node, childSplitInfo.key, splitInfo);
         const auto &splitRef = *splitInfo;
         host = (key < splitRef.key ? splitRef.leftChild : splitRef.rightChild).branch;
         split = true;
-        //pos = lookupPositionInBranchNode(host, key);
       }
       /// Insert new key and children
       auto &hostRef = *host;
-      auto &hostKeys = hostRef.keys.get_rw();
-      auto &hostChilds = hostRef.children.get_rw();
-      auto &hostBits = hostRef.bits.get_rw();
-      const auto u = BitOperations::getFreeZero(hostBits);
-      const auto nextPos = findMinKeyGreaterThan(hostKeys, hostBits, childSplitInfo.key);
+      const auto u = BitOperations::getFreeZero(hostRef.bits);
+      const auto nextPos = findMinKeyGreaterThan(hostRef.keys, hostRef.bits, childSplitInfo.key);
 
-      hostKeys[u] = childSplitInfo.key;
-      hostChilds[u] = childSplitInfo.leftChild;
-      hostChilds[nextPos] = childSplitInfo.rightChild;
-      hostBits.set(u);
+      hostRef.keys[u] = childSplitInfo.key;
+      hostRef.children[u] = childSplitInfo.leftChild;
+      hostRef.children[nextPos] = childSplitInfo.rightChild;
+      hostRef.bits.set(u);
     }
     return split;
   }
@@ -1050,11 +1083,11 @@ class BitPBPTree {
    */
   pptr<LeafNode> findLeafNode(const KeyType &key) const {
     auto node = rootNode;
-    auto d = depth.get_ro();
+    auto d = depth;
     while (d-- > 0) {
       /// as long as we aren't at the leaf level we follow the path down
       const auto pos = lookupPositionInBranchNode(node.branch, key);
-      node = node.branch->children.get_ro()[pos];
+      node = node.branch->children[pos];
     }
     return node.leaf;
   }
@@ -1070,9 +1103,8 @@ class BitPBPTree {
    * @param key the search key
    * @return the position of the key + 1 (or 0 or @c N)
    */
-  auto lookupPositionInBranchNode(const pptr<BranchNode> &node, const KeyType &key) const {
-    const auto &nodeRef = *node;
-    return findMinKeyGreaterThan(nodeRef.keys.get_ro(), nodeRef.bits.get_ro(), key);
+  auto lookupPositionInBranchNode(const BranchNode *node, const KeyType &key) const {
+    return findMinKeyGreaterThan(node->keys, node->bits, key);
   }
 
   /**
@@ -1095,6 +1127,99 @@ class BitPBPTree {
   }
 
   /* -------------------------------------------------------------------------------------------- */
+  /*                                          RECOVERY                                            */
+  /* -------------------------------------------------------------------------------------------- */
+
+  /**
+   * Insert a leaf node into the tree for recovery
+   *
+   * @param leaf the leaf to insert
+   */
+  void recoveryInsert(const pptr<LeafNode> &leaf){
+    assert(depth > 0);
+    assert(leaf != nullptr);
+
+    SplitInfo splitInfo;
+    auto hassplit = recoveryInsertInBranchNode(rootNode.branch, depth, leaf, &splitInfo);
+
+    /// Check for split
+    if (hassplit) {
+      /// The root node was splitted
+      const auto newRoot = newBranchNode();
+      auto &newRootRef = *newRoot;
+      newRootRef.keys[0] = splitInfo.key;
+      newRootRef.children[0] = splitInfo.leftChild;
+      newRootRef.children[N] = splitInfo.rightChild;
+      newRootRef.bits.set(0);
+      rootNode = newRoot;
+      ++depth;
+    }
+  }
+
+  /**
+   * Insert a leaf node into the tree recursively by following the path
+   * down to the leaf level starting at node @c node at depth @c depth.
+   *
+   * @param node the starting node for the insert
+   * @param depth the current depth of the tree (0 == leaf level)
+   * @param leaf the leaf node to insert
+   * @param splitInfo information about the split
+   * @return true if a split was performed
+   */
+  bool recoveryInsertInBranchNode(BranchNode *node, int curr_depth, const pptr<LeafNode> &leaf,
+                                  SplitInfo *splitInfo){
+    SplitInfo childSplitInfo;
+    auto &nodeRef = *node;
+    const auto nNumKeys = nodeRef.bits.count();
+    const auto &leafRef = *leaf;
+    const auto &leafBits = leafRef.bits.get_ro();
+
+    if (curr_depth == 1) {
+      if (nNumKeys == N) {
+        /// we have to insert a new right child, as the keys in the leafList are sorted
+        BranchNode *newNode = newBranchNode();
+        newNode->children[0] = leaf;
+        auto &splitRef = *splitInfo;
+        splitRef.key = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
+                                                        leafRef.bits.get_ro())];
+        splitRef.leftChild = node;
+        splitRef.rightChild = newNode;
+        return true;
+      } else {
+        nodeRef.bits.set(nNumKeys);
+        nodeRef.keys[nNumKeys] = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
+                                                                  leafRef.bits.get_ro())];
+        if (nNumKeys > 0)
+          nodeRef.children[nNumKeys] = nodeRef.children[N];
+        nodeRef.children[N] = leaf;
+        return false;
+      }
+    } else {
+      bool hassplit = recoveryInsertInBranchNode(nodeRef.children[(nNumKeys==0)?0:N].branch,
+                                                 curr_depth-1, leaf, &childSplitInfo);
+      //Check for split
+      if (hassplit) {
+        if (nNumKeys == N) {
+          BranchNode *newNode = newBranchNode();
+          newNode->children[0] = childSplitInfo.rightChild;
+          auto &splitRef = *splitInfo;
+          splitRef.key = childSplitInfo.key;
+          splitRef.leftChild = node;
+          splitRef.rightChild = newNode;
+          return true;
+        } else {
+          nodeRef.bits.set(nNumKeys);
+          nodeRef.keys[nNumKeys] = childSplitInfo.key;
+          if (nNumKeys > 0)
+            nodeRef.children[nNumKeys] = nodeRef.children[N];
+          nodeRef.children[N] = childSplitInfo.rightChild;
+          return false;
+        }
+      } else return false;
+    }
+  }
+
+  /* -------------------------------------------------------------------------------------------- */
   /*                                          DEBUGGING                                           */
   /* -------------------------------------------------------------------------------------------- */
 
@@ -1104,23 +1229,23 @@ class BitPBPTree {
    * @param d the current depth used for indention
    * @param node the tree node to print
    */
-  void printBranchNode(const unsigned int d, const pptr<BranchNode> &node) const {
+  void printBranchNode(const unsigned int d, const BranchNode *node) const {
     const auto &nodeRef = *node;
-    const auto nNumKeys = nodeRef.bits.get_ro().count();
+    const auto nNumKeys = nodeRef.bits.count();
     for (auto i = 0u; i < d; ++i) std::cout << "  ";
     std::cout << d << "BN { [" << node << "] #" << nNumKeys << ": ";
     for (auto k = 0u; k < N; ++k) {
       if (k > 0) std::cout << ", ";
-      std::cout << '(' << nodeRef.bits.get_ro()[k] << ')' << nodeRef.keys.get_ro()[k];
+      std::cout << '(' << nodeRef.bits[k] << ')' << nodeRef.keys[k];
     }
     std::cout << " }" << std::endl;
     for (auto k = 0u; k <= N; ++k) {
-      if (k < N && !nodeRef.bits.get_ro().test(k)) continue;
+      if (k < N && !nodeRef.bits.test(k)) continue;
       if (d + 1 < depth) {
-        auto child = nodeRef.children.get_ro()[k].branch;
+        auto child = nodeRef.children[k].branch;
         if (child != nullptr) printBranchNode(d + 1, child);
       } else {
-        auto leaf = (nodeRef.children.get_ro()[k]).leaf;
+        auto leaf = (nodeRef.children[k]).leaf;
         printLeafNode(d + 1,leaf);
       }
     }
@@ -1144,64 +1269,8 @@ class BitPBPTree {
     std::cout << "]" << std::endl;
   }
 
-  /* -------------------------------------------------------------------------------------------- */
-  /*                                           HELPER                                             */
-  /* -------------------------------------------------------------------------------------------- */
-
-  /**
-   * Create a new empty leaf node.
-   */
-  pptr<LeafNode> newLeafNode() {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
-    return newNode;
-  }
-
-  pptr<LeafNode> newLeafNode(const pptr<LeafNode> &other) {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(*other); });
-    return newNode;
-  }
-
-  /**
-   * Remove/delete an existing leaf node.
-   */
-  void deleteLeafNode(pptr<LeafNode> &node) {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
-    node = nullptr;
-  }
-
-  /**
-   * Create a new empty branch node.
-   */
-  pptr<BranchNode> newBranchNode() {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    pptr<BranchNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<BranchNode>(); });
-    return newNode;
-  }
-
-  pptr<BranchNode> newBranchNode(const pptr<BranchNode> &other) {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    pptr<BranchNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<BranchNode>(*other); });
-    return newNode;
-  }
-
-  /**
-   * Remove/delete an existing branch node.
-   */
-  void deleteBranchNode(pptr<BranchNode> &node) {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] { delete_persistent<BranchNode>(node); });
-    node = nullptr;
-  }
-
-}; /* class BitPBPTree */
+}; /* class BitHPBPTree */
 
 } /* namespace dbis::pbptrees */
 
-#endif /* DBIS_BitPBPTree_hpp_ */
+#endif /* DBIS_BitHPBPTree_hpp_ */
