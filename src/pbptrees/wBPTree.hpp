@@ -705,7 +705,8 @@ class wBPTree {
     auto d = depth.get_ro();
     while (d-- > 0) {
       auto pos = lookupPositionInBranchNode(node.branch, key);
-      node = node.branch->children.get_ro()[pos];
+      auto &nodeRef = *node.branch;
+      node = nodeRef.children.get_ro()[nodeRef.search.get_ro().slot[pos]];
     }
     return node.leaf;
   }

@@ -74,10 +74,8 @@ class wHBPTree {
   struct Node {
     Node() : tag(BLANK) {};
 
-    Node(pptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
-
-    Node(BranchNode branch_) : tag(BRANCH), branch(branch_) {};
-
+    explicit Node(pptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
+    explicit Node(BranchNode branch_) : tag(BRANCH), branch(branch_) {};
     Node(const Node &other) { copy(other); };
 
     void copy(const Node &other) throw() {
@@ -190,7 +188,11 @@ class wHBPTree {
     return new BranchNode();
   }
 
-  void deleteBranchNode(BranchNode*& node) {
+  BranchNode *newBranchNode(const BranchNode *other) {
+    return new BranchNode(*other);
+  }
+
+  void deleteBranchNode(BranchNode *&node) {
     delete node;
     node = nullptr;
   }
@@ -383,7 +385,7 @@ class wHBPTree {
       ++leafs;
       currentLeaf = currentLeaf->nextLeaf;
     }
-    float x = std::log(leafs)/std::log(N+1);
+    float x = std::log(leafs)/std::log1p(N);
     assert(x == int(x) && "Not supported for this amount of leafs, yet");
 
     /* actual recovery */
@@ -505,7 +507,7 @@ class wHBPTree {
       auto &splitRef = *splitInfo;
 
       /// insert the new entry
-      if (slotPos-1 <= (M + 1) / 2)
+      if (slotPos < (M + 1) / 2)
         insertInLeafNodeAtPosition(splitRef.leftChild.leaf, slotPos, key, val);
       else
         insertInLeafNodeAtPosition(splitRef.rightChild.leaf,
@@ -741,7 +743,7 @@ class wHBPTree {
     auto d = depth;
     while (d-- > 0) {
       auto pos = lookupPositionInBranchNode(node.branch, key);
-      node = node.branch->children[pos];
+      node = node.branch->children[node.branch->search.slot[pos]];
     }
     return node.leaf;
   }
@@ -810,7 +812,7 @@ class wHBPTree {
    * @param key the key to be deleted
    * @return true if the entry was deleted
    */
-  bool eraseFromBranchNode(BranchNode *node, unsigned int d, const KeyType &key) {
+  bool eraseFromBranchNode(BranchNode *const node, const unsigned int d, const KeyType &key) {
     assert(d >= 1);
     bool deleted = false;
     const auto &nodeRef = *node;
@@ -925,7 +927,7 @@ class wHBPTree {
    * @param child the node at which the underflow occured
    * @return the (possibly new) child node (in case of a merge)
    */
-  BranchNode *underflowAtBranchLevel(BranchNode *node, unsigned int pos,
+  BranchNode *underflowAtBranchLevel(BranchNode * const node, unsigned int pos,
                                      BranchNode *child) {
     assert(node != nullptr);
     assert(child != nullptr);

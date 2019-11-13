@@ -937,7 +937,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wBPTree]") {
     nodeRef.search.get_rw().slot[0] = 1;
 
     btree.rootNode = node;
-    btree.depth = 2;
+    btree.depth = 1;
 
     btree.insertInBranchNode(node, 1, 12, 112, &splitInfo);
     REQUIRE(leaf2->search.get_ro().slot[0] == 2);
