@@ -44,6 +44,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
   struct root {
     persistent_ptr<wHBPTreeType> btree1;
     persistent_ptr<wHBPTreeType2> btree2;
+    persistent_ptr<wHBPTreeType2> btree2_2;
     persistent_ptr<wHBPTreeType3> btree3;
     persistent_ptr<wHBPTreeType4> btree4;
     persistent_ptr<wHBPTreeType5> btree5;
@@ -66,6 +67,8 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
 
   if (!q->btree2)
     transaction::run(pop, [&] { q->btree2 = make_persistent<wHBPTreeType2>(); });
+  if (!q->btree2_2)
+    transaction::run(pop, [&] { q->btree2_2 = make_persistent<wHBPTreeType2>(); });
 
   if (!q->btree3)
     transaction::run(pop, [&] { q->btree3 = make_persistent<wHBPTreeType3>(); });
@@ -667,7 +670,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
 
   /* ------------------------------------------------------------------ */
   SECTION("Handling of underflow at a inner node") {
-    auto btree = q->btree2;
+    auto btree = q->btree2_2;
     wHBPTreeType2::SplitInfo splitInfo;
 
     auto leaf1 = btree->newLeafNode();
@@ -1058,6 +1061,7 @@ TEST_CASE("Finding the leaf node containing a key", "[wHBPTree]") {
   /* Clean up */
   delete_persistent_atomic<wHBPTreeType>(q->btree1);
   delete_persistent_atomic<wHBPTreeType2>(q->btree2);
+  delete_persistent_atomic<wHBPTreeType2>(q->btree2_2);
   delete_persistent_atomic<wHBPTreeType3>(q->btree3);
   delete_persistent_atomic<wHBPTreeType4>(q->btree4);
   delete_persistent_atomic<wHBPTreeType5>(q->btree5);
