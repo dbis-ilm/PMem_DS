@@ -5,13 +5,11 @@ NVM-based Data Strucutres
 
 This is a repository for persistent data structures based on non-volatile memory (NVM).
 ## :sparkles: TODOs: ##
-- [x] ~~PBPTree (B⁺-Tree for NVM)~~
+- [x] ~~PBPTrees (B⁺-Tree for NVM)~~
 - [x] ~~PTable (BDCC + NVM)~~
-- [x] ~~Steffen's implementations~~
-- [ ] Alexander's implementations
-- [ ] Arun's implementations
-- [x] ~~Link this repo to PFabric~~
-- [x] ~~Data structure installation~~
+- [ ] Add Skip-Lists (Alex)
+- [ ] Add LSM Trees (Arun)
+- [ ] Add Tries (Leret)
 - [ ] Data structure common benchmark
 - [ ] Documentation
 
