@@ -15,7 +15,6 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <experimental/filesystem>
 #include "common.hpp"
 
 using namespace dbis::ptable;
@@ -23,7 +22,7 @@ using namespace dbis::ptable;
 int main() {
   pool<root> pop;
 
-  std::experimental::filesystem::remove_all(path);
+  pmempool_rm(path.c_str(), 0);
   if (access(path.c_str(), F_OK) != 0) {
     insert(pop, path, NUM_TUPLES);
   } else {

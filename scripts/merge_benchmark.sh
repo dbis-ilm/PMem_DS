@@ -3,32 +3,30 @@
 ### LOCATIONS ###
 REPO_ROOT=$PWD/..
 BUILD_DIR=$REPO_ROOT/build
-DATA="tree_benchSp.data"
+DATA="tree_benchM.data"
 REPS=5
-OUTPUT_FILE=$PWD/results/splitFlush.csv
+OUTPUT_FILE=$PWD/results/mergeFlush.csv
 
 ### Create header ###
 if [ ! -s $OUTPUT_FILE ]; then
-  echo "tree,tblsize,lsize,bsize,depth,fillratio,keypos,time,writes" >> $OUTPUT_FILE
+  echo "tree,tblsize,lsize,fillratio,time,writes" >> $OUTPUT_FILE
 fi
 
 ### CUSTOMIZABLE PARAMETERS ###
 bsize=512
 depth=0
 LEAF_SIZES=( 256 512 1024 2048 4096)
-if [ $# != 1 ] && [ $# != 2 ]; then
+if [ $# != 1 ]; then
   TREE="UnsortedPBP" #FP/PBP/UnsortedPBP/wBP
-  SUFFIX=""
-  echo "Usage: $0 [<tree-prefix> <_copy|_move>]"
+  echo "Usage: $0 [<tree-prefix>]"
 else
   TREE=$1
-  SUFFIX=$2
 fi
 
 ### Do not change anything following here!!! ###
 
 ### needs manual adaption ###
-fillratio=1.0
+fillratio=0.5
 
 ### adapting Tree usage ###
 TREE_BASE=PBP
@@ -39,6 +37,7 @@ elif [[ "$TREE" =~ ^(FP)$ ]]; then
 elif [[ "$TREE" =~ ^(BitPBP|BitHPBP)$ ]]; then
   TREE_BASE=BitPBP
 fi
+TREE_BASE=wBP
 sed -i'' -e 's/\(.*BRANCH_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$bsize"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -e 's/\(.*DEPTH = \)\([0-9]\+\)\(.*\)/\1'"$depth"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -e 's/\(.*\"\).*\(Tree.hpp\"\)/\1'"$TREE"'\2/' $REPO_ROOT/bench/trees/common.hpp #include
@@ -53,15 +52,15 @@ do
   echo -n "$lsize "
   sed -i'' -e 's/\(.*LEAF_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$lsize"'\3/' $REPO_ROOT/bench/trees/common.hpp
   pushd $BUILD_DIR > /dev/null
-  make tree_split > /dev/null
+  make tree_merge> /dev/null
   for r in {1..5}
   do
     outLength=$(($REPS + 6))
-    OUTPUT="$(sh -c 'bench/tree_split --benchmark_repetitions='"$REPS"' --benchmark_format=csv' 2> /dev/null | tail -$outLength)"
+    OUTPUT="$(sh -c 'bench/tree_merge --benchmark_repetitions='"$REPS"' --benchmark_format=csv' 2> /dev/null | tail -$outLength)"
     writes="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
     elements="$(echo "$OUTPUT" | head -2 | tail -1 | cut -d ':' -f2)"
     time="$(echo "$OUTPUT" | tail -3 | head -1 | cut -d ',' -f3)"
-    echo "${TREE}Tree$SUFFIX,$elements,$lsize,$bsize,$depth,$fillratio,$(($elements+1)),$time,$writes" >> $OUTPUT_FILE
+    echo "${TREE}Tree,$elements,$lsize,$fillratio,$time,$writes" >> $OUTPUT_FILE
   done
   popd > /dev/null
 done

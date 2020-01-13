@@ -25,33 +25,34 @@
 using namespace dbis::ptable;
 
 static void BM_PointQuery(benchmark::State& state) {
-
   pool<root> pop;
 
   const std::string path = dbis::gPmemPath + "benchdb" + std::to_string(state.range(0)) + ".db";
 
-  //std::remove(path.c_str());
+  // std::remove(path.c_str());
   if (access(path.c_str(), F_OK) != 0) {
     insert(pop, path, state.range(0));
   } else {
-    //std::cerr << "WARNING: Table already exists" << std::endl;
+    // std::cerr << "WARNING: Table already exists" << std::endl;
     pop = pool<root>::open(path, LAYOUT);
   }
 
-  auto &pTable = *pop.root()->pTable;
+  auto& pTable = *pop.root()->pTable;
 
   for (auto _ : state) {
     auto ptp = pTable.getByKey(state.range(1));
-    if (ptp.getNode() != nullptr) ptp;// ptp.createTuple();
-    else std::cerr << "key not found" << '\n';
+    if (ptp.getNode() != nullptr)
+      ptp;  // ptp.createTuple();
+    else
+      std::cerr << "key not found" << '\n';
   }
 
   transaction::run(pop, [&] { delete_persistent<PTableType>(pop.root()->pTable); });
   pop.close();
-  std::experimental::filesystem::remove_all(path);
+  pmempool_rm(path.c_str(), 0);
 }
 static void VectorArguments(benchmark::internal::Benchmark* b) {
-  for (const auto &arg : POINT_ACCESS) b->Args(arg);
+  for (const auto& arg : POINT_ACCESS) b->Args(arg);
 }
 BENCHMARK(BM_PointQuery)->Apply(VectorArguments);
 

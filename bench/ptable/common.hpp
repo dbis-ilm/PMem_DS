@@ -18,9 +18,9 @@
 #ifndef PTABLE_COMMON_H
 #define PTABLE_COMMON_H
 
-#include <chrono>
+#include <libpmempool.h>
 #include <unistd.h>
-#include <experimental/filesystem>
+#include <chrono>
 #include "ptable/PTable.hpp"
 
 using pmem::obj::make_persistent;
@@ -35,7 +35,7 @@ using PTableType = dbis::ptable::PTable<MyKey, MyTuple>;
 using Vector = std::vector<long int>;
 using VectorVector = std::vector<Vector>;
 
-const int hibit_pos(int n) noexcept;
+int hibit_pos(int n) noexcept;
 
 template <size_t SIZE>
 static inline VectorVector *createPointVector(VectorVector *v);
@@ -78,7 +78,7 @@ const VectorVector NON_KEY_RANGES = {
   Vector{0, NUM_TUPLES - 1, 0, NUM_TUPLES - 1}                                    //100,0%
 };
 
-const int hibit_pos(int n) noexcept {
+int hibit_pos(int n) noexcept {
   int c = 0;
   while (n>>1 != 0) {
     c++;
@@ -102,13 +102,15 @@ void insert (pool<root> &pop, const std::string &path, size_t entries) {
   std::vector<typename std::chrono::duration<int64_t, std::micro>::rep> measures;
 
   pop = pool<root>::create(path, LAYOUT, POOL_SIZE);
+  const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>(
+      "heap.alloc_class.128.desc", PTableType::IndexType::AllocClass);
   transaction::run(pop, [&] {
     const auto tInfo = VTableInfo<MyKey, MyTuple>("MyTable", {"a","b","c","d"});
     const auto dims = Dimensions({
                                    {0, 10, ALIGNMENT},
                                    {3, 10, ALIGNMENT}
                                  });
-    pop.root()->pTable = make_persistent<PTableType>(tInfo, dims);
+    pop.root()->pTable = make_persistent<PTableType>(alloc_class, tInfo, dims);
   });
 
   auto &pTable = pop.root()->pTable;
