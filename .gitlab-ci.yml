@@ -11,7 +11,7 @@ build:
   script:
     - mkdir build
     - cd build
-    - cmake -DCMAKE_BUILD_TYPE=Release ../src
+    - cmake -DCMAKE_BUILD_TYPE=Release ..
     - make -j 3
     # clean up unnecessary files and strip binaries
     - rm -rf _deps *tree generated
@@ -41,7 +41,7 @@ coverage:
     - pip install gcovr --user
     - mkdir build
     - cd build
-    - cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-g -O0 -fprofile-arcs -ftest-coverage" ../src
+    - cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-g -O0 -fprofile-arcs -ftest-coverage" ..
     - make -j 3
     - echo pass | sudo -S mkdir -m 777 -p /mnt/pmem0/test
     - ctest
