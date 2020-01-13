@@ -49,7 +49,7 @@ struct ColumnAttributes<ColumnType::VoidType> {
   static constexpr auto typeName = "Void";
   static constexpr int dataSize = gOffsetSize;
   static constexpr int miniPagePortion = 0;
-  static inline const int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
+  static inline int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
     return reinterpret_cast<const uint16_t &>(b[colDataOffset]) + pos * dataSize;
   }
   static inline const auto smaPos(const BDCC_Block &b, int colSmaOffset) {
@@ -58,12 +58,12 @@ struct ColumnAttributes<ColumnType::VoidType> {
     const auto &smaMax = reinterpret_cast<const int &>(b[smaPos + dataSize]);
     return std::pair<int, int>(smaMin, smaMax);
   }
-  static inline const unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
+  static inline unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
     const auto nextMiniPageStart = (nCols == idx + 1) ? gBlockSize :
                                    reinterpret_cast<const uint16_t &>(b[gSmaOffsetPos + (idx + 1) * gAttrOffsetSize]);
     return nextMiniPageStart - dataPos - (cnt * dataSize);
   }
-  static inline const bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
+  static inline bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
     *recordOffset += dataSize;
     if (freeSpace < dataSize) return false;
     return true;
@@ -77,7 +77,7 @@ struct ColumnAttributes<ColumnType::IntType> {
   static constexpr auto typeName = "Int";
   static constexpr int dataSize = sizeof(int);
   static constexpr int miniPagePortion = 1;
-  static inline const int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
+  static inline int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
     return reinterpret_cast<const uint16_t &>(b[colDataOffset]) + pos * dataSize;
   }
   static inline const auto smaPos(const BDCC_Block &b, int colSmaOffset) {
@@ -86,12 +86,12 @@ struct ColumnAttributes<ColumnType::IntType> {
     const auto &smaMax = reinterpret_cast<const int &>(b[smaPos + dataSize]);
     return std::pair<int,int>(smaMin, smaMax);
   }
-  static inline const unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
+  static inline unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
     const auto nextMiniPageStart = (nCols == idx + 1) ? gBlockSize :
                                    reinterpret_cast<const uint16_t &>(b[gSmaOffsetPos + (idx + 1) * gAttrOffsetSize]);
     return nextMiniPageStart - dataPos - (cnt * dataSize);
   }
-  static inline const bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
+  static inline bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
     *recordOffset += dataSize;
     if (freeSpace < dataSize) return false;
     return true;
@@ -105,7 +105,7 @@ struct ColumnAttributes<ColumnType::DoubleType> {
   static constexpr auto typeName = "Double";
   static constexpr int dataSize = sizeof(double);
   static constexpr int miniPagePortion = 2;
-  static inline const int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
+  static inline int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
     return reinterpret_cast<const uint16_t &>(b[colDataOffset]) + pos * dataSize;
   }
   static inline const auto smaPos(const BDCC_Block &b, int colSmaOffset) {
@@ -114,12 +114,12 @@ struct ColumnAttributes<ColumnType::DoubleType> {
     const auto &smaMax = reinterpret_cast<const double &>(b[smaPos + dataSize]);
     return std::pair<double, double>(smaMin, smaMax);
   }
-  static inline const unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
+  static inline unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
     const auto nextMiniPageStart = (nCols == idx + 1) ? gBlockSize :
                                    reinterpret_cast<const uint16_t &>(b[gSmaOffsetPos + (idx + 1) * gAttrOffsetSize]);
     return nextMiniPageStart - dataPos - (cnt * dataSize);
   }
-  static inline const bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
+  static inline bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
     *recordOffset += dataSize;
     if (freeSpace < dataSize) return false;
     return true;
@@ -133,7 +133,7 @@ struct ColumnAttributes<ColumnType::StringType> {
   static constexpr auto typeName = "String";
   static constexpr int dataSize = gOffsetSize; //indirection via offsets
   static constexpr int miniPagePortion = 4;
-  static inline const int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
+  static inline int dataOffsetPos(const BDCC_Block &b, int colDataOffset, int pos) {
     return reinterpret_cast<const uint16_t &>(b[reinterpret_cast<const uint16_t &>(b[colDataOffset]) + pos * dataSize]);
   }
   static inline const auto smaPos(const BDCC_Block &b, int colSmaOffset) {
@@ -144,7 +144,7 @@ struct ColumnAttributes<ColumnType::StringType> {
     const auto smaMax(reinterpret_cast<const char (&)[]>(b[smaMaxPos]));
     return std::pair<std::string, std::string>(smaMin, smaMax);
   }
-  static inline const unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
+  static inline unsigned int freeSpace(const BDCC_Block &b, int dataPos, int cnt, int nCols, int idx) {
     int freeSpaceMiniPage;
     if (cnt != 0) {
       const auto currentOffsetPos = dataPos + cnt * gOffsetSize;
@@ -157,7 +157,7 @@ struct ColumnAttributes<ColumnType::StringType> {
     }
     return freeSpaceMiniPage;
   }
-  static inline const bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
+  static inline bool enoughSpace(unsigned int freeSpace, unsigned int *recordOffset, const StreamType &buf) {
     auto iterBegin = buf.cbegin() + *recordOffset;
     const auto value = deserialize<std::string>(iterBegin, buf.end());
     const auto stringSize = value.size() + 1;

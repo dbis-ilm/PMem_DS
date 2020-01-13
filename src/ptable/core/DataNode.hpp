@@ -97,7 +97,7 @@ struct DataNode {
   p<DeletedVector> deleted;
   p<HistogramType> histogram;
 
-  const uint32_t calcAverageBDCC() const {
+  uint32_t calcAverageBDCC() const {
     auto sum = 0u;
     for(const auto &bdccValue : histogram.get_ro()) {
       sum += bdccValue.first * bdccValue.second;

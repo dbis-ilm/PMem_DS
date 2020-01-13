@@ -64,7 +64,7 @@ class PTable<KeyType, std::tuple<Types...>> {
   using VTableInfoType = VTableInfo<KeyType, Tuple>;
   using PTableInfoType = PTableInfo<KeyType, Tuple>;
   using ColumnIntMap = std::map<uint16_t, uint16_t>;
-  using IndexType = pbptrees::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
+  /// IndexType in public
   using DataNodePtr = persistent_ptr<DataNode<KeyType>>;
 
   /************************************************************************//**
@@ -198,6 +198,8 @@ class PTable<KeyType, std::tuple<Types...>> {
   };
 
  public:
+  using IndexType = pbptrees::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
+
   /************************************************************************//**
    * \brief Public Iterator to iterate over all inserted tuples using the index.
    ***************************************************************************/
@@ -234,7 +236,7 @@ class PTable<KeyType, std::tuple<Types...>> {
       return retval;
     }
 
-    inline const bool isValid() const {
+    inline bool isValid() const {
       return treeIter != end;
     }
 
@@ -264,7 +266,7 @@ class PTable<KeyType, std::tuple<Types...>> {
   /************************************************************************//**
    * \brief Default Constructor.
    ***************************************************************************/
-  explicit PTable() {
+  explicit PTable(struct pobj_alloc_class_desc _alloc) : index_alloc_class(_alloc) {
     auto pop = pool_by_vptr(this);
     if (pmemobj_tx_stage() == TX_STAGE_NONE) {
       transaction::run(pop, [&] { init("", {}, Dimensions()); });
@@ -276,8 +278,9 @@ class PTable<KeyType, std::tuple<Types...>> {
   /************************************************************************//**
    * \brief Constructor for a given schema and dimension clustering.
    ***************************************************************************/
-  explicit PTable(const std::string &tName, ColumnInitList columns,
-                  const Dimensions &_bdccInfo = Dimensions()) {
+  explicit PTable(struct pobj_alloc_class_desc _alloc, const std::string &tName,
+                  ColumnInitList columns, const Dimensions &_bdccInfo = Dimensions())
+      : index_alloc_class(_alloc) {
     auto pop = pool_by_vptr(this);
     if (pmemobj_tx_stage() == TX_STAGE_NONE) {
       transaction::run(pop, [&] { init(tName, columns, _bdccInfo); });
@@ -289,7 +292,9 @@ class PTable<KeyType, std::tuple<Types...>> {
   /************************************************************************//**
    * \brief Constructor for a given schema (using TableInfo) and dimension clustering.
    ***************************************************************************/
-  explicit PTable(const VTableInfoType &tInfo, const Dimensions &_bdccInfo = Dimensions()) {
+  explicit PTable(struct pobj_alloc_class_desc _alloc, const VTableInfoType &tInfo,
+                  const Dimensions &_bdccInfo = Dimensions())
+      : index_alloc_class(_alloc) {
     auto pop = pool_by_vptr(this);
     if (pmemobj_tx_stage() == TX_STAGE_NONE) {
       transaction::run(pop, [&] { init(tInfo, _bdccInfo); });
@@ -570,7 +575,7 @@ class PTable<KeyType, std::tuple<Types...>> {
           const auto smas = cAttributes::smaPos(b, gSmaOffsetPos + idx * gAttrOffsetSize);
 
           const auto &dataPos = reinterpret_cast<const uint16_t &>(b[gDataOffsetPos + idx * gAttrOffsetSize]);
-          const auto &data = reinterpret_cast<const int (&)[cnt]>(b[dataPos]);
+          const int (&data)[cnt] = reinterpret_cast<const int (&)[cnt]>(b[dataPos]);
 
           /* Remaining Space */
           const auto freeSpace = cAttributes::freeSpace(b, dataPos, cnt, nCols, idx);
@@ -603,6 +608,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     persistent_ptr<PTableInfoType> tInfo;
     persistent_ptr<BDCCInfo> bdccInfo;
   };
+  pobj_alloc_class_desc index_alloc_class;
   persistent_ptr<struct root> root;
 
   /************************************************************************//**
@@ -694,7 +700,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     this->root = make_persistent<struct root>();
     this->root->tInfo.get_rw() = make_persistent<PTableInfoType>(_tName, _columns);
     this->root->bdccInfo = make_persistent<BDCCInfo>(_bdccInfo);
-    this->root->index = make_persistent<IndexType>();
+    this->root->index = make_persistent<IndexType>(index_alloc_class);
     this->root->dataNodes = make_persistent<DataNode<KeyType>>();
     this->root->dataNodes->block.get_rw() = initBlock(0, ((1L << this->root->bdccInfo->numBins()) - 1));
   }
@@ -711,7 +717,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     this->root = make_persistent<struct root>();
     this->root->tInfo = make_persistent<PTableInfoType>(_tInfo);
     this->root->bdccInfo = make_persistent<BDCCInfo>(_bdccInfo);
-    this->root->index = make_persistent<IndexType>();
+    this->root->index = make_persistent<IndexType>(index_alloc_class);
     this->root->dataNodes = make_persistent<struct DataNode<KeyType>>();
     this->root->dataNodes->block.get_rw() = initBlock(0, ((1L << this->root->bdccInfo->numBins()) - 1));
   }
@@ -1150,7 +1156,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     return candidates;
   }
 
-  const bool isPTupleinRange(const PTuple<KeyType, Tuple> &ptp, const ColumnRangeMap &predicates) const {
+  bool isPTupleinRange(const PTuple<KeyType, Tuple> &ptp, const ColumnRangeMap &predicates) const {
     const auto &tInfo = *root->tInfo;
     const auto &b = ptp.getNode()->block.get_ro();
 
@@ -1202,7 +1208,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     return true;
   }
 
-  const bool findInsertNodeOrSplit(DataNodePtr &node, const Tuple &tp) const {
+  bool findInsertNodeOrSplit(DataNodePtr &node, const Tuple &tp) const {
 
     auto bdcc_min = reinterpret_cast<const uint32_t &>(node->block.get_ro()[gBDCCRangePos1]);
     auto bdcc_max = reinterpret_cast<const uint32_t &>(node->block.get_ro()[gBDCCRangePos2]);
@@ -1228,7 +1234,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     return needsSplit;
   }
 
-  const bool hasEnoughSpace(const DataNodePtr &node, const Tuple &tp) const {
+  bool hasEnoughSpace(const DataNodePtr &node, const Tuple &tp) const {
     StreamType buf;
     serialize(tp, buf);
 

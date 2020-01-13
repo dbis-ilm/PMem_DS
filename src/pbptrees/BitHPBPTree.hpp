@@ -21,19 +21,21 @@
 #include <array>
 #include <iostream>
 
+#include <libpmemobj/ctl.h>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
 
-#include "utils/BitOperations.hpp"
-#include "utils/SearchFunctions.hpp"
-#include "utils/PersistEmulation.hpp"
 #include "config.h"
+#include "utils/BitOperations.hpp"
+#include "utils/PersistEmulation.hpp"
+#include "utils/SearchFunctions.hpp"
 
 namespace dbis::pbptrees {
 
+using pmem::obj::allocation_flag;
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
 using pmem::obj::p;
@@ -122,11 +124,15 @@ class BitHPBPTree {
      */
     LeafNode() : nextLeaf(nullptr), prevLeaf(nullptr) {}
 
-    p<std::bitset<M>>             bits; ///< bitset for valid entries
-    p<std::array<KeyType, M>>     keys; ///< the actual keys
-    p<std::array<ValueType, M>> values; ///< the actual values
-    pptr<LeafNode>            nextLeaf; ///< pointer to the subsequent sibling
-    pptr<LeafNode>            prevLeaf; ///< pointer to the preceeding sibling
+    static constexpr auto BitsetSize = ((M + 63) / 64) * 8;  ///< number * size of words
+    static constexpr auto PaddingSize = (64 - (BitsetSize + 32) % 64) % 64;
+
+    p<std::bitset<M>> bits;              ///< bitset for valid entries
+    pptr<LeafNode> nextLeaf;             ///< pointer to the subsequent sibling
+    pptr<LeafNode> prevLeaf;             ///< pointer to the preceeding sibling
+    char padding[PaddingSize];           ///< padding to align keys to 64 bytes
+    p<std::array<KeyType, M>> keys;      ///< the actual keys
+    p<std::array<ValueType, M>> values;  ///< the actual values
   };
 
   /**
@@ -154,14 +160,18 @@ class BitHPBPTree {
   pptr<LeafNode> newLeafNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
+    transaction::run(pop, [&] {
+      newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id));
+    });
     return newNode;
   }
 
   pptr<LeafNode> newLeafNode(const pptr<LeafNode> &other) {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(*other); });
+    transaction::run(pop, [&] {
+      newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id), *other);
+    });
     return newNode;
   }
 
@@ -204,16 +214,16 @@ class BitHPBPTree {
     Node rightChild; ///< the resulting rhs child node
   };
 
+  static constexpr pobj_alloc_class_desc AllocClass{256, 64, 1, POBJ_HEADER_COMPACT};
+  pobj_alloc_class_desc alloc_class;
   unsigned int depth; /**< the depth of the tree, i.e. the number of levels
                            (0 => rootNode is LeafNode) */
-
-  Node rootNode; /**< pointer to the root node (an instance of @c LeafNode or @c BranchNode).
-                      This pointer is never @c nullptr. */
+  Node rootNode;      /**< pointer to the root node (an instance of @c LeafNode or @c BranchNode).
+                           This pointer is never @c nullptr. */
   pptr<LeafNode> leafList; /**< Pointer to the leaf at the most left position.
                                 Neccessary for recovery */
 
-  public:
-
+ public:
   /**
    * Iterator for iterating over the leaf nodes.
    */
@@ -286,11 +296,12 @@ class BitHPBPTree {
   /**
    * Constructor for creating a new B+ tree.
    */
-  BitHPBPTree() : depth(0) {
+  explicit BitHPBPTree(struct pobj_alloc_class_desc _alloc) : depth(0), alloc_class(_alloc) {
+  // BitHPBPTree() : depth(0) {
     rootNode = newLeafNode();
     leafList = rootNode.leaf;
-    LOG("created new tree with sizeof(BranchNode) = " << sizeof(BranchNode) <<
-        ", sizeof(LeafNode) = " << sizeof(LeafNode));
+    LOG("created new tree with sizeof(BranchNode) = "
+        << sizeof(BranchNode) << ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
 
   /**
@@ -486,9 +497,23 @@ class BitHPBPTree {
    */
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
+    return eraseFromLeafNodeAtPosition(node, pos, key);
+  }
+
+  /**
+   * Delete the element with the given position and key from the given leaf node.
+   *
+   * @param node the leaf node from which the element is deleted
+   * @param pos the position of the key in the node
+   * @param key the key of the element to be deleted
+   * @return true of the element was deleted
+   */
+  bool eraseFromLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
+                                   const KeyType &key) {
     if (pos < M) {
       /// simply reset bit
       node->bits.get_rw().reset(pos);
+      PersistEmulation::writeBytes<1>();
       return true;
     }
     return false;

@@ -52,7 +52,7 @@ class PColumnInfo {
   PColumnInfo(pool_base pop, const std::string &n, ColumnType ct);
 
   const std::string getName() const { return name.get(); }
-  const ColumnType getType() const { return type.get_ro(); }
+  ColumnType getType() const { return type.get_ro(); }
 };
 
 using PColumnVector = std::vector<PColumnInfo, pmem::obj::allocator<PColumnInfo>>;

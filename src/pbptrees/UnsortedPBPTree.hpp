@@ -21,17 +21,20 @@
 #include <array>
 #include <iostream>
 
+#include <libpmemobj/ctl.h>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
-#include "utils/SearchFunctions.hpp"
-#include "utils/PersistEmulation.hpp"
+
 #include "config.h"
+#include "utils/PersistEmulation.hpp"
+#include "utils/SearchFunctions.hpp"
 
 namespace dbis::pbptrees {
 
+using pmem::obj::allocation_flag;
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
 using pmem::obj::p;
@@ -115,13 +118,14 @@ class UnsortedPBPTree {
     Node rightChild; ///< the resulting rhs child node
   };
 
+  static constexpr pobj_alloc_class_desc AllocClass{256, 64, 1, POBJ_HEADER_COMPACT};
+  pobj_alloc_class_desc alloc_class;
   p<unsigned int> depth; /**< the depth of the tree, i.e. the number of levels
                               (0 => rootNode is LeafNode) */
-
   Node rootNode; /**< pointer to the root node (an instance of @c LeafNode or @c BranchNode).
                       This pointer is never @c nullptr. */
 
-  public:
+ public:
 
   /**
    * Iterator for iterating over the leaf nodes
@@ -193,7 +197,8 @@ class UnsortedPBPTree {
   /**
    * Constructor for creating a new B+ tree.
    */
-  UnsortedPBPTree() : depth(0) {
+  explicit UnsortedPBPTree(struct pobj_alloc_class_desc _alloc) : depth(0), alloc_class(_alloc) {
+  // UnsortedPBPTree() : depth(0) {
     rootNode = newLeafNode();
     LOG("created new tree with sizeof(BranchNode) = " << sizeof(BranchNode)
       << ", sizeof(LeafNode) = " << sizeof(LeafNode));
@@ -364,16 +369,33 @@ class UnsortedPBPTree {
    * @return true of the element was deleted
    */
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
-    auto &nodeRef = *node;
     auto pos = lookupPositionInLeafNode(node, key);
+    return eraseFromLeafNodeAtPosition(node, pos, key);
+  }
+
+  /**
+   * Delete the element with the given position and key from the given leaf node.
+   *
+   * @param node the leaf node from which the element is deleted
+   * @param pos the position of the key in the node
+   * @param key the key of the element to be deleted
+   * @return true of the element was deleted
+   */
+  bool eraseFromLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
+                                   const KeyType &key) {
+    auto &nodeRef = *node;
     if (nodeRef.keys.get_ro()[pos] == key) {
       auto &numKeys = nodeRef.numKeys.get_rw();
       auto &nodeKeys = nodeRef.keys.get_rw();
       auto &nodeVals = nodeRef.values.get_rw();
       /// simply copy the last object on the node to the position of the erased object
       --numKeys;
-      nodeKeys[pos] = nodeKeys[numKeys];
-      nodeVals[pos] = nodeVals[numKeys];
+      if (pos != numKeys) {
+        nodeKeys[pos] = nodeKeys[numKeys];
+        nodeVals[pos] = nodeVals[numKeys];
+      }
+      PersistEmulation::writeBytes(sizeof(size_t) +
+                                   (pos != numKeys ? sizeof(KeyType) + sizeof(ValueType) : 0));
       return true;
     }
     return false;
@@ -468,7 +490,14 @@ class UnsortedPBPTree {
     }
     n1NumKeys += n2NumKeys;
     node1Ref.nextLeaf = node2Ref.nextLeaf;
-    if (node2Ref.nextLeaf != nullptr) node2Ref.nextLeaf->prevLeaf = node1;
+    if (node2Ref.nextLeaf != nullptr) {
+      node2Ref.nextLeaf->prevLeaf = node1;
+      PersistEmulation::writeBytes<16>();
+    }
+    PersistEmulation::writeBytes(
+        n2NumKeys * (sizeof(KeyType) + sizeof(ValueType)) +  ///< moved keys, vals
+        sizeof(unsigned int) + 16                            ///< numKeys + nextpointer
+    );
     return node1;
   }
 
@@ -527,6 +556,8 @@ class UnsortedPBPTree {
         --dNumKeys;
       }
     }
+    PersistEmulation::writeBytes(2 * toMove * (sizeof(KeyType) + sizeof(ValueType)) +
+                                 2* sizeof(unsigned int));
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -944,7 +975,7 @@ class UnsortedPBPTree {
     }
     nodeRef.nextLeaf = sibling;
     sibRef.prevLeaf = node;
-    PersistEmulation::writeBytes<M * (sizeof(KeyType) + sizeof(ValueType)) + 2*4 + 2*16>(); //M entries moved + 2 numKeys + 2 pointers
+    PersistEmulation::writeBytes<M * (sizeof(KeyType) + sizeof(ValueType)) + 2*8 + 2*16>(); //M entries moved + 2 numKeys + 2 pointers
 
     auto &splitInfoRef = *splitInfo;
     splitInfoRef.leftChild = node;
@@ -969,7 +1000,7 @@ class UnsortedPBPTree {
     nodeRef.keys.get_rw()[numKeys] = key;
     nodeRef.values.get_rw()[numKeys] = val;
     ++numKeys;
-    PersistEmulation::writeBytes<sizeof(KeyType) + sizeof(ValueType) + sizeof(unsigned int)>();
+    PersistEmulation::writeBytes<sizeof(KeyType) + sizeof(ValueType) + sizeof(size_t)>();
   }
 
   /**
@@ -1139,7 +1170,18 @@ class UnsortedPBPTree {
   pptr<LeafNode> newLeafNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
+    transaction::run(pop, [&] {
+      newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id));
+    });
+    return newNode;
+  }
+
+  pptr<LeafNode> newLeafNode(const pptr<LeafNode> &other) {
+    auto pop = pmem::obj::pool_by_vptr(this);
+    pptr<LeafNode> newNode = nullptr;
+    transaction::run(pop, [&] {
+      newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id), *other);
+    });
     return newNode;
   }
 
@@ -1154,7 +1196,9 @@ class UnsortedPBPTree {
   pptr<BranchNode> newBranchNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<BranchNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<BranchNode>(); });
+    transaction::run(pop, [&] {
+      newNode = make_persistent<BranchNode>(/*allocation_flag::class_id(alloc_class.class_id)*/);
+    });
     return newNode;
   }
 
@@ -1173,11 +1217,13 @@ class UnsortedPBPTree {
      */
     LeafNode() : numKeys(0), nextLeaf(nullptr), prevLeaf(nullptr) {}
 
-    p<unsigned int> numKeys;            ///< the number of currently stored keys
-    p<std::array<KeyType, M>> keys;     ///< the actual keys
+    /// pmdk header 16 Byte                                                      - 0x00
+    p<size_t> numKeys;            ///< the number of currently stored keys - 0x10
+    pptr<LeafNode> nextLeaf;            ///< pointer to the subsequent sibling   - 0x18
+    pptr<LeafNode> prevLeaf;            ///< pointer to the preceding sibling    - 0x28
+    char padding[24];                   ///< padding to align keys to 64 byte    - 0x38
+    p<std::array<KeyType, M>> keys;     ///< the actual keys                     - 0x40
     p<std::array<ValueType, M>> values; ///< the actual values
-    pptr<LeafNode> nextLeaf;            ///< pointer to the subsequent sibling
-    pptr<LeafNode> prevLeaf;            ///< pointer to the preceeding sibling
   };
 
   /**

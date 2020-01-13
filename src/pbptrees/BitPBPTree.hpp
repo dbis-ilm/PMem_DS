@@ -21,19 +21,21 @@
 #include <array>
 #include <iostream>
 
+#include <libpmemobj/ctl.h>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
 
-#include "utils/BitOperations.hpp"
-#include "utils/SearchFunctions.hpp"
-#include "utils/PersistEmulation.hpp"
 #include "config.h"
+#include "utils/BitOperations.hpp"
+#include "utils/PersistEmulation.hpp"
+#include "utils/SearchFunctions.hpp"
 
 namespace dbis::pbptrees {
 
+using pmem::obj::allocation_flag;
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
 using pmem::obj::p;
@@ -122,11 +124,15 @@ class BitPBPTree {
      */
     LeafNode() : nextLeaf(nullptr), prevLeaf(nullptr) {}
 
-    p<std::bitset<M>>             bits; ///< bitset for valid entries
-    p<std::array<KeyType, M>>     keys; ///< the actual keys
-    p<std::array<ValueType, M>> values; ///< the actual values
-    pptr<LeafNode>            nextLeaf; ///< pointer to the subsequent sibling
-    pptr<LeafNode>            prevLeaf; ///< pointer to the preceeding sibling
+    static constexpr auto BitsetSize = ((M + 63) / 64) * 8;  ///< number * size of words
+    static constexpr auto PaddingSize = (64 - (BitsetSize + 32) % 64) % 64;
+
+    p<std::bitset<M>> bits;              ///< bitset for valid entries
+    pptr<LeafNode> nextLeaf;             ///< pointer to the subsequent sibling
+    pptr<LeafNode> prevLeaf;             ///< pointer to the preceeding sibling
+    char padding[PaddingSize];           ///< padding to align keys to 64 bytes
+    p<std::array<KeyType, M>> keys;      ///< the actual keys
+    p<std::array<ValueType, M>> values;  ///< the actual values
   };
 
   /**
@@ -159,13 +165,14 @@ class BitPBPTree {
     Node rightChild; ///< the resulting rhs child node
   };
 
+  static constexpr pobj_alloc_class_desc AllocClass{256, 64, 1, POBJ_HEADER_COMPACT};
+  pobj_alloc_class_desc alloc_class;
   p<unsigned int> depth; /**< the depth of the tree, i.e. the number of levels
                               (0 => rootNode is LeafNode) */
-
   Node rootNode; /**< pointer to the root node (an instance of @c LeafNode or @c BranchNode).
                       This pointer is never @c nullptr. */
 
-  public:
+ public:
 
   /**
    * Iterator for iterating over the leaf nodes.
@@ -243,7 +250,8 @@ class BitPBPTree {
   /**
    * Constructor for creating a new B+ tree.
    */
-  BitPBPTree() : depth(0) {
+  explicit BitPBPTree(struct pobj_alloc_class_desc _alloc) : depth(0), alloc_class(_alloc) {
+  // BitPBPTree() : depth(0) {
     rootNode = newLeafNode();
     LOG("created new tree with sizeof(BranchNode) = " << sizeof(BranchNode) <<
         ", sizeof(LeafNode) = " << sizeof(LeafNode));
@@ -422,9 +430,23 @@ class BitPBPTree {
    */
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
+    return eraseFromLeafNodeAtPosition(node, pos, key);
+  }
+
+  /**
+   * Delete the element with the given position and key from the given leaf node.
+   *
+   * @param node the leaf node from which the element is deleted
+   * @param pos the position of the key in the node
+   * @param key the key of the element to be deleted
+   * @return true of the element was deleted
+   */
+  bool eraseFromLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
+                                   const KeyType &key) {
     if (pos < M) {
       /// simply reset bit
       node->bits.get_rw().reset(pos);
+      PersistEmulation::writeBytes<1>();
       return true;
     }
     return false;
@@ -442,65 +464,65 @@ class BitPBPTree {
    */
   void underflowAtLeafLevel(const pptr<BranchNode> &node, const unsigned int pos,
                             pptr<LeafNode> &leaf) {
-      assert(pos <= N);
-      auto &nodeRef = *node;
-      auto &leafRef = *leaf;
-      auto &nodeKeys = nodeRef.keys.get_rw();
-      auto prevNumKeys = 0u;
-      constexpr auto middle = (M + 1) / 2;
+    assert(pos <= N);
+    auto &nodeRef = *node;
+    auto &leafRef = *leaf;
+    auto &nodeKeys = nodeRef.keys.get_rw();
+    auto prevNumKeys = 0u;
+    constexpr auto middle = (M + 1) / 2;
 
-      /// 1. we check whether we can rebalance with one of the siblings but only if both nodes have
-      ///    the same direct parent
-      if (pos > 0 && (prevNumKeys = leafRef.prevLeaf->bits.get_ro().count()) > middle) {
-        /// we have a sibling at the left for rebalancing the keys
-        balanceLeafNodes(leafRef.prevLeaf, leaf);
-        const auto newMin = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
-                                                             leafRef.bits.get_ro())];
-        const auto prevPos = findMinKeyGreaterThan(leafRef.keys.get_ro(),
-                                                   leafRef.bits.get_ro(), newMin);
-        nodeKeys[prevPos] = newMin;
-      } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() > middle) {
-        /// we have a sibling at the right for rebalancing the keys
-        balanceLeafNodes(leafRef.nextLeaf, leaf);
-        const auto &nextLeaf = *leafRef.nextLeaf;
-        nodeKeys[pos] =
+    /// 1. we check whether we can rebalance with one of the siblings but only if both nodes have
+    ///    the same direct parent
+    if (pos > 0 && (prevNumKeys = leafRef.prevLeaf->bits.get_ro().count()) > middle) {
+      /// we have a sibling at the left for rebalancing the keys
+      balanceLeafNodes(leafRef.prevLeaf, leaf);
+      const auto newMin =
+          leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(), leafRef.bits.get_ro())];
+      const auto prevPos =
+          findMinKeyGreaterThan(leafRef.keys.get_ro(), leafRef.bits.get_ro(), newMin);
+      nodeKeys[prevPos] = newMin;
+    } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() > middle) {
+      /// we have a sibling at the right for rebalancing the keys
+      balanceLeafNodes(leafRef.nextLeaf, leaf);
+      const auto &nextLeaf = *leafRef.nextLeaf;
+      nodeKeys[pos] =
           nextLeaf.keys.get_ro()[findMinKey(nextLeaf.keys.get_ro(), nextLeaf.bits.get_ro())];
-      } else {
-        /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
-        ///    direct parent
-        pptr<LeafNode> survivor = nullptr;
-        auto &nodeChilds = nodeRef.children.get_rw();
-        auto &nodeBits = nodeRef.bits.get_rw();
+    } else {
+      /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
+      ///    direct parent
+      pptr<LeafNode> survivor = nullptr;
+      auto &nodeChilds = nodeRef.children.get_rw();
+      auto &nodeBits = nodeRef.bits.get_rw();
 
-        if (findMinKey(nodeKeys, nodeBits) != pos && prevNumKeys <= middle) {
-          /// merge left
-          survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
-          deleteLeafNode(leaf);
-          /// move to next left slot
-          const auto prevPos = (pos == N) ?
-            findMaxKey(nodeKeys, nodeBits) : ///< we need a new rightmost node
-            findMaxKeySmallerThan(nodeKeys, nodeBits, nodeKeys[pos]);
-          nodeChilds[pos] = nodeChilds[prevPos];
-          nodeBits.reset(prevPos);
-        } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() <= middle) {
-          /// merge right
-          survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
-          deleteLeafNode(leafRef.nextLeaf);
-          /// move to next right slot
-          const auto nextPos = findMinKeyGreaterThan(nodeKeys, nodeBits, nodeKeys[pos]);
-          nodeChilds[nextPos] = nodeChilds[pos];
-          nodeBits.reset(pos);
-        } else {
-          /// this shouldn't happen?!
-          assert(false);
-        }
-        if (nodeBits.count() == 0) {
-          /// This is a special case that happens only if the current node is the root node. Now, we
-          /// have to replace the branch root node by a leaf node.
-          rootNode = survivor;
-          --depth.get_rw();
-        }
+      if (findMinKey(nodeKeys, nodeBits) != pos && prevNumKeys <= middle) {
+        /// merge left
+        survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
+        deleteLeafNode(leaf);
+        /// move to next left slot
+        const auto prevPos = (pos == N) ? findMaxKey(nodeKeys, nodeBits)
+                                        :  ///< we need a new rightmost node
+                                 findMaxKeySmallerThan(nodeKeys, nodeBits, nodeKeys[pos]);
+        nodeChilds[pos] = nodeChilds[prevPos];
+        nodeBits.reset(prevPos);
+      } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() <= middle) {
+        /// merge right
+        survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
+        deleteLeafNode(leafRef.nextLeaf);
+        /// move to next right slot
+        const auto nextPos = findMinKeyGreaterThan(nodeKeys, nodeBits, nodeKeys[pos]);
+        nodeChilds[nextPos] = nodeChilds[pos];
+        nodeBits.reset(pos);
+      } else {
+        /// this shouldn't happen?!
+        assert(false);
       }
+      if (nodeBits.count() == 0) {
+        /// This is a special case that happens only if the current node is the root node. Now, we
+        /// have to replace the branch root node by a leaf node.
+        rootNode = survivor;
+        --depth.get_rw();
+      }
+    }
     }
 
   /**
@@ -517,7 +539,8 @@ class BitPBPTree {
     auto &node2Ref = *node2;
     auto &node1Bits = node1Ref.bits.get_rw();
     const auto &node2Bits = node2Ref.bits.get_ro();
-    assert(node1Bits.count() + node2Bits.count() <= M);
+    const auto n2numKeys = node2Bits.count();
+    assert(node1Bits.count() + n2numKeys <= M);
 
     /// we move all keys/values from node2 to node1
     auto &node1Keys = node1Ref.keys.get_rw();
@@ -533,7 +556,14 @@ class BitPBPTree {
       }
     }
     node1Ref.nextLeaf = node2Ref.nextLeaf;
-    if (node2Ref.nextLeaf != nullptr) node2Ref.nextLeaf->prevLeaf = node1;
+    if (node2Ref.nextLeaf != nullptr) {
+      node2Ref.nextLeaf->prevLeaf = node1;
+      PersistEmulation::writeBytes<16>();
+    }
+    PersistEmulation::writeBytes(
+        n2numKeys * (sizeof(KeyType) + sizeof(ValueType)) +  ///< moved keys, vals
+        ((n2numKeys + 7) >> 3) + 16                          ///< ceiled bits + nextpointer
+    );
     return node1;
   }
 
@@ -586,6 +616,10 @@ class BitPBPTree {
         donorBits.reset(min);
       }
     }
+    PersistEmulation::writeBytes(
+        toMove * (sizeof(KeyType) + sizeof(ValueType)) +  ///< move keys, vals
+        ((2 * toMove + 7) >> 3)                           ///< (re)set ceiled bits
+    );
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -879,26 +913,29 @@ class BitPBPTree {
     /// determine the split position by finding the median in unsorted array of keys
     const auto data = nodeRef.keys.get_ro();
     auto [b, splitPos] = findSplitKey(data);
-    const auto &splitKey = nodeRef.keys.get_ro()[splitPos];
+    const auto &splitKey = data[splitPos];
 
     /// copy leaf with flipped bitmap
+    /*
     const auto sibling = newLeafNode(node);
     auto &sibRef = *sibling;
     nodeRef.bits.get_rw() = b;
     sibRef.bits.get_rw() = b.flip();
     PersistEmulation::writeBytes<sizeof(LeafNode) + ((2*M+7)>>3)>();
+    */
 
     /// Alternative: move instead of complete copy
-    /*
+    ///*
     const auto sibling = newLeafNode();
     auto &sibRef = *sibling;
     auto &sibKeys = sibRef.keys.get_rw();
     auto &sibValues = sibRef.values.get_rw();
     auto &sibBits = sibRef.bits.get_rw();
     auto &nodeBits = nodeRef.bits.get_rw();
+    const auto &nodeKeys = nodeRef.keys.get_ro();
     auto j = 0u;
-    for(auto i = 0u; i < M; ++i) {
-      if(nodeRef.keys.get_ro()[i] >= splitKey) {
+    for (auto i = 0u; i < M; ++i) {
+      if (nodeKeys[i] >= splitKey) {
         sibKeys[j] = nodeRef.keys.get_ro()[i];
         sibValues[j] = nodeRef.values.get_ro()[i];
         sibBits.set(j);
@@ -906,8 +943,9 @@ class BitPBPTree {
         j++;
       }
     }
-    PersistEmulation::writeBytes(j * (sizeof(KeyType) + sizeof(ValueType)) + ((j*2+7)>>3)); /// j entries + j*2 bits
-    */
+    PersistEmulation::writeBytes(j * (sizeof(KeyType) + sizeof(ValueType)) +
+                                 ((j * 2 + 7) >> 3));  /// j entries + j*2 bits
+    //*/
 
     /// setup the list of leaf nodes
     if(nodeRef.nextLeaf != nullptr) {
@@ -936,7 +974,7 @@ class BitPBPTree {
    * @param val the actual value corresponding to the key
    */
   void insertInLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
-                                      const KeyType &key, const ValueType &val) {
+                                  const KeyType &key, const ValueType &val) {
     assert(pos < M);
     auto &nodeRef = *node;
 
@@ -1154,14 +1192,18 @@ class BitPBPTree {
   pptr<LeafNode> newLeafNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
+    transaction::run(pop, [&] {
+      newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id));
+    });
     return newNode;
   }
 
   pptr<LeafNode> newLeafNode(const pptr<LeafNode> &other) {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(*other); });
+    transaction::run(pop, [&] {
+      newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id), *other);
+    });
     return newNode;
   }
 

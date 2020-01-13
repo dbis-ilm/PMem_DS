@@ -21,6 +21,7 @@
 #include <array>
 #include <iostream>
 
+#include <libpmemobj/ctl.h>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
@@ -33,12 +34,13 @@
 
 namespace dbis::pbptrees {
 
+using pmem::obj::allocation_flag;
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
 using pmem::obj::p;
 using pmem::obj::persistent_ptr;
 using pmem::obj::transaction;
-template<class Object>
+template <class Object>
 using pptr = persistent_ptr<Object>;
 
 /**
@@ -49,7 +51,7 @@ using pptr = persistent_ptr<Object>;
  * @tparam N the maximum number of keys on a branch node
  * @tparam M the maximum number of keys on a leaf node
  */
-template<typename KeyType, typename ValueType, int N, int M>
+template <typename KeyType, typename ValueType, int N, int M>
 class HPBPTree {
   /// we need at least two keys on a branch node to be able to split
   static_assert(N > 2, "number of branch keys has to be >2.");
@@ -59,9 +61,9 @@ class HPBPTree {
   static_assert(M > 0, "number of leaf keys should be >0.");
 
 #ifndef UNIT_TESTS
-  private:
+ private:
 #else
-  public:
+ public:
 #endif
 
   /// Forward declarations
@@ -69,11 +71,11 @@ class HPBPTree {
   struct BranchNode;
 
   struct Node {
-    Node() : tag(BLANK) {};
+    Node() : tag(BLANK){};
 
-    Node(pptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_) {};
+    Node(pptr<LeafNode> leaf_) : tag(LEAF), leaf(leaf_){};
 
-    Node(BranchNode *branch_) : tag(BRANCH), branch(branch_) {};
+    Node(BranchNode *branch_) : tag(BRANCH), branch(branch_){};
 
     Node(const Node &other) { copy(other); };
 
@@ -89,7 +91,8 @@ class HPBPTree {
           branch = other.branch;
           break;
         }
-        default: break;
+        default:
+          break;
       }
     }
 
@@ -98,9 +101,7 @@ class HPBPTree {
       return *this;
     }
 
-    enum NodeType {
-      BLANK, LEAF, BRANCH
-    } tag;
+    enum NodeType { BLANK, LEAF, BRANCH } tag;
     union {
       pptr<LeafNode> leaf;
       BranchNode *branch;
@@ -116,7 +117,7 @@ class HPBPTree {
      */
     LeafNode() : numKeys(0), nextLeaf(nullptr), prevLeaf(nullptr) {}
 
-    p<unsigned int> numKeys;             ///< the number of currently stored keys
+    p<size_t> numKeys;                   ///< the number of currently stored keys
     p<std::array<KeyType, M>> keys;      ///< the actual keys
     p<std::array<ValueType, M>> values;  ///< the actual values
     pptr<LeafNode> nextLeaf;             ///< pointer to the subsequent sibling
@@ -132,9 +133,9 @@ class HPBPTree {
      */
     BranchNode() : numKeys(0) {}
 
-    unsigned int numKeys;             ///< the number of currently stored keys
-    std::array<KeyType, N> keys;      ///< the actual keys
-    std::array<Node, N + 1> children; ///< pointers to child nodes (BranchNode or LeafNode)
+    size_t numKeys;                    ///< the number of currently stored keys
+    std::array<KeyType, N> keys;       ///< the actual keys
+    std::array<Node, N + 1> children;  ///< pointers to child nodes (BranchNode or LeafNode)
   };
 
   /**
@@ -143,7 +144,9 @@ class HPBPTree {
   pptr<LeafNode> newLeafNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] { newNode = make_persistent<LeafNode>(); });
+    transaction::run(pop, [&] {
+      newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id));
+    });
     return newNode;
   }
 
@@ -155,31 +158,29 @@ class HPBPTree {
   /**
    * Create a new empty branch node
    */
-  BranchNode *newBranchNode() {
-    return new BranchNode();
-  }
+  BranchNode *newBranchNode() { return new BranchNode(); }
 
-  void deleteBranchNode(BranchNode *node) {
-    delete node;
-  }
+  void deleteBranchNode(BranchNode *node) { delete node; }
 
   /**
    * A structure for passing information about a node split to the caller.
    */
   struct SplitInfo {
-    KeyType key;     ///< the key at which the node was split
-    Node leftChild;  ///< the resulting lhs child node
-    Node rightChild; ///< the resulting rhs child node
+    KeyType key;      ///< the key at which the node was split
+    Node leftChild;   ///< the resulting lhs child node
+    Node rightChild;  ///< the resulting rhs child node
   };
 
-  unsigned int depth;            /**< the depth of the tree, i.e. the number of levels
-                                      (0 => rootNode is LeafNode) */
+  static constexpr pobj_alloc_class_desc AllocClass{256, 64, 1, POBJ_HEADER_COMPACT};
+  pobj_alloc_class_desc alloc_class;
+  unsigned int depth; /**< the depth of the tree, i.e. the number of levels
+                           (0 => rootNode is LeafNode) */
 
-  Node rootNode;     ///< pointer to the root node
-  pptr<LeafNode> leafList;       /**< Pointer to the leaf at the most left position.
-                                      Neccessary for recovery */
+  Node rootNode;           ///< pointer to the root node
+  pptr<LeafNode> leafList; /**< Pointer to the leaf at the most left position.
+                                Neccessary for recovery */
 
-  public:
+ public:
   /**
    * Typedef for a function passed to the scan method.
    */
@@ -191,7 +192,7 @@ class HPBPTree {
     pptr<LeafNode> currentNode;
     std::size_t currentPosition;
 
-    public:
+   public:
     iterator() : currentNode(nullptr), currentPosition(0) {}
     iterator(const Node &root, std::size_t d) {
       /// traverse to left-most key
@@ -201,22 +202,27 @@ class HPBPTree {
       currentPosition = 0;
     }
 
-    iterator& operator++() {
-      if (currentPosition >= currentNode->numKeys-1) {
+    iterator &operator++() {
+      if (currentPosition >= currentNode->numKeys - 1) {
         currentNode = currentNode->nextLeaf;
         currentPosition = 0;
         if (currentNode == nullptr) return *this;
-      } else ++currentPosition;
+      } else
+        ++currentPosition;
       return *this;
     }
 
-    iterator operator++(int) {iterator retval = *this; ++(*this); return retval;}
+    iterator operator++(int) {
+      iterator retval = *this;
+      ++(*this);
+      return retval;
+    }
 
     bool operator==(iterator other) const {
-      return (currentNode == other.currentNode &&
-        currentPosition == other.currentPosition);}
+      return (currentNode == other.currentNode && currentPosition == other.currentPosition);
+    }
 
-    bool operator!=(iterator other) const {return !(*this == other);}
+    bool operator!=(iterator other) const { return !(*this == other); }
 
     std::pair<KeyType, ValueType> operator*() {
       return std::make_pair(currentNode->keys.get_ro()[currentPosition],
@@ -226,19 +232,22 @@ class HPBPTree {
     /// iterator traits
     using difference_type = long;
     using value_type = std::pair<KeyType, ValueType>;
-    using pointer = const std::pair<KeyType, ValueType>*;
-    using reference = const std::pair<KeyType, ValueType>&;
+    using pointer = const std::pair<KeyType, ValueType> *;
+    using reference = const std::pair<KeyType, ValueType> &;
     using iterator_category = std::forward_iterator_tag;
   };
   iterator begin() { return iterator(rootNode, depth); }
   iterator end() { return iterator(); }
+
   /**
    * Constructor for creating a new  tree.
    */
-  HPBPTree() {
+  // HPBPTree() {
+  explicit HPBPTree(struct pobj_alloc_class_desc _alloc) : depth(0), alloc_class(_alloc) {
     rootNode = newLeafNode();
     leafList = rootNode.leaf;
-    depth = 0;
+    LOG("created new tree with sizeof(BranchNode) = "
+        << sizeof(BranchNode) << ", sizeof(LeafNode) = " << sizeof(LeafNode));
   }
 
   /**
@@ -290,7 +299,7 @@ class HPBPTree {
    *                 if the key was found
    * @return true if the key was found, false otherwise
    */
-  bool lookup(const KeyType &key, ValueType *val)  {
+  bool lookup(const KeyType &key, ValueType *val) {
     assert(val != nullptr);
     const auto leaf = findLeafNode(key);
     const auto &leafRef = *leaf;
@@ -327,13 +336,13 @@ class HPBPTree {
   /**
    * Recover the HPBPTree by iterating over the LeafList and using the recoveryInsert method.
    */
-  void recover(){
+  void recover() {
     LOG("Starting RECOVERY of HPBPTree");
-    pptr<LeafNode> currentLeaf=leafList;
-    if(leafList == nullptr){
+    pptr<LeafNode> currentLeaf = leafList;
+    if (leafList == nullptr) {
       LOG("No data to recover HPBPTree");
     }
-    if(leafList->nextLeaf == nullptr){
+    if (leafList->nextLeaf == nullptr) {
       /// The index has only one node, so the leaf node becomes the root node
       rootNode = leafList;
       depth = 0;
@@ -353,10 +362,11 @@ class HPBPTree {
    * Print the structure and content of the tree to stdout.
    */
   void print() const {
-    if (depth == 0) printLeafNode(0, rootNode.leaf);
-    else printBranchNode(0u, rootNode.branch);
+    if (depth == 0)
+      printLeafNode(0, rootNode.leaf);
+    else
+      printBranchNode(0u, rootNode.branch);
   }
-
 
   /**
    * Perform a scan over all key-value pairs stored in the tree.
@@ -368,7 +378,7 @@ class HPBPTree {
     /// we traverse to the leftmost leaf node
     auto node = rootNode;
     auto d = depth;
-    while ( d-- > 0) node = node.branch->children[0];
+    while (d-- > 0) node = node.branch->children[0];
     auto leaf = node.leaf;
     while (leaf != nullptr) {
       auto &leafRef = *leaf;
@@ -403,7 +413,10 @@ class HPBPTree {
       for (auto i = 0u; i < numKeys; i++) {
         auto &key = leafRef.keys.get_ro()[i];
         if (key < minKey) continue;
-        if (key > maxKey) { higherThanMax = true; continue; }
+        if (key > maxKey) {
+          higherThanMax = true;
+          continue;
+        }
 
         auto &val = leafRef.values.get_ro()[i];
         func(key, val);
@@ -414,7 +427,7 @@ class HPBPTree {
   }
 
 #ifndef UNIT_TESTS
-  private:
+ private:
 #endif
 
   /**
@@ -427,8 +440,8 @@ class HPBPTree {
    * @param val the value associated with the key
    * @param splitInfo information about a possible split of the node
    */
-  bool insertInLeafNode(const pptr<LeafNode> node, const KeyType &key,
-      const ValueType &val, SplitInfo *splitInfo) {
+  bool insertInLeafNode(const pptr<LeafNode> node, const KeyType &key, const ValueType &val,
+                        SplitInfo *splitInfo) {
     auto &nodeRef = *node;
     bool split = false;
     auto pos = lookupPositionInLeafNode(node, key);
@@ -487,7 +500,8 @@ class HPBPTree {
     }
     nodeRef.nextLeaf = sibling;
     sibRef.prevLeaf = node;
-    PersistEmulation::writeBytes(2*4 + sibRef.numKeys*(sizeof(KeyType) + sizeof(ValueType)) + 2*16);
+    PersistEmulation::writeBytes(2 * 4 + sibRef.numKeys * (sizeof(KeyType) + sizeof(ValueType)) +
+                                 2 * 16);
 
     auto &splitInfoRef = *splitInfo;
     splitInfoRef.leftChild = node;
@@ -507,8 +521,8 @@ class HPBPTree {
    * @param key the key of the element
    * @param val the actual value corresponding to the key
    */
-  void insertInLeafNodeAtPosition(const pptr<LeafNode> node, unsigned int pos,
-      const KeyType &key, const ValueType &val) {
+  void insertInLeafNodeAtPosition(const pptr<LeafNode> node, unsigned int pos, const KeyType &key,
+                                  const ValueType &val) {
     auto &nodeRef = *node;
     const auto &numKeys = nodeRef.numKeys.get_ro();
     assert(pos < M);
@@ -526,7 +540,7 @@ class HPBPTree {
     keysRef[pos] = key;
     valuesRef[pos] = val;
     nodeRef.numKeys.get_rw() = numKeys + 1;
-    PersistEmulation::writeBytes((numKeys-pos+1)*(sizeof(KeyType) + sizeof(ValueType)) +
+    PersistEmulation::writeBytes((numKeys - pos + 1) * (sizeof(KeyType) + sizeof(ValueType)) +
                                  sizeof(unsigned int));
   }
 
@@ -549,7 +563,7 @@ class HPBPTree {
 
     auto pos = lookupPositionInBranchNode(node, key);
     if (d == 1) {
-      //case #1: our children are leaf nodes
+      // case #1: our children are leaf nodes
       auto child = nodeRef.children[pos].leaf;
       hasSplit = insertInLeafNode(child, key, val, &childSplitInfo);
     } else {
@@ -608,7 +622,6 @@ class HPBPTree {
     auto &sibRef = *sibling;
     sibRef.numKeys = nodeRef.numKeys - middle;
     for (auto i = 0u; i < sibRef.numKeys; i++) {
-
       sibRef.keys[i] = nodeRef.keys[middle + i];
       sibRef.children[i] = nodeRef.children[middle + i];
     }
@@ -639,6 +652,7 @@ class HPBPTree {
     }
     return node.leaf;
   }
+
   /**
    * Lookup the search key @c key in the given leaf node and return the
    * position.
@@ -652,7 +666,7 @@ class HPBPTree {
     const auto &nodeRef = *node;
     const auto num = nodeRef.numKeys.get_ro();
     const auto &keys = nodeRef.keys.get_ro();
-    return binarySearch<false>(keys, 0, num-1, key);
+    return binarySearch<false>(keys, 0, num - 1, key);
   }
 
   /**
@@ -667,10 +681,10 @@ class HPBPTree {
    * @param key the search key
    * @return the position of the key + 1 (or 0 or @c numKey)
    */
-  unsigned int lookupPositionInBranchNode(BranchNode * const node, const KeyType &key) const {
+  unsigned int lookupPositionInBranchNode(BranchNode *const node, const KeyType &key) const {
     const auto num = node->numKeys;
     const auto &keys = node->keys;
-    return binarySearch<true>(keys, 0, num-1, key);
+    return binarySearch<true>(keys, 0, num - 1, key);
   }
 
   /**
@@ -682,13 +696,31 @@ class HPBPTree {
    */
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
+    return eraseFromLeafNodeAtPosition(node, pos, key);
+  }
+
+  /**
+   * Delete the element with the given position and key from the given leaf node.
+   *
+   * @param node the leaf node from which the element is deleted
+   * @param pos the position of the key in the node
+   * @param key the key of the element to be deleted
+   * @return true of the element was deleted
+   */
+  bool eraseFromLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
+                                   const KeyType &key) {
     auto &nodeRef = *node;
     if (nodeRef.keys.get_ro()[pos] == key) {
-      for (auto i = pos; i < nodeRef.numKeys - 1; i++) {
-        nodeRef.keys.get_rw()[i] = nodeRef.keys.get_ro()[i + 1];
-        nodeRef.values.get_rw()[i] = nodeRef.values.get_ro()[i + 1];
+      auto &numKeys = nodeRef.numKeys.get_rw();
+      auto &nodeKeys = nodeRef.keys.get_rw();
+      auto &nodeValues = nodeRef.values.get_rw();
+      for (auto i = pos; i < numKeys - 1; i++) {
+        nodeKeys[i] = nodeKeys[i + 1];
+        nodeValues[i] = nodeValues[i + 1];
       }
-      nodeRef.numKeys.get_rw() = nodeRef.numKeys.get_ro() - 1;
+      --numKeys;
+      PersistEmulation::writeBytes((numKeys - 1 - pos) * (sizeof(KeyType) + sizeof(ValueType)) +
+                                   sizeof(size_t));
       return true;
     }
     return false;
@@ -703,7 +735,7 @@ class HPBPTree {
    * @param key the key to be deleted
    * @return true if the entry was deleted
    */
-  bool eraseFromBranchNode(BranchNode * const node, unsigned int d, const KeyType &key) {
+  bool eraseFromBranchNode(BranchNode *const node, unsigned int d, const KeyType &key) {
     assert(d >= 1);
     auto &nodeRef = *node;
     bool deleted = false;
@@ -747,57 +779,57 @@ class HPBPTree {
    * @param pos the position of the child node @leaf in the @c children array of the branch node
    * @param leaf the node at which the underflow occured
    */
-  void underflowAtLeafLevel(BranchNode * const node, unsigned int pos, const pptr<LeafNode> &leaf) {
-      auto &nodeRef = *node;
-      auto &leafRef = *leaf;
-      assert(pos <= nodeRef.numKeys);
-      constexpr auto middle = (M + 1) / 2;
-      /// 1. we check whether we can rebalance with one of the siblings
+  void underflowAtLeafLevel(BranchNode *const node, unsigned int pos, const pptr<LeafNode> &leaf) {
+    auto &nodeRef = *node;
+    auto &leafRef = *leaf;
+    assert(pos <= nodeRef.numKeys);
+    constexpr auto middle = (M + 1) / 2;
+    /// 1. we check whether we can rebalance with one of the siblings
+    /// but only if both nodes have the same direct parent
+    if (pos > 0 && leafRef.prevLeaf->numKeys > middle) {
+      /// we have a sibling at the left for rebalancing the keys
+      balanceLeafNodes(leafRef.prevLeaf, leaf);
+
+      nodeRef.keys[pos - 1] = leafRef.keys.get_ro()[0];
+    } else if (pos < nodeRef.numKeys && leafRef.nextLeaf->numKeys > middle) {
+      /// we have a sibling at the right for rebalancing the keys
+      balanceLeafNodes(leafRef.nextLeaf, leaf);
+
+      nodeRef.keys[pos] = leafRef.nextLeaf->keys.get_ro()[0];
+    } else {
+      /// 2. if this fails we have to merge two leaf nodes
       /// but only if both nodes have the same direct parent
-      if (pos > 0 && leafRef.prevLeaf->numKeys > middle) {
-        /// we have a sibling at the left for rebalancing the keys
-        balanceLeafNodes(leafRef.prevLeaf, leaf);
-
-        nodeRef.keys[pos - 1] = leafRef.keys.get_ro()[0];
-      } else if (pos < nodeRef.numKeys && leafRef.nextLeaf->numKeys > middle) {
-        /// we have a sibling at the right for rebalancing the keys
-        balanceLeafNodes(leafRef.nextLeaf, leaf);
-
-        nodeRef.keys[pos] = leafRef.nextLeaf->keys.get_ro()[0];
+      pptr<LeafNode> survivor = nullptr;
+      if (pos > 0 && leafRef.prevLeaf->numKeys <= middle) {
+        survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
+        deleteLeafNode(leaf);
+      } else if (pos < nodeRef.numKeys && leafRef.nextLeaf->numKeys <= middle) {
+        /// because we update the pointers in mergeLeafNodes
+        /// we keep it here
+        auto l = leafRef.nextLeaf;
+        survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
+        deleteLeafNode(l);
       } else {
-        /// 2. if this fails we have to merge two leaf nodes
-        /// but only if both nodes have the same direct parent
-        pptr<LeafNode> survivor = nullptr;
-        if (pos > 0 && leafRef.prevLeaf->numKeys <= middle) {
-          survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
-          deleteLeafNode(leaf);
-        } else if (pos < nodeRef.numKeys && leafRef.nextLeaf->numKeys <= middle) {
-          /// because we update the pointers in mergeLeafNodes
-          /// we keep it here
-          auto l = leafRef.nextLeaf;
-          survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
-          deleteLeafNode(l);
-        } else {
-          /// this shouldn't happen?!
-          assert(false);
+        /// this shouldn't happen?!
+        assert(false);
+      }
+      if (nodeRef.numKeys > 1) {
+        if (pos > 0) pos--;
+        /// just remove the child node from the current branch node
+        for (auto i = pos; i < nodeRef.numKeys - 1; i++) {
+          nodeRef.keys[i] = nodeRef.keys[i + 1];
+          nodeRef.children[i + 1] = nodeRef.children[i + 2];
         }
-        if (nodeRef.numKeys > 1) {
-          if (pos > 0) pos--;
-          /// just remove the child node from the current branch node
-          for (auto i = pos; i < nodeRef.numKeys - 1; i++) {
-            nodeRef.keys[i] = nodeRef.keys[i + 1];
-            nodeRef.children[i + 1] = nodeRef.children[i + 2];
-          }
-          nodeRef.children[pos] = survivor;
-          --nodeRef.numKeys;
-        } else {
-          /// This is a special case that happens only if the current node is the root node.
-          /// Now, we have to replace the branch root node by a leaf node.
-          rootNode = survivor;
-          --depth;
-        }
+        nodeRef.children[pos] = survivor;
+        --nodeRef.numKeys;
+      } else {
+        /// This is a special case that happens only if the current node is the root node.
+        /// Now, we have to replace the branch root node by a leaf node.
+        rootNode = survivor;
+        --depth;
       }
     }
+  }
 
   /**
    * Handle the case that during a delete operation a underflow at node @c child
@@ -812,8 +844,8 @@ class HPBPTree {
    * @param child the node at which the underflow occured
    * @return the (possibly new) child node (in case of a merge)
    */
-  BranchNode* underflowAtBranchLevel(BranchNode * const node, unsigned int pos,
-                                     BranchNode * const child) {
+  BranchNode *underflowAtBranchLevel(BranchNode *const node, unsigned int pos,
+                                     BranchNode *const child) {
     assert(node != nullptr);
     assert(child != nullptr);
     auto &nodeRef = *node;
@@ -821,8 +853,7 @@ class HPBPTree {
     unsigned int middle = (N + 1) / 2;
 
     /// 1. we check whether we can rebalance with one of the siblings
-    if (pos > 0 &&
-        nodeRef.children[pos - 1].branch->numKeys >middle) {
+    if (pos > 0 && nodeRef.children[pos - 1].branch->numKeys > middle) {
       /// we have a sibling at the left for rebalancing the keys
       BranchNode *sibling = nodeRef.children[pos - 1].branch;
       balanceBranchNodes(sibling, child, node, pos - 1);
@@ -904,7 +935,6 @@ class HPBPTree {
       }
       /// move toMove keys/values from donor to receiver
       for (i = balancedNum; i < donorRef.numKeys; i++, j++) {
-
         receiverRef.keys.get_rw()[j] = donorRef.keys.get_ro()[i];
         receiverRef.values.get_rw()[j] = donorRef.values.get_ro()[i];
         receiverRef.numKeys.get_rw() = receiverRef.numKeys.get_ro() + 1;
@@ -914,14 +944,12 @@ class HPBPTree {
       unsigned int i = 0;
       /// move toMove keys/values from donor to receiver
       for (i = 0; i < toMove; i++) {
-
         receiverRef.keys.get_rw()[receiverRef.numKeys] = donorRef.keys.get_ro()[i];
         receiverRef.values.get_rw()[receiverRef.numKeys] = donorRef.values.get_ro()[i];
         receiverRef.numKeys.get_rw() = receiverRef.numKeys.get_ro() + 1;
       }
       /// on donor node move all keys and values to the left
       for (i = 0; i < donorRef.numKeys - toMove; i++) {
-
         donorRef.keys.get_rw()[i] = donorRef.keys.get_ro()[toMove + i];
         donorRef.values.get_rw()[i] = donorRef.values.get_ro()[toMove + i];
       }
@@ -940,8 +968,8 @@ class HPBPTree {
    * @param pos the position of the key in node @c parent that lies between
    *      @c donor and @c receiver
    */
-  void balanceBranchNodes(BranchNode * const donor, BranchNode * const receiver,
-                          BranchNode * const parent, const unsigned int pos) {
+  void balanceBranchNodes(BranchNode *const donor, BranchNode *const receiver,
+                          BranchNode *const parent, const unsigned int pos) {
     auto &donorRef = *donor;
     auto &receiverRef = *receiver;
     auto &parentRef = *parent;
@@ -956,7 +984,7 @@ class HPBPTree {
       unsigned int i = 0;
       /// 1. make room
       receiverRef.children[receiverRef.numKeys + toMove] =
-        receiverRef.children[receiverRef.numKeys];
+          receiverRef.children[receiverRef.numKeys];
       for (i = receiverRef.numKeys; i > 0; i--) {
         /// reserve space on receiver side
         receiverRef.keys[i + toMove - 1] = receiverRef.keys[i - 1];
@@ -978,7 +1006,6 @@ class HPBPTree {
 
       /// 1. move toMove keys/children from donor to receiver
       for (i = 0; i < toMove; i++) {
-
         receiverRef.children[n + 1 + i] = donorRef.children[i];
         receiverRef.keys[n + 1 + i] = donorRef.keys[i];
       }
@@ -991,13 +1018,11 @@ class HPBPTree {
 
       /// 3. on donor node move all keys and values to the left
       for (i = 0; i < donorRef.numKeys - toMove; i++) {
-
         donorRef.keys[i] = donorRef.keys[toMove + i];
         donorRef.children[i] = donorRef.children[toMove + i];
       }
 
-      donorRef.children[donorRef.numKeys - toMove] =
-        donorRef.children[donorRef.numKeys];
+      donorRef.children[donorRef.numKeys - toMove] = donorRef.children[donorRef.numKeys];
       /// and replace this key by donorRef.keys.get_ro()[0]
       assert(parentRef.numKeys > pos);
       parentRef.keys[pos] = key;
@@ -1022,7 +1047,6 @@ class HPBPTree {
 
     /// we move all keys/values from node2 to node1
     for (auto i = 0u; i < node2Ref.numKeys; i++) {
-
       node1Ref.keys.get_rw()[node1Ref.numKeys + i] = node2Ref.keys.get_ro()[i];
       node1Ref.values.get_rw()[node1Ref.numKeys + i] = node2Ref.values.get_ro()[i];
     }
@@ -1042,8 +1066,8 @@ class HPBPTree {
    * @param key the key from the parent node that is between sibling and node
    * @param node the node from which we move all keys/children
    */
-  void mergeBranchNodes(BranchNode * const sibling, const KeyType &key,
-                        const BranchNode * const node) {
+  void mergeBranchNodes(BranchNode *const sibling, const KeyType &key,
+                        const BranchNode *const node) {
     assert(sibling != nullptr);
     assert(node != nullptr);
     auto &sibRef = *sibling;
@@ -1054,7 +1078,6 @@ class HPBPTree {
     sibRef.keys[sibRef.numKeys] = key;
     sibRef.children[sibRef.numKeys + 1] = nodeRef.children[0];
     for (auto i = 0u; i < nodeRef.numKeys; i++) {
-
       sibRef.keys[sibRef.numKeys + i + 1] = nodeRef.keys[i];
       sibRef.children[sibRef.numKeys + i + 2] = nodeRef.children[i + 1];
     }
@@ -1065,17 +1088,17 @@ class HPBPTree {
    * Insert a leaf node into the tree for recovery
    * @param leaf the leaf to insert
    */
-  void recoveryInsert(const pptr<LeafNode> &leaf){
-    assert(depth>0);
-    assert(leaf!= nullptr);
+  void recoveryInsert(const pptr<LeafNode> &leaf) {
+    assert(depth > 0);
+    assert(leaf != nullptr);
 
     SplitInfo splitInfo;
     auto hassplit = recoveryInsertInBranchNode(rootNode.branch, depth, leaf, &splitInfo);
 
     /// Check for split
-    if(hassplit){
+    if (hassplit) {
       /// The root node was splitted
-      auto newRoot=newBranchNode();
+      auto newRoot = newBranchNode();
       auto &newRootRef = *newRoot;
       newRootRef.keys[0] = splitInfo.key;
       newRootRef.children[0] = splitInfo.leftChild;
@@ -1096,7 +1119,7 @@ class HPBPTree {
    * @param splitInfo information about the split
    * @return true if a split was performed
    */
-  bool recoveryInsertInBranchNode(BranchNode * const node, const int curr_depth,
+  bool recoveryInsertInBranchNode(BranchNode *const node, const int curr_depth,
                                   const pptr<LeafNode> &leaf, SplitInfo *splitInfo) {
     auto &nodeRef = *node;
     auto &leafRef = *leaf;
@@ -1118,28 +1141,28 @@ class HPBPTree {
         nodeRef.children[nodeRef.numKeys] = leaf;
         return false;
       }
-    } else{
-      hassplit=recoveryInsertInBranchNode(nodeRef.children[nodeRef.numKeys].branch,curr_depth-1,leaf,&childSplitInfo);
+    } else {
+      hassplit = recoveryInsertInBranchNode(nodeRef.children[nodeRef.numKeys].branch,
+                                            curr_depth - 1, leaf, &childSplitInfo);
     }
 
-    //Check for split
+    // Check for split
     if (hassplit) {
       if (nodeRef.numKeys == N) {
-        //We have to split the branch node
-        splitBranchNode(node, childSplitInfo.key,splitInfo);
+        // We have to split the branch node
+        splitBranchNode(node, childSplitInfo.key, splitInfo);
         auto newNode = splitRef.rightChild.branch;
         auto &newNodeRef = *newNode;
-        //Insert the new child into the new branch at the rightmost position
-        newNodeRef.keys[newNodeRef.numKeys]=childSplitInfo.key;
-        newNodeRef.children[newNodeRef.numKeys]=childSplitInfo.leftChild;
+        // Insert the new child into the new branch at the rightmost position
+        newNodeRef.keys[newNodeRef.numKeys] = childSplitInfo.key;
+        newNodeRef.children[newNodeRef.numKeys] = childSplitInfo.leftChild;
         newNodeRef.numKeys++;
-        newNodeRef.children[newNodeRef.numKeys]=childSplitInfo.rightChild;
+        newNodeRef.children[newNodeRef.numKeys] = childSplitInfo.rightChild;
         return true;
-      }
-      else{
-        nodeRef.keys[nodeRef.numKeys]=childSplitInfo.key;
+      } else {
+        nodeRef.keys[nodeRef.numKeys] = childSplitInfo.key;
         nodeRef.numKeys++;
-        nodeRef.children[nodeRef.numKeys]=childSplitInfo.rightChild;
+        nodeRef.children[nodeRef.numKeys] = childSplitInfo.rightChild;
         return false;
       }
     }
@@ -1156,7 +1179,7 @@ class HPBPTree {
   void printBranchNode(unsigned int d, BranchNode *node) const {
     auto &nodeRef = *node;
     for (auto i = 0u; i < d; i++) std::cout << "  ";
-    std::cout << d << " BN { ["<<node<<"] ";
+    std::cout << d << " BN { [" << node << "] ";
     for (auto k = 0u; k < nodeRef.numKeys; k++) {
       if (k > 0) std::cout << ", ";
 
@@ -1192,14 +1215,14 @@ class HPBPTree {
     std::cout << "]" << std::endl;
   }
 
-  void printLeafList(){
+  void printLeafList() {
     auto curr_node = leafList;
     while (curr_node != nullptr) {
       printLeafNode(0, curr_node);
       curr_node = curr_node->nextLeaf;
     }
   }
-};//end class HPBPTree
-}//end namespace dbis::pbptrees
+};  // end class HPBPTree
+}  // end namespace dbis::pbptrees
 
 #endif
