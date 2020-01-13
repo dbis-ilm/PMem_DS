@@ -21,20 +21,25 @@
 #include "catch.hpp"
 #include "config.h"
 #define UNIT_TESTS 1
-#include "BitHPBPTree.hpp"
+#include "PBPTree.hpp"
 
 
 using namespace dbis::pbptrees;
 
+using pmem::obj::delete_persistent;
 using pmem::obj::delete_persistent_atomic;
+using pmem::obj::make_persistent;
+using pmem::obj::p;
+using pmem::obj::persistent_ptr;
 using pmem::obj::pool;
+using pmem::obj::transaction;
 
-TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
-  using PBPTreeType4  = BitHPBPTree<int, int, 4, 4>;
-  using PBPTreeType6  = BitHPBPTree<int, int, 6, 6>;
-  using PBPTreeType10 = BitHPBPTree<int, int, 10, 10>;
-  using PBPTreeType12 = BitHPBPTree<int, int, 12, 12>;
-  using PBPTreeType20 = BitHPBPTree<int, int, 20, 20>;
+TEST_CASE("Finding the leaf node containing a key", "[PBPTree]") {
+  using PBPTreeType4 = PBPTree<int, int, 4, 4>;
+  using PBPTreeType6 = PBPTree<int, int, 6, 6>;
+  using PBPTreeType10  = PBPTree<int, int, 10, 10> ;
+  using PBPTreeType12 = PBPTree<int, int, 12, 12>;
+  using PBPTreeType20 = PBPTree<int, int, 20, 20>;
 
   struct root {
     pptr<PBPTreeType4> btree4;
@@ -45,41 +50,42 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
   };
 
   pool<root> pop;
-  const std::string path = dbis::gPmemPath + "BitHPBPTreeTest";
+  const std::string path = dbis::gPmemPath + "PBPTreeTest";
 
   //std::remove(path.c_str());
-  if (access(path.c_str(), F_OK) != 0)
-    pop = pool<root>::create(path, "BitHPBPTree", ((size_t)(1024 * 1024 * 16)));
-  else
-    pop = pool<root>::open(path, "BitHPBPTree");
+  if (access(path.c_str(), F_OK) != 0) {
+    pop = pool<root>::create(path, "PBPTree", ((std::size_t)(1024*1024*16)));
+  } else {
+    pop = pool<root>::open(path, "PBPTree");
+  }
 
   auto q = pop.root();
   auto &rootRef = *q;
+  const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>("heap.alloc_class.new.desc",
+                                                                       PBPTreeType4::AllocClass);
 
   if (!rootRef.btree4)
-    transaction::run(pop, [&] { rootRef.btree4 = make_persistent<PBPTreeType4>(); });
+    transaction::run(pop, [&] { rootRef.btree4 = make_persistent<PBPTreeType4>(alloc_class); });
 
   if (!rootRef.btree6)
-    transaction::run(pop, [&] { rootRef.btree6 = make_persistent<PBPTreeType6>(); });
+    transaction::run(pop, [&] { rootRef.btree6 = make_persistent<PBPTreeType6>(alloc_class); });
 
   if (!rootRef.btree10)
-    transaction::run(pop, [&] { rootRef.btree10 = make_persistent<PBPTreeType10>(); });
+    transaction::run(pop, [&] { rootRef.btree10 = make_persistent<PBPTreeType10>(alloc_class); });
 
   if (!rootRef.btree12)
-    transaction::run(pop, [&] { rootRef.btree12 = make_persistent<PBPTreeType12>(); });
+    transaction::run(pop, [&] { rootRef.btree12 = make_persistent<PBPTreeType12>(alloc_class); });
 
   if (!rootRef.btree20)
-    transaction::run(pop, [&] { rootRef.btree20 = make_persistent<PBPTreeType20>(); });
+    transaction::run(pop, [&] { rootRef.btree20 = make_persistent<PBPTreeType20>(alloc_class); });
 
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Looking up a key in an inner node") {
     auto &btree = *rootRef.btree10;
     auto node = btree.newBranchNode();
     auto &nodeRef = *node;
-    for (auto i = 0; i < 10; i++) {
-      nodeRef.keys[i] = i + 1;
-      nodeRef.bits.set(i);
-    }
+    for (auto i = 0; i < 10; i++) nodeRef.keys.get_rw()[i] = i + 1;
+    nodeRef.numKeys.get_rw() = 10;
 
     REQUIRE(btree.lookupPositionInBranchNode(node, 0) == 0);
     REQUIRE(btree.lookupPositionInBranchNode(node, 1) == 1);
@@ -95,10 +101,8 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     auto &btree = *rootRef.btree10;
     auto node = btree.newLeafNode();
     auto &nodeRef = *node;
-    for (auto i = 0; i < 10; i++) {
-      nodeRef.keys.get_rw()[i] = i + 1;
-      nodeRef.bits.get_rw().set(i);
-    }
+    for (auto i = 0; i < 10; i++) nodeRef.keys.get_rw()[i] = i + 1;
+    nodeRef.numKeys.get_rw() = 10;
 
     REQUIRE(btree.lookupPositionInLeafNode(node, 1) == 0);
     REQUIRE(btree.lookupPositionInLeafNode(node, 10) == 9);
@@ -113,7 +117,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     auto &btree = *rootRef.btree4;
     std::array<pptr<PBPTreeType4::LeafNode>, 7> leafNodes = {
       { btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode(),
-        btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode() }
+        btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode()}
     };
 
     const auto node1 = btree.newBranchNode();
@@ -123,72 +127,64 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     auto &node2Ref = *node2;
     auto &node3Ref = *node3;
 
-    node1Ref.keys[0] = 8;
-    node1Ref.keys[1] = 20;
-    node1Ref.children[0] = node2;
-    node1Ref.children[1] = node3;
-    node1Ref.bits.set(0);
-    node1Ref.bits.set(1);
+    node1Ref.keys.get_rw()[0] = 8;
+    node1Ref.keys.get_rw()[1] = 20;
+    node1Ref.children.get_rw()[0] = node2;
+    node1Ref.children.get_rw()[1] = node3;
+    node1Ref.numKeys.get_rw() = 2;
 
-    node2Ref.keys[0] = 3;
-    node2Ref.keys[1] = 4;
-    node2Ref.keys[2] = 5;
-    node2Ref.keys[3] = 6;
-    node2Ref.children[0] = leafNodes[0];
-    node2Ref.children[1] = leafNodes[1];
-    node2Ref.children[2] = leafNodes[2];
-    node2Ref.children[3] = leafNodes[3];
-    node2Ref.children[4] = leafNodes[4];
-    node2Ref.bits.set(0);
-    node2Ref.bits.set(1);
-    node2Ref.bits.set(2);
-    node2Ref.bits.set(3);
+    node2Ref.keys.get_rw()[0] = 3;
+    node2Ref.keys.get_rw()[1] = 4;
+    node2Ref.keys.get_rw()[2] = 5;
+    node2Ref.keys.get_rw()[3] = 6;
+    node2Ref.children.get_rw()[0] = leafNodes[0];
+    node2Ref.children.get_rw()[1] = leafNodes[1];
+    node2Ref.children.get_rw()[2] = leafNodes[2];
+    node2Ref.children.get_rw()[3] = leafNodes[3];
+    node2Ref.children.get_rw()[4] = leafNodes[4];
+    node2Ref.numKeys.get_rw() = 4;
 
-    node3Ref.keys[0] = 10;
-    node3Ref.children[0] = leafNodes[5];
-    node3Ref.children[4] = leafNodes[6];
-    node3Ref.bits.set(0);
+    node3Ref.keys.get_rw()[0] = 10;
+    node3Ref.children.get_rw()[0] = leafNodes[5];
+    node3Ref.children.get_rw()[1] = leafNodes[6];
+    node3Ref.numKeys.get_rw() = 1;
 
     btree.rootNode = node1;
     btree.depth = 2;
 
     btree.balanceBranchNodes(node2, node3, node1, 0);
 
-    REQUIRE(node1Ref.bits.count() == 2);
-    REQUIRE(node2Ref.bits.count() == 2);
-    REQUIRE(node3Ref.bits.count() == 3);
+    REQUIRE(node1Ref.numKeys == 2);
+    REQUIRE(node2Ref.numKeys == 2);
+    REQUIRE(node3Ref.numKeys == 3);
 
     std::array<int, 2> expectedKeys1{{5, 20}};
     std::array<int, 2> expectedKeys2{{3, 4}};
-    std::array<int, 3> expectedKeys3{{10, 8, 6}};
+    std::array<int, 3> expectedKeys3{{6, 8, 10}};
 
     std::array<pptr<PBPTreeType4::LeafNode>, 3> expectedChildren2 = {
       { leafNodes[0], leafNodes[1], leafNodes[2] }
     };
     std::array<pptr<PBPTreeType4::LeafNode>, 4> expectedChildren3 = {
-      { leafNodes[5], leafNodes[4], leafNodes[3], leafNodes[6] }
+      { leafNodes[3], leafNodes[4], leafNodes[5], leafNodes[6] }
     };
 
     REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
-                       std::begin(node1Ref.keys)));
+                       std::begin(node1Ref.keys.get_ro())));
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
-                       std::begin(node2Ref.keys)));
+                       std::begin(node2Ref.keys.get_ro())));
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
-                       std::begin(node3Ref.keys)));
+                       std::begin(node3Ref.keys.get_ro())));
 
-    std::vector<pptr<PBPTreeType4::LeafNode>> node2Children;
-    for (auto i = 0u; i < PBPTreeType4::LeafNode::NUM_KEYS; i++)
-      if (node2Ref.bits.test(i))
-        node2Children.push_back(node2Ref.children[i].leaf);
-    node2Children.push_back(node2Ref.children[PBPTreeType4::LeafNode::NUM_KEYS].leaf);
+    std::array<pptr<PBPTreeType4::LeafNode>, 3> node2Children;
+    std::transform(std::begin(node2Ref.children.get_rw()), std::end(node2Ref.children.get_rw()),
+                   std::begin(node2Children), [](PBPTreeType4::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
 
-    std::vector<pptr<PBPTreeType4::LeafNode>> node3Children;
-    for (auto i = 0u; i < PBPTreeType4::LeafNode::NUM_KEYS; i++)
-      if (node3Ref.bits.test(i))
-        node3Children.push_back(node3Ref.children[i].leaf);
-    node3Children.push_back(node3Ref.children[PBPTreeType4::LeafNode::NUM_KEYS].leaf);
+    std::array<pptr<PBPTreeType4::LeafNode>, 4> node3Children;
+    std::transform(std::begin(node3Ref.children.get_rw()), std::end(node3Ref.children.get_rw()),
+                   std::begin(node3Children), [](PBPTreeType4::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -198,7 +194,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     auto &btree = *rootRef.btree4;
     std::array<pptr<PBPTreeType4::LeafNode>, 7> leafNodes = {
       { btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode(),
-        btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode() }
+        btree.newLeafNode(), btree.newLeafNode(), btree.newLeafNode()}
     };
 
     const auto node1 = btree.newBranchNode();
@@ -208,40 +204,38 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     auto &node2Ref = *node2;
     auto &node3Ref = *node3;
 
-    node1Ref.keys[0] = 4;
-    node1Ref.keys[1] = 20;
-    node1Ref.children[0] = node2;
-    node1Ref.children[1] = node3;
-    node1Ref.bits.set(0);
-    node1Ref.bits.set(1);
+    node1Ref.keys.get_rw()[0] = 4;
+    node1Ref.keys.get_rw()[1] = 20;
+    node1Ref.children.get_rw()[0] = node2;
+    node1Ref.children.get_rw()[1] = node3;
+    node1Ref.numKeys.get_rw() = 2;
 
-    node2Ref.keys[0] = 3;
-    node2Ref.children[0] = leafNodes[0];
-    node2Ref.children[4] = leafNodes[1];
-    node2Ref.bits.set(0);
+    node2Ref.keys.get_rw()[0] = 3;
+    node2Ref.children.get_rw()[0] = leafNodes[0];
+    node2Ref.children.get_rw()[1] = leafNodes[1];
 
-    node3Ref.keys[0] = 5;
-    node3Ref.keys[1] = 6;
-    node3Ref.keys[2] = 7;
-    node3Ref.keys[3] = 8;
-    node3Ref.children[0] = leafNodes[2];
-    node3Ref.children[1] = leafNodes[3];
-    node3Ref.children[2] = leafNodes[4];
-    node3Ref.children[3] = leafNodes[5];
-    node3Ref.children[4] = leafNodes[6];
-    node3Ref.bits.set(0);
-    node3Ref.bits.set(1);
-    node3Ref.bits.set(2);
-    node3Ref.bits.set(3);
+    node2Ref.numKeys.get_rw() = 1;
+
+    node3Ref.keys.get_rw()[0] = 5;
+    node3Ref.keys.get_rw()[1] = 6;
+    node3Ref.keys.get_rw()[2] = 7;
+    node3Ref.keys.get_rw()[3] = 8;
+    node3Ref.children.get_rw()[0] = leafNodes[2];
+    node3Ref.children.get_rw()[1] = leafNodes[3];
+    node3Ref.children.get_rw()[2] = leafNodes[4];
+    node3Ref.children.get_rw()[3] = leafNodes[5];
+    node3Ref.children.get_rw()[4] = leafNodes[6];
+
+    node3Ref.numKeys.get_rw() = 4;
 
     btree.rootNode = node1;
     btree.depth = 2;
 
     btree.balanceBranchNodes(node3, node2, node1, 0);
 
-    REQUIRE(node1Ref.bits.count() == 2);
-    REQUIRE(node2Ref.bits.count() == 3);
-    REQUIRE(node3Ref.bits.count() == 2);
+    REQUIRE(node1Ref.numKeys == 2);
+    REQUIRE(node2Ref.numKeys == 3);
+    REQUIRE(node3Ref.numKeys == 2);
 
     std::array<int, 2> expectedKeys1{{6, 20}};
     std::array<int, 3> expectedKeys2{{3, 4, 5}};
@@ -255,30 +249,19 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     };
 
     REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
-                       std::begin(node1Ref.keys)));
+                       std::begin(node1Ref.keys.get_ro())));
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
-                       std::begin(node2Ref.keys)));
-
-    std::vector<int> node3Keys{};
-    for (auto i = 0u; i < PBPTreeType4::LeafNode::NUM_KEYS; i++)
-      if (node3Ref.bits.test(i))
-        node3Keys.push_back(node3Ref.keys[i]);
+                       std::begin(node2Ref.keys.get_ro())));
     REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3),
-                       std::begin(node3Keys)));
-
-    std::vector<pptr<PBPTreeType4::LeafNode>> node2Children;
-    for (auto i = 0u; i < PBPTreeType4::LeafNode::NUM_KEYS; i++)
-      if (node2Ref.bits.test(i))
-        node2Children.push_back(node2Ref.children[i].leaf);
-    node2Children.push_back(node2Ref.children[PBPTreeType4::LeafNode::NUM_KEYS].leaf);
+                       std::begin(node3Ref.keys.get_ro())));
+    std::array<pptr<PBPTreeType4::LeafNode>, 4> node2Children;
+    std::transform(std::begin(node2Ref.children.get_rw()), std::end(node2Ref.children.get_rw()),
+                   std::begin(node2Children), [](PBPTreeType4::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren2), std::end(expectedChildren2),
                        std::begin(node2Children)));
-
-    std::vector<pptr<PBPTreeType4::LeafNode>> node3Children;
-    for (auto i = 0u; i < PBPTreeType4::LeafNode::NUM_KEYS; i++)
-      if (node3Ref.bits.test(i))
-        node3Children.push_back(node3Ref.children[i].leaf);
-    node3Children.push_back(node3Ref.children[PBPTreeType4::LeafNode::NUM_KEYS].leaf);
+    std::array<pptr<PBPTreeType4::LeafNode>, 3> node3Children;
+    std::transform(std::begin(node3Ref.children.get_rw()), std::end(node3Ref.children.get_rw()),
+                   std::begin(node3Children), [](PBPTreeType4::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren3), std::end(expectedChildren3),
                        std::begin(node3Children)));
   }
@@ -291,7 +274,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
         btree.newLeafNode(), btree.newLeafNode()}
     };
 
-    std::array<PBPTreeType4::BranchNode*, 3> innerNodes = {
+    std::array<pptr<PBPTreeType4::BranchNode>, 3> innerNodes = {
       { btree.newBranchNode(), btree.newBranchNode(), btree.newBranchNode()}
     };
 
@@ -318,50 +301,47 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     btree.rootNode = innerNodes[0];
     btree.depth = 2;
 
-    auto &node1Ref = *innerNodes[0];
-    auto &node2Ref = *innerNodes[1];
-    auto &node3Ref = *innerNodes[2];
-
-    node1Ref.keys[0] = 7;
-    node1Ref.children[0] = innerNodes[1];
-    node1Ref.children[4] = innerNodes[2];
-    node1Ref.bits.set(0);
-
-    node2Ref.keys[0] = 5;
-    node2Ref.children[0] = leafNodes[0];
-    node2Ref.children[4] = leafNodes[1];
-    node2Ref.bits.set(0);
-
-    node3Ref.keys[0] = 9;
-    node3Ref.keys[1] = 11;
-    node3Ref.keys[2] = 13;
-    node3Ref.children[0] = leafNodes[2];
-    node3Ref.children[1] = leafNodes[3];
-    node3Ref.children[2] = leafNodes[4];
-    node3Ref.children[4] = leafNodes[5];
-    node3Ref.bits.set(0);
-    node3Ref.bits.set(1);
-    node3Ref.bits.set(2);
+    {
+      auto &n = *innerNodes[0];
+      n.keys.get_rw()[0] = 7;
+      n.children.get_rw()[0] = innerNodes[1];
+      n.children.get_rw()[1] = innerNodes[2];
+      n.numKeys.get_rw() = 1;
+    }
+    {
+      auto &n = *innerNodes[1];
+      n.keys.get_rw()[0] = 5;
+      n.children.get_rw()[0] = leafNodes[0];
+      n.children.get_rw()[1] = leafNodes[1];
+      n.numKeys.get_rw() = 1;
+    }
+    {
+      auto &n = *innerNodes[2];
+      n.keys.get_rw()[0] = 9;
+      n.keys.get_rw()[1] = 11;
+      n.keys.get_rw()[2] = 13;
+      n.children.get_rw()[0] = leafNodes[2];
+      n.children.get_rw()[1] = leafNodes[3];
+      n.children.get_rw()[2] = leafNodes[4];
+      n.children.get_rw()[3] = leafNodes[5];
+      n.numKeys.get_rw() = 3;
+    }
 
     btree.underflowAtBranchLevel(innerNodes[0], 0, innerNodes[1]);
 
-    REQUIRE(node1Ref.bits.count() == 1);
-    REQUIRE((node1Ref.keys)[dbis::findMinKey(node1Ref.keys, node1Ref.bits)] == 9);
+    REQUIRE(innerNodes[0]->numKeys == 1);
+    REQUIRE(innerNodes[0]->keys.get_ro()[0] == 9);
 
-    REQUIRE(node2Ref.bits.count() == 2);
-    REQUIRE(node3Ref.bits.count() == 2);
+    REQUIRE(innerNodes[1]->numKeys == 2);
+    REQUIRE(innerNodes[2]->numKeys == 2);
 
-    std::array<int, 2> expectedKeys2{{5, 7}};
-    std::array<int, 2> expectedKeys3{{11, 13}};
+    std::array<int, 2> expectedKeys1{{5, 7}};
+    std::array<int, 2> expectedKeys2{{11, 13}};
 
+    REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
+                       std::begin(innerNodes[1]->keys.get_ro())));
     REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
-                       std::begin(node2Ref.keys)));
-
-    std::vector<int> node3Keys{};
-    for (auto i = 0u; i < PBPTreeType4::BranchNode::NUM_KEYS; i++)
-      if (node3Ref.bits.test(i))
-        node3Keys.push_back(node3Ref.keys[i]);
-    REQUIRE(std::equal(std::begin(expectedKeys3), std::end(expectedKeys3), std::begin(node3Keys)));
+                       std::begin(innerNodes[2]->keys.get_ro())));
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -379,38 +359,38 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     auto &node2Ref = *node2;
     auto &root1Ref = *root;
 
-    node1Ref.keys[0] = 5;
-    node1Ref.children[0] = leafNodes[0];
-    node1Ref.children[4] = leafNodes[1];
-    node1Ref.bits.set(0);
+    node1Ref.keys.get_rw()[0] = 5;
+    node1Ref.children.get_rw()[0] = leafNodes[0];
+    node1Ref.children.get_rw()[1] = leafNodes[1];
+    node1Ref.numKeys.get_rw() = 1;
 
-    node2Ref.keys[0] = 20;
-    node2Ref.keys[1] = 30;
-    node2Ref.children[0] = leafNodes[2];
-    node2Ref.children[1] = leafNodes[3];
-    node2Ref.children[4] = leafNodes[4];
-    node2Ref.bits.set(0);
-    node2Ref.bits.set(1);
+    node2Ref.keys.get_rw()[0] = 20;
+    node2Ref.keys.get_rw()[1] = 30;
+    node2Ref.children.get_rw()[0] = leafNodes[2];
+    node2Ref.children.get_rw()[1] = leafNodes[3];
+    node2Ref.children.get_rw()[2] = leafNodes[4];
+    node2Ref.numKeys.get_rw() = 2;
 
-    root1Ref.keys[0] = 15;
-    root1Ref.children[0] = node1;
-    root1Ref.children[4] = node2;
-    root1Ref.bits.set(0);
+    root1Ref.keys.get_rw()[0] = 15;
+    root1Ref.children.get_rw()[0] = node1;
+    root1Ref.children.get_rw()[1] = node2;
+    root1Ref.numKeys.get_rw() = 1;
 
     btree.rootNode = root;
     btree.depth = 2;
 
-    btree.mergeBranchNodes(node1, (root1Ref.keys)[0], node2);
+    btree.mergeBranchNodes(node1, root1Ref.keys.get_ro()[0], node2);
 
-    REQUIRE(node1Ref.bits.count() == 4);
+    REQUIRE(node1Ref.numKeys == 4);
 
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
-                       std::begin(node1Ref.keys)));
+                       std::begin(node1Ref.keys.get_ro())));
     std::array<pptr<PBPTreeType4::LeafNode>, 5> node1Children;
-    std::transform(std::begin(node1Ref.children), std::end(node1Ref.children),
+    std::transform(std::begin(node1Ref.children.get_rw()), std::end(node1Ref.children.get_rw()),
                    std::begin(node1Children), [](PBPTreeType4::Node n) { return n.leaf; });
-    REQUIRE(std::equal(std::begin(leafNodes), std::end(leafNodes), std::begin(node1Children)));
+    REQUIRE(std::equal(std::begin(leafNodes), std::end(leafNodes),
+                       std::begin(node1Children)));
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -425,20 +405,20 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     for (auto i = 0; i < 4; i++) {
       node1Ref.keys.get_rw()[i] = i;
       node1Ref.values.get_rw()[i] = i + 100;
-      node1Ref.bits.get_rw().set(i);
     }
+    node1Ref.numKeys.get_rw() = 4;
 
     for (auto i = 0; i < 4; i++) {
       node2Ref.keys.get_rw()[i] = i + 10;
       node2Ref.values.get_rw()[i] = i + 200;
-      node2Ref.bits.get_rw().set(i);
     }
+    node2Ref.numKeys.get_rw() = 4;
     node1Ref.nextLeaf = node2;
 
     btree.mergeLeafNodes(node1, node2);
 
     REQUIRE(node1Ref.nextLeaf == nullptr);
-    REQUIRE(node1Ref.bits.get_ro().count() == 8);
+    REQUIRE(node1Ref.numKeys == 8);
 
     std::array<int, 8> expectedKeys{{0, 1, 2, 3, 10, 11, 12, 13}};
     std::array<int, 8> expectedValues{{100, 101, 102, 103, 200, 201, 202, 203}};
@@ -460,53 +440,47 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     for (auto i = 0; i < 8; i++) {
       node1Ref.keys.get_rw()[i] = i + 1;
       node1Ref.values.get_rw()[i] = i * 100;
-      node1Ref.bits.get_rw().set(i);
     }
+    node1Ref.numKeys.get_rw() = 8;
 
     for (auto i = 0; i < 4; i++) {
       node2Ref.keys.get_rw()[i] = i + 11;
       node2Ref.values.get_rw()[i] = i * 200;
-      node2Ref.bits.get_rw().set(i);
     }
+    node2Ref.numKeys.get_rw() = 4;
 
     btree.balanceLeafNodes(node1, node2);
-    REQUIRE(node1Ref.bits.get_ro().count() == 6);
-    REQUIRE(node2Ref.bits.get_ro().count() == 6);
+    REQUIRE(node1Ref.numKeys == 6);
+    REQUIRE(node2Ref.numKeys == 6);
 
     std::array<int, 6> expectedKeys1{{1, 2, 3, 4, 5, 6}};
     std::array<int, 6> expectedValues1{{0, 100, 200, 300, 400, 500}};
-    REQUIRE(std::equal(std::begin(expectedKeys1), std::begin(expectedKeys1)+6,
+    REQUIRE(std::equal(std::begin(expectedKeys1), std::end(expectedKeys1),
                        std::begin(node1Ref.keys.get_ro())));
     REQUIRE(std::equal(std::begin(expectedValues1), std::end(expectedValues1),
                        std::begin(node1Ref.values.get_ro())));
 
     std::array<int, 6> expectedKeys2{{7, 8, 11, 12, 13, 14}};
-    std::array<int, 6> expectedValues2{{0, 200, 400, 600, 600, 700}};
-    std::vector<int> node2vecK {std::begin(node2Ref.keys.get_ro()),
-                                std::begin(node2Ref.keys.get_ro()) + 6};
-    std::vector<int> node2vecV {std::begin(node2Ref.values.get_ro()),
-                                std::begin(node2Ref.values.get_ro()) + 6};
-    std::sort(std::begin(node2vecK), std::end(node2vecK));
-    std::sort(std::begin(node2vecV), std::end(node2vecV));
-    REQUIRE(std::equal(std::begin(expectedKeys2), std::begin(expectedKeys2) + 6,
-                       std::begin(node2vecK)));
-    REQUIRE(std::equal(std::begin(expectedValues2), std::begin(expectedValues2) + 6,
-                       std::begin(node2vecV)));
+    std::array<int, 6> expectedValues2{{600, 700, 0, 200, 400, 600}};
+    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
+                       std::begin(node2Ref.keys.get_ro())));
+    REQUIRE(std::equal(std::begin(expectedValues2), std::end(expectedValues2),
+                       std::begin(node2Ref.values.get_ro())));
   }
 
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Handling of underflow at a leaf node by merge and replace the root node") {
     auto &btree = *rootRef.btree6;
 
-    auto leaf1 = btree.newLeafNode();
+    const auto leaf1 = btree.newLeafNode();
     auto leaf2 = btree.newLeafNode();
+    const auto parent = btree.newBranchNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
-    leaf1Ref.nextLeaf = leaf2;
-    leaf2Ref.prevLeaf = leaf1;
-    const auto parent = btree.newBranchNode();
     auto &parentRef = *parent;
 
+    leaf1Ref.nextLeaf = leaf2;
+    leaf2Ref.prevLeaf = leaf1;
 
     PBPTreeType6::SplitInfo splitInfo;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -515,15 +489,15 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     btree.insertInLeafNode(leaf2, 4, 40, &splitInfo);
     btree.insertInLeafNode(leaf2, 5, 50, &splitInfo);
 
-    parentRef.keys[0] = 4;
-    parentRef.children[0] = leaf1;
-    parentRef.children[6] = leaf2;
-    parentRef.bits.set(0);
+    parentRef.keys.get_rw()[0] = 4;
+    parentRef.numKeys.get_rw() = 1;
+    parentRef.children.get_rw()[0] = leaf1;
+    parentRef.children.get_rw()[1] = leaf2;
     btree.rootNode = parent;
     btree.depth = 1;
 
-    btree.underflowAtLeafLevel(parent, 6, leaf2);
-    REQUIRE(leaf1Ref.bits.get_ro().count() == 5);
+    btree.underflowAtLeafLevel(parent, 1, leaf2);
+    REQUIRE(leaf1Ref.numKeys == 5);
     REQUIRE(btree.rootNode.leaf == leaf1);
 
     std::array<int, 5> expectedKeys{{1, 2, 3, 4, 5}};
@@ -542,15 +516,16 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     const auto leaf1 = btree.newLeafNode();
     auto leaf2 = btree.newLeafNode();
     const auto leaf3 = btree.newLeafNode();
+    const auto parent = btree.newBranchNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
     auto &leaf3Ref = *leaf3;
+    auto &parentRef = *parent;
+
     leaf1Ref.nextLeaf = leaf2;
     leaf2Ref.prevLeaf = leaf1;
     leaf2Ref.nextLeaf = leaf3;
     leaf3Ref.prevLeaf = leaf2;
-    const auto parent = btree.newBranchNode();
-    auto &parentRef = *parent;
 
     PBPTreeType6::SplitInfo splitInfo;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -562,21 +537,18 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     btree.insertInLeafNode(leaf3, 8, 80, &splitInfo);
     btree.insertInLeafNode(leaf3, 9, 90, &splitInfo);
 
-    parentRef.keys[0] = 4;
-    parentRef.keys[1] = 7;
-    parentRef.children[0] = leaf1;
-    parentRef.children[1] = leaf2;
-    parentRef.children[6] = leaf3;
-    parentRef.bits.set(0);
-    parentRef.bits.set(1);
+    parentRef.keys.get_rw()[0] = 4;
+    parentRef.keys.get_rw()[1] = 7;
+    parentRef.numKeys.get_rw() = 2;
+    parentRef.children.get_rw()[0] = leaf1;
+    parentRef.children.get_rw()[1] = leaf2;
+    parentRef.children.get_rw()[1] = leaf3;
     btree.rootNode = parent;
 
     btree.underflowAtLeafLevel(parent, 1, leaf2);
-    REQUIRE(leaf1Ref.bits.get_ro().count() == 5);
-    REQUIRE(leaf2 == nullptr);
-    REQUIRE(leaf3Ref.bits.get_ro().count() == 3);
+    REQUIRE(leaf1Ref.numKeys == 5);
     REQUIRE(btree.rootNode.branch == parent);
-    REQUIRE(parentRef.bits.count() == 1);
+    REQUIRE(parent->numKeys == 1);
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -585,12 +557,13 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
 
     const auto leaf1 = btree.newLeafNode();
     auto leaf2 = btree.newLeafNode();
+    const auto parent = btree.newBranchNode();
     auto &leaf1Ref = *leaf1;
     auto &leaf2Ref = *leaf2;
+    auto &parentRef = *parent;
+
     leaf1Ref.nextLeaf = leaf2;
     leaf2Ref.prevLeaf = leaf1;
-    const auto parent = btree.newBranchNode();
-    auto &parentRef = *parent;
 
     PBPTreeType6::SplitInfo splitInfo;
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -600,14 +573,14 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     btree.insertInLeafNode(leaf2, 5, 50, &splitInfo);
     btree.insertInLeafNode(leaf2, 6, 60, &splitInfo);
 
-    parentRef.keys[0] = 5;
-    parentRef.children[0] = leaf1;
-    parentRef.children[1] = leaf2;
-    parentRef.bits.set(0);
+    parentRef.keys.get_rw()[0] = 5;
+    parentRef.numKeys.get_rw() = 1;
+    parentRef.children.get_rw()[0] = leaf1;
+    parentRef.children.get_rw()[1] = leaf2;
 
     btree.underflowAtLeafLevel(parent, 1, leaf2);
-    REQUIRE(leaf1Ref.bits.get_ro().count() == 3);
-    REQUIRE(leaf2Ref.bits.get_ro().count() == 3);
+    REQUIRE(leaf1Ref.numKeys == 3);
+    REQUIRE(leaf2Ref.numKeys == 3);
 
     std::array<int, 3> expectedKeys1{{1, 2, 3}};
     std::array<int, 3> expectedValues1{{10, 20, 30}};
@@ -620,22 +593,17 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     std::array<int, 3> expectedKeys2{{4, 5, 6}};
     std::array<int, 3> expectedValues2{{40, 50, 60}};
 
-    std::vector<int> leaf2vecK {std::begin(leaf2Ref.keys.get_ro()),
-                                std::begin(leaf2Ref.keys.get_ro()) + 3};
-    std::vector<int> leaf2vecV {std::begin(leaf2Ref.values.get_ro()),
-                                std::begin(leaf2Ref.values.get_ro()) + 3};
-    std::sort(std::begin(leaf2vecK), std::end(leaf2vecK));
-    std::sort(std::begin(leaf2vecV), std::end(leaf2vecV));
-    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2), std::begin(leaf2vecK)));
+    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
+                       std::begin(leaf2Ref.keys.get_ro())));
     REQUIRE(std::equal(std::begin(expectedValues2), std::end(expectedValues2),
-                       std::begin(leaf2vecV)));
-
+                       std::begin(leaf2Ref.values.get_ro())));
   }
 
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Handling of underflow at a inner node") {
     auto &btree = *rootRef.btree4;
     PBPTreeType4::SplitInfo splitInfo;
+
     const auto leaf1 = btree.newLeafNode();
     const auto leaf2 = btree.newLeafNode();
     const auto leaf3 = btree.newLeafNode();
@@ -686,26 +654,24 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     leaf5Ref.nextLeaf = leaf6;
     leaf6Ref.prevLeaf = leaf5;
 
-    inner1Ref.keys[0] = 5;
-    inner1Ref.keys[1] = 10;
-    inner1Ref.children[0] = leaf1;
-    inner1Ref.children[1] = leaf2;
-    inner1Ref.children[4] = leaf3;
-    inner1Ref.bits.set(0);
-    inner1Ref.bits.set(1);
+    inner1Ref.keys.get_rw()[0] = 5;
+    inner1Ref.keys.get_rw()[1] = 10;
+    inner1Ref.children.get_rw()[0] = leaf1;
+    inner1Ref.children.get_rw()[1] = leaf2;
+    inner1Ref.children.get_rw()[2] = leaf3;
+    inner1Ref.numKeys.get_rw() = 2;
 
-    inner2Ref.keys[0] = 20;
-    inner2Ref.keys[1] = 30;
-    inner2Ref.children[0] = leaf4;
-    inner2Ref.children[1] = leaf5;
-    inner2Ref.children[4] = leaf6;
-    inner2Ref.bits.set(0);
-    inner2Ref.bits.set(1);
+    inner2Ref.keys.get_rw()[0] = 20;
+    inner2Ref.keys.get_rw()[1] = 30;
+    inner2Ref.children.get_rw()[0] = leaf4;
+    inner2Ref.children.get_rw()[1] = leaf5;
+    inner2Ref.children.get_rw()[2] = leaf6;
+    inner2Ref.numKeys.get_rw() = 2;
 
-    root1Ref.keys[0] = 15;
-    root1Ref.children[0] = inner1;
-    root1Ref.children[4] = inner2;
-    root1Ref.bits.set(0);
+    root1Ref.keys.get_rw()[0] = 15;
+    root1Ref.children.get_rw()[0] = inner1;
+    root1Ref.children.get_rw()[1] = inner2;
+    root1Ref.numKeys.get_rw() = 1;
 
     btree.rootNode = root;
     btree.depth = 2;
@@ -713,20 +679,19 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     REQUIRE(btree.rootNode.branch != root);
     REQUIRE(btree.depth < 2);
 
-    REQUIRE(inner1Ref.bits.count() == 4);
+    REQUIRE(inner1Ref.numKeys == 4);
     std::array<int, 4> expectedKeys{{5, 15, 20, 30}};
-    std::array<pptr<PBPTreeType4::LeafNode>, 5> expectedChildren{
+    std::array<pptr<PBPTreeType4::LeafNode>, 5> expectedChildren {
       {leaf1, leaf2, leaf4, leaf5, leaf6}
     };
 
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
-                       std::begin(inner1Ref.keys)));
+                       std::begin(inner1Ref.keys.get_ro())));
     std::array<pptr<PBPTreeType4::LeafNode>, 5> inner1Children;
-    std::transform(std::begin(inner1Ref.children), std::end(inner1Ref.children),
+    std::transform(std::begin(inner1Ref.children.get_ro()), std::end(inner1Ref.children.get_ro()),
                    std::begin(inner1Children), [](PBPTreeType4::Node n) { return n.leaf; });
     REQUIRE(std::equal(std::begin(expectedChildren), std::end(expectedChildren),
                        std::begin(inner1Children)));
-
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -740,36 +705,34 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     for (auto i = 0; i < 9; i++) {
       nodeRef.keys.get_rw()[i] = (i + 1) * 2;
       nodeRef.values.get_rw()[i] = (i * 2) + 100;
-      nodeRef.bits.get_rw().set(i);
     }
+    nodeRef.numKeys.get_rw() = 9;
+
 
     res = btree.insertInLeafNode(node, 5, 5000, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(nodeRef.bits.get_ro().count() == 10);
+    REQUIRE(nodeRef.numKeys == 10);
 
     res = btree.insertInLeafNode(node, 1, 1, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(nodeRef.bits.get_ro().count() == 11);
+    REQUIRE(nodeRef.numKeys == 11);
 
     res = btree.insertInLeafNode(node, 2, 1000, &splitInfo);
     REQUIRE(res == false);
-    REQUIRE(nodeRef.bits.get_ro().count() == 11);
+    REQUIRE(nodeRef.numKeys == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
-    std::array<int, 11> expectedValues{{1, 102, 104, 106, 108, 110, 112, 114, 116, 1000, 5000}};
+    std::array<int, 11> expectedValues{
+        {1, 1000, 102, 5000, 104, 106, 108, 110, 112, 114, 116}};
 
-    std::vector<int> nodevecK {std::begin(nodeRef.keys.get_ro()),
-                               std::begin(nodeRef.keys.get_ro()) + 11};
-    std::vector<int> nodevecV {std::begin(nodeRef.values.get_ro()),
-                               std::begin(nodeRef.values.get_ro()) + 11};
-    std::sort(std::begin(nodevecK), std::end(nodevecK));
-    std::sort(std::begin(nodevecV), std::end(nodevecV));
-
-    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys), std::begin(nodevecK)));
-    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues), std::begin(nodevecV)));
+    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
+                       std::begin(nodeRef.keys.get_ro())));
+    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
+                       std::begin(nodeRef.values.get_ro())));
 
     res = btree.insertInLeafNode(node, 20, 21, &splitInfo);
     REQUIRE(res == false);
+
     res = btree.insertInLeafNode(node, 25, 25, &splitInfo);
     REQUIRE(res == true);
   }
@@ -777,32 +740,29 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Inserting an entry into a leaf node at a given position") {
     auto &btree = *rootRef.btree20;
-    const auto node = btree.newLeafNode();
+
+    auto node = btree.newLeafNode();
     auto &nodeRef = *node;
 
     for (auto i = 0; i < 9; i++) {
       nodeRef.keys.get_rw()[i] = (i + 1) * 2;
       nodeRef.values.get_rw()[i] = (i * 2) + 100;
-      nodeRef.bits.get_rw().set(i);
     }
+    nodeRef.numKeys.get_rw() = 9;
 
-    btree.insertInLeafNodeAtPosition(node, 9, 5, 5000);
-    REQUIRE(nodeRef.bits.get_ro().count() == 10);
-    btree.insertInLeafNodeAtPosition(node, 10, 1, 1);
-    REQUIRE(nodeRef.bits.get_ro().count() == 11);
+    btree.insertInLeafNodeAtPosition(node, 2, 5, 5000);
+    REQUIRE(nodeRef.numKeys == 10);
+    btree.insertInLeafNodeAtPosition(node, 0, 1, 1);
+    REQUIRE(nodeRef.numKeys == 11);
 
     std::array<int, 11> expectedKeys{{1, 2, 4, 5, 6, 8, 10, 12, 14, 16, 18}};
-    std::array<int, 11> expectedValues{{1, 100, 102,104, 106, 108, 110, 112, 114, 116, 5000}};
+    std::array<int, 11> expectedValues{
+        {1, 100, 102, 5000, 104, 106, 108, 110, 112, 114, 116}};
 
-    std::vector<int> nodevecK {std::begin(nodeRef.keys.get_ro()),
-                               std::begin(nodeRef.keys.get_ro()) + 11};
-    std::vector<int> nodevecV {std::begin(nodeRef.values.get_ro()),
-                               std::begin(nodeRef.values.get_ro()) + 11};
-    std::sort(std::begin(nodevecK), std::end(nodevecK));
-    std::sort(std::begin(nodevecV), std::end(nodevecV));
-
-    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys), std::begin(nodevecK)));
-    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues), std::begin(nodevecV)));
+    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
+                       std::begin(nodeRef.keys.get_ro())));
+    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
+                       std::begin(nodeRef.values.get_ro())));
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -813,8 +773,6 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     const auto leaf1 = btree.newLeafNode();
     const auto leaf2 = btree.newLeafNode();
     const auto node = btree.newBranchNode();
-    auto &leaf1Ref = *leaf1;
-    auto &leaf2Ref = *leaf2;
     auto &nodeRef = *node;
 
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -824,27 +782,26 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     btree.insertInLeafNode(leaf2, 10, 100, &splitInfo);
     btree.insertInLeafNode(leaf2, 12, 120, &splitInfo);
 
-    nodeRef.keys[0] = 10;
-    nodeRef.children[0] = leaf1;
-    nodeRef.children[4] = leaf2;
-    nodeRef.bits.set(0);
+    nodeRef.keys.get_rw()[0] = 10;
+    nodeRef.children.get_rw()[0] = leaf1;
+    nodeRef.children.get_rw()[1] = leaf2;
+    nodeRef.numKeys.get_rw() = 1;
 
     btree.rootNode = node;
     btree.depth = 2;
 
     btree.insertInBranchNode(node, 1, 11, 112, &splitInfo);
-    REQUIRE(nodeRef.bits.count() == 1);
-    REQUIRE(leaf1Ref.bits.get_ro().count() == 3);
-    REQUIRE(leaf2Ref.bits.get_ro().count() == 3);
+    REQUIRE(leaf2->numKeys == 3);
   }
 
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Inserting an entry into an inner node with split") {
     auto &btree = *rootRef.btree4;
     PBPTreeType4::SplitInfo splitInfo;
-    const auto leaf1 = btree.newLeafNode();
+
+    auto leaf1 = btree.newLeafNode();
     auto leaf2 = btree.newLeafNode();
-    const auto node = btree.newBranchNode();
+    auto node = btree.newBranchNode();
     auto &nodeRef = *node;
 
     btree.insertInLeafNode(leaf1, 1, 10, &splitInfo);
@@ -856,64 +813,54 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     btree.insertInLeafNode(leaf2, 13, 130, &splitInfo);
     btree.insertInLeafNode(leaf2, 14, 140, &splitInfo);
 
-    nodeRef.keys[0] = 10;
-    nodeRef.children[0] = leaf1;
-    nodeRef.children[4] = leaf2;
-    nodeRef.bits.set(0);
+    nodeRef.keys.get_rw()[0] = 10;
+    nodeRef.children.get_rw()[0] = leaf1;
+    nodeRef.children.get_rw()[1] = leaf2;
+    nodeRef.numKeys.get_rw() = 1;
 
     btree.rootNode = node;
-    btree.depth = 1;
+    btree.depth = 2;
 
-    btree.insertInBranchNode(node, 1, 12, 120, &splitInfo);
-    REQUIRE(btree.rootNode.branch->bits.count() == 2);
-    leaf2 = btree.findLeafNode(10);
-    REQUIRE(leaf2->bits.get_ro().count() == 2);
+    btree.insertInBranchNode(node, 1, 12, 112, &splitInfo);
+    REQUIRE(leaf2->numKeys == 2);
+    REQUIRE(node->numKeys == 2);
 
     std::array<int, 2> expectedKeys{{10, 12}};
     REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
-                       std::begin(nodeRef.keys)));
+                       std::begin(nodeRef.keys.get_ro())));
 
     std::array<int, 3> expectedKeys2{{12, 13, 14}};
-    const auto leaf3 = nodeRef.children[4].leaf;
-    auto &leaf3Ref = *leaf3;
-    std::vector<int> leaf3Keys{};
-    for (auto i = 0u; i < PBPTreeType4::LeafNode::NUM_KEYS; i++)
-      if (leaf3Ref.bits.get_ro().test(i))
-        leaf3Keys.push_back(leaf3Ref.keys.get_ro()[i]);
-    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2), std::begin(leaf3Keys)));
+    const auto leaf3 = nodeRef.children.get_ro()[2].leaf;
+    REQUIRE(std::equal(std::begin(expectedKeys2), std::end(expectedKeys2),
+                       std::begin(leaf3->keys.get_ro())));
   }
 
   /* -------------------------------------------------------------------------------------------- */
   SECTION("Deleting an entry from a leaf node") {
     auto &btree = *rootRef.btree20;
+
     const auto node = btree.newLeafNode();
     auto &nodeRef = *node;
 
     for (auto i = 0; i < 9; i++) {
       nodeRef.keys.get_rw()[i] = i + 1;
       nodeRef.values.get_rw()[i] = i + 100;
-      nodeRef.bits.get_rw().set(i);
     }
+    nodeRef.numKeys.get_rw() = 9;
 
     REQUIRE(btree.eraseFromLeafNode(node, 5) == true);
-    REQUIRE(nodeRef.bits.get_ro().count() == 8);
+    REQUIRE(nodeRef.numKeys == 8);
     REQUIRE(btree.eraseFromLeafNode(node, 15) == false);
-    REQUIRE(nodeRef.bits.get_ro().count() == 8);
+    REQUIRE(nodeRef.numKeys == 8);
 
     std::array<int, 8> expectedKeys{{1, 2, 3, 4, 6, 7, 8, 9 }};
-    std::array<int, 8> expectedValues{{100, 101, 102, 103, 105, 106, 107, 108 }};
+    std::array<int, 8> expectedValues{
+        {100, 101, 102, 103, 105, 106, 107, 108 }};
 
-    std::vector<int> nodevecK {};
-    std::vector<int> nodevecV {};
-    for (auto i = 0u; i < PBPTreeType20::LeafNode::NUM_KEYS; i++) {
-      if (nodeRef.bits.get_ro().test(i)) {
-        nodevecK.push_back(nodeRef.keys.get_ro()[i]);
-        nodevecV.push_back(nodeRef.values.get_ro()[i]);
-      }
-    }
-
-    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys), std::begin(nodevecK)));
-    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues), std::begin(nodevecV)));
+    REQUIRE(std::equal(std::begin(expectedKeys), std::end(expectedKeys),
+                       std::begin(nodeRef.keys.get_ro())));
+    REQUIRE(std::equal(std::begin(expectedValues), std::end(expectedValues),
+                       std::begin(nodeRef.values.get_ro())));
   }
 
   /* -------------------------------------------------------------------------------------------- */
@@ -932,7 +879,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     auto btree = rootRef.btree10;
     transaction::run(pop, [&] {
       if(btree) delete_persistent<PBPTreeType10>(btree);
-      btree = make_persistent<PBPTreeType10>();
+      btree = make_persistent<PBPTreeType10>(alloc_class);
       auto &btreeRef = *btree;
       for (int i = 0; i < 50; i++) {
         btreeRef.insert(i, i * 2);
@@ -951,63 +898,45 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
   }
 
   /* -------------------------------------------------------------------------------------------- */
-  SECTION("Constructing a LeafList and recover the branches") {
-    auto btree = rootRef.btree4;
-
+  SECTION("A mixture of inserts and deletes") {
+    auto btree = rootRef.btree10;
+    auto &btreeRef = *rootRef.btree10;
     transaction::run(pop, [&] {
-      if (btree) delete_persistent<PBPTreeType4>(btree);
-      btree = make_persistent<PBPTreeType4>();
-
-      auto &btreeRef = *btree;
-
-      auto prevLeaf = btreeRef.newLeafNode();
-      auto &pLeafRef = *prevLeaf;
-      for (auto k = 0u; k < 4; ++k) {
-        pLeafRef.keys.get_rw()[k] = k + 1;
-        pLeafRef.values.get_rw()[k] = k + 1;
-        pLeafRef.bits.get_rw().set(k);
-      }
-      btreeRef.leafList = prevLeaf;
-
-      for (auto l = 1u; l < 25; ++l) {
-        auto newLeaf = btreeRef.newLeafNode();
-        prevLeaf->nextLeaf = newLeaf;
-        auto &leafRef = *newLeaf;
-        for (auto k = 0u; k < 4; ++k) {
-          leafRef.keys.get_rw()[k] = k + 1 + l * 4;
-          leafRef.values.get_rw()[k] = k + 1 + l * 4;
-          leafRef.bits.get_rw().set(k);
-        }
-        prevLeaf = newLeaf;
-      }
+      if(btree) delete_persistent<PBPTreeType10>(btree);
+      btree = make_persistent<PBPTreeType10>(alloc_class);
     });
 
-    auto &btreeRef = *btree;
-    btreeRef.recover();
-    REQUIRE(btreeRef.depth == 2);
-    const auto &rootNodeRef = *btreeRef.rootNode.branch;
-    REQUIRE(rootNodeRef.keys == std::array<int, 4>{{21, 41, 61, 81}});
-    REQUIRE(rootNodeRef.bits.all());
+    for (auto i = 60; i >= 0; --i) {
+      btreeRef.insert(i, i* 10);
+    }
+    btreeRef.erase(1);
+    REQUIRE(btreeRef.depth.get_ro() == 2);
+    const auto &rootNode = *btreeRef.rootNode.branch;
+    REQUIRE(rootNode.numKeys == 1);
 
-    for (auto b1 = 0; b1 < 4; ++b1) {
-      const auto &branchRef = *rootNodeRef.children[b1].branch;
-      std::array<int, 4> expectedKeys {{5, 9, 13, 17}};
-      std::transform(expectedKeys.begin(), expectedKeys.end(), expectedKeys.begin(),
-          [b1](int k) { return (k + b1 * 20); });
-      REQUIRE(branchRef.keys == expectedKeys);
-      REQUIRE(branchRef.bits.all());
-      for (auto b2 = 0; b2 < 4; ++b2) {
-        const auto &leafRef = *branchRef.children[b2].leaf;
-        std::array<int, 4> expectedKeys2 {{1, 2, 3, 4}};
-        std::transform(expectedKeys2.begin(), expectedKeys2.end(), expectedKeys2.begin(),
-            [b1, b2](int k) { return (k + b2 * 4 + b1 * 20); });
-        REQUIRE(leafRef.keys.get_ro() == expectedKeys2);
-        REQUIRE(leafRef.bits.get_ro().all());
+    for (auto i = 0u; i < rootNode.numKeys; ++i) {
+      auto &branch = *rootNode.children.get_ro()[i].branch;
+      REQUIRE(branch.numKeys == 5);
+      for (auto j = 0u; j < branch.numKeys; ++j) {
+        auto &leaf = *branch.children.get_ro()[j].leaf;
+        REQUIRE(leaf.numKeys == 5);
+      }
+
+    }
+
+    btreeRef.erase(0);
+    REQUIRE(btreeRef.depth.get_ro() == 1);
+
+    const auto &newRoot = *btreeRef.rootNode.branch;
+    auto k = 2u;
+    for (auto i = 0u; i < newRoot.numKeys; ++i) {
+      auto &leaf = *newRoot.children.get_ro()[i].leaf;
+      for (auto j = 0u; j < leaf.numKeys; ++j) {
+        REQUIRE(leaf.keys.get_ro()[j] == k++);
       }
     }
 
   }
-
 
   /* Clean up ----------------------------------------------------------------------------------- */
   delete_persistent_atomic<PBPTreeType4>(rootRef.btree4);

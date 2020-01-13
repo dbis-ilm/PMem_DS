@@ -60,21 +60,23 @@ TEST_CASE("Finding the leaf node containing a key", "[HPBPTree]") {
   }
 
   auto q = pop.root();
+  const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>("heap.alloc_class.128.desc",
+                                                                     HPBPTreeType4::AllocClass);
 
   if (!q->btree1)
-    transaction::run(pop, [&] { q->btree1 = make_persistent<HPBPTreeType>(); });
+    transaction::run(pop, [&] { q->btree1 = make_persistent<HPBPTreeType>(alloc_class); });
 
   if (!q->btree2)
-    transaction::run(pop, [&] { q->btree2 = make_persistent<HPBPTreeType2>(); });
+    transaction::run(pop, [&] { q->btree2 = make_persistent<HPBPTreeType2>(alloc_class); });
 
   if (!q->btree3)
-    transaction::run(pop, [&] { q->btree3 = make_persistent<HPBPTreeType3>(); });
+    transaction::run(pop, [&] { q->btree3 = make_persistent<HPBPTreeType3>(alloc_class); });
 
   if (!q->btree4)
-    transaction::run(pop, [&] { q->btree4 = make_persistent<HPBPTreeType4>(); });
+    transaction::run(pop, [&] { q->btree4 = make_persistent<HPBPTreeType4>(alloc_class); });
 
   if (!q->btree5)
-    transaction::run(pop, [&] { q->btree5 = make_persistent<HPBPTreeType5>(); });
+    transaction::run(pop, [&] { q->btree5 = make_persistent<HPBPTreeType5>(alloc_class); });
 
 
   /* ------------------------------------------------------------------ */
@@ -840,7 +842,7 @@ TEST_CASE("Finding the leaf node containing a key", "[HPBPTree]") {
     auto btree = q->btree1;
     transaction::run(pop, [&] {
       if(btree) delete_persistent<HPBPTreeType>(btree);
-      btree = make_persistent<HPBPTreeType>();
+      btree = make_persistent<HPBPTreeType>(alloc_class);
       for (int i = 0; i < 50; i++) {
         btree->insert(i, i * 2);
       }

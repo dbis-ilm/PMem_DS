@@ -40,10 +40,12 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
 
   if (access(path.c_str(), F_OK) != 0) {
     pop = pool<root>::create(path, LAYOUT, 16 * 1024 * 1024);
+    const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>(
+        "heap.alloc_class.128.desc", PTableType::IndexType::AllocClass);
     transaction::run(pop, [&] {
-      auto tInfo = VTableInfo<int, MyTuple>("MyTable", {"a","b","c","d"});
+      auto tInfo = VTableInfo<int, MyTuple>("MyTable", {"a", "b", "c", "d"});
       auto dims = Dimensions({{0, 4, 4}, {3, 6, 6}});
-      pop.root()->pTable = make_persistent<PTableType>(tInfo, dims);
+      pop.root()->pTable = make_persistent<PTableType>(alloc_class, tInfo, dims);
     });
   } else {
     std::cerr << "WARNING: Table already exists" << std::endl;
@@ -58,7 +60,7 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
     auto tup = MyTuple(i + 1,
                        (i + 1) * 100,
                        fmt::format("String #{0}", i),
-                       (i + 1) * 12.345);
+                       (i + 1) * 12.45);
     c += pTable->insert(i + 1, tup);
   }
   REQUIRE(c == 10);
@@ -70,7 +72,7 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
       REQUIRE(get<0>(tp) == i + 1);
       REQUIRE(get<1>(tp) == (i + 1) * 100);
       REQUIRE(get<2>(tp) == fmt::format("String #{0}", i));
-      REQUIRE(get<3>(tp) == (i + 1) * 12.345);
+      REQUIRE(get<3>(tp) == (i + 1) * 12.45);
      }
 
     auto c = 0u;
@@ -85,7 +87,7 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
       REQUIRE(get<0>(tp) == i + 1);
       REQUIRE(get<1>(tp) == (i + 1) * 100);
       REQUIRE(get<2>(tp) == fmt::format("String #{0}", i));
-      REQUIRE(get<3>(tp) == (i + 1) * 12.345);
+      REQUIRE(get<3>(tp) == (i + 1) * 12.45);
     }
 
     for (auto i = 0u; i < 5; i++) {
@@ -116,7 +118,7 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
       auto tup = MyTuple(i + 1,
                          (i + 1) * 100,
                          fmt::format("String #{0}", i),
-                         (i + 1) * 12.345);
+                         (i + 1) * 12.45);
       try {
         pTable->updateComplete(i + 1, tup);
         REQUIRE(false);
@@ -144,7 +146,7 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
       d += get<3>(ptp);
     }
     REQUIRE(c == 3); // 5,6,7
-    REQUIRE(d == 5*12.345 + 6*12.345 + 7*12.345);
+    REQUIRE(d == 5*12.45 + 6*12.45 + 7*12.45);
   }
 
   pTable->print();
