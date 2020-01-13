@@ -6,7 +6,7 @@ stages:
 
 build:
   stage: build
-  tags: 
+  tags:
     - grouprunner
   script:
     - mkdir build
@@ -34,7 +34,7 @@ test:
 
 coverage:
   stage: build
-  tags: 
+  tags:
     - grouprunner
   script:
     - echo pass | sudo -S dnf -y install python-pip

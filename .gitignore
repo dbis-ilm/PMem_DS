@@ -1,5 +1,5 @@
 ####################################################################
-# 
+#
 # File with contents to be ignored by git
 #
 # Adapted from templates from https://github.com/github/gitignore
@@ -124,7 +124,7 @@ local.properties
 # PDT-specific
 .buildpath
 
-# sbteclipse plugin 
+# sbteclipse plugin
 .target
 
 # TeXlipse plugin
@@ -250,6 +250,7 @@ nb-configuration.xml
 [Rr]eleases/
 x64/
 build/
+debug_build/
 bld/
 [Bb]in/
 [Oo]bj/
