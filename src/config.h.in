@@ -8,6 +8,8 @@
 #define LOG(msg)
 #endif
 
+#include <assert.h>
+#include <string>
 namespace dbis {
   const std::string gPmemPath("@PMEM_MNT_PATH@/");
 }
