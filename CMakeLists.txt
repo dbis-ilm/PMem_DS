@@ -42,7 +42,7 @@ if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Setting build type to 'Release' as none was specified.")
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
 endif()
-if(CMAKE_BUILD_TYPE EQUAL "Release")
+if(CMAKE_BUILD_TYPE MATCHES Release)
   # this disables asserts for release builds
   add_definitions("-DNDEBUG")
 endif()
@@ -51,7 +51,7 @@ endif()
 message("Using Compiler: ${CMAKE_CXX_COMPILER_ID}.")
 
 # Add our CMake directory to CMake's module path
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
 
 # We fetch some 3rdparty modules from github.com before building the project.
 include(Fetch3rdParty)
@@ -63,9 +63,12 @@ find_package(Threads REQUIRED)
 # Pre-built common dependencies #
 #################################
 #
-configure_file(config.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/config.h)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/config.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/config.h
+)
 
-include_directories(${PROJECT_SOURCE_DIR}
+include_directories(${PROJECT_SOURCE_DIR}/src
                     ${THIRD_PARTY_DIR}
                     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
@@ -94,10 +97,10 @@ set(PROJECT_INCLUDE_DIR ${PROJECT_INSTALL_DIR}/include)
 # Including Data Structures #
 #############################
 #
-add_subdirectory(pbptrees) # Persistent versions of B⁺-Tree, contains also:
-                           # - Remake of the FPTree
-                           # - Remake of the wB+Tree
-add_subdirectory(ptable)  # BDCC-based analytical table structure
+add_subdirectory(src/pbptrees) # Persistent versions of B⁺-Tree, contains also:
+                               # - Remake of the FPTree
+                               # - Remake of the wB+Tree
+add_subdirectory(src/ptable)  # BDCC-based analytical table structure
 
 #########################
 # Unit test using Catch #
