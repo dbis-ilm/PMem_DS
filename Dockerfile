@@ -10,6 +10,7 @@ RUN dnf update -y          \
         g++                \
         ndctl-devel        \
         daxctl-devel       \
+        libpmempool-devel  \
         libpmemobj++-devel \
  && dnf clean all
 
@@ -32,4 +33,4 @@ RUN cd /home/$USER \
  && git clone https://dbgit.prakinf.tu-ilmenau.de/code/nvm-based_data_structures.git \
  && mkdir nvm-based_data_structures/build \
  && cd nvm-based_data_structures/build \
- && cmake ../src
+ && cmake ..
