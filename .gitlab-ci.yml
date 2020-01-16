@@ -1,4 +1,4 @@
-image: "dbisilm/nvm-based_data_structures:latest"
+image: "dbisilm/pmdk:latest"
 
 stages:
   - build
@@ -37,7 +37,7 @@ coverage:
   tags:
     - grouprunner
   script:
-    - echo pass | sudo -S dnf -y install python-pip
+    #- echo pass | sudo -S dnf -y install python-pip
     - pip install gcovr --user
     - mkdir build
     - cd build
