@@ -1,31 +1,10 @@
-FROM fedora:latest
+FROM dbisilm/pmdk:latest
 MAINTAINER Philipp Goetze <philipp.goetze@tu-ilmenau.de>
 
-RUN dnf update -y          \
- && dnf install -y         \
-        passwd             \
-        git                \
-        make               \
-        cmake              \
-        g++                \
-        ndctl-devel        \
-        daxctl-devel       \
-        libpmempool-devel  \
-        libpmemobj++-devel \
- && dnf clean all
 
-# Add user and allow sudo
-ENV USER user
-ENV USERPASS pass
-RUN useradd -m $USER \
- && echo $USERPASS | /usr/bin/passwd $USER --stdin
-RUN gpasswd wheel -a $USER
+# Set default user
 USER $USER
-
-# Set some environment variables
-ENV PMEM_IS_PMEM_FORCE 1
-ENV CC gcc
-ENV CXX g++
+WORKDIR /home/$USER
 
 
 # Download and prepare project
