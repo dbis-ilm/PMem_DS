@@ -26,3 +26,5 @@ do_test(DataNodeTest ptable)
 do_test(PTableInfoTest ptable)
 do_test(PTupleTest ptable)
 do_test(PTableTest ptable)
+# woPSkiplist
+do_test(woPSkiplist)
