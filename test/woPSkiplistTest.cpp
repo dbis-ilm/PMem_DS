@@ -4,12 +4,9 @@
 
 #include <libpmemobj++/utils.hpp>
 #include <libpmemobj++/make_persistent.hpp>
-#include <libpmemobj++/experimental/array.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/transaction.hpp>
-namespace pmemobj_exp = pmem::obj::experimental;
-using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
 using pmem::obj::p;
 using pmem::obj::persistent_ptr;
