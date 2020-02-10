@@ -11,7 +11,7 @@ This is a repository for persistent data structures based on non-volatile memory
 
 - [x] ~~PBPTrees (B⁺-Tree for NVM)~~
 - [x] ~~PTable (BDCC + NVM)~~
-- [ ] Add Skip-Lists (Alex)
+- [x] ~~Add Skip-Lists (Alex)~~
 - [ ] Add LSM Trees (Arun)
 - [ ] Add Tries (Leret)
 - [ ] Data structure common benchmark
