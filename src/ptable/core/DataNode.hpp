@@ -19,7 +19,6 @@
 #define DataNode_hpp_
 
 #include <array>
-#include <unordered_map>
 #include <vector>
 
 #include "config.h"
@@ -82,11 +81,12 @@ template<typename KeyType>
 struct DataNode {
   using DeletedVector = std::vector<uint16_t, allocator<uint16_t>>;
   using KeyVector = std::array<KeyType, 8192>;
+  /*
   using HistogramType = std::unordered_map<uint32_t,
                                           std::size_t,
                                           std::hash<uint32_t>,
                                           std::equal_to<uint32_t>,
-                                          allocator<std::pair<const uint32_t, std::size_t>>>;
+                                          allocator<std::pair<const uint32_t, std::size_t>>>;*/
 
   DataNode() : next(nullptr) {}
   DataNode(BDCC_Block _block) : next(nullptr), block(_block) {}
@@ -95,14 +95,15 @@ struct DataNode {
   p<BDCC_Block> block;
   p<KeyVector> keys;
   p<DeletedVector> deleted;
-  p<HistogramType> histogram;
+  //p<HistogramType> histogram;
+  p<size_t> bdccSum{0};
 
-  uint32_t calcAverageBDCC() const {
-    auto sum = 0u;
-    for(const auto &bdccValue : histogram.get_ro()) {
-      sum += bdccValue.first * bdccValue.second;
-    }
-    return sum / reinterpret_cast<const uint32_t &>(block.get_ro()[gCountPos]);
+  inline uint32_t calcAverageBDCC() const {
+    //auto sum = 0u;
+    //for(const auto &bdccValue : histogram.get_ro()) {
+    //  sum += bdccValue.first * bdccValue.second;
+    //}
+    return bdccSum / reinterpret_cast<const uint32_t &>(block.get_ro()[gCountPos]);
   }
 };
 

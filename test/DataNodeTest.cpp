@@ -50,7 +50,7 @@ TEST_CASE("Testing to create a new BDCCInfo instance", "[BDCCInfo]") {
 
   transaction::run(pop, [&] {
     for (auto i = 0u; i < 10; ++i) {
-      node->histogram.get_rw()[(i % 2) + 5]++;
+      node->bdccSum += (i % 2) + 5;
       node->keys.get_rw()[i] = i;
       node->block.get_rw()[i] = 0xFF;
     }
