@@ -364,7 +364,11 @@ class PBPTree {
    */
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
-    return eraseFromLeafNodeAtPosition(node, pos, key);
+    if (node->keys.get_ro()[pos] == key) {
+      return eraseFromLeafNodeAtPosition(node, pos, key);
+    } else {
+      return false;
+    }
   }
 
   /**
@@ -378,7 +382,7 @@ class PBPTree {
   bool eraseFromLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
                                    const KeyType &key) {
     auto &nodeRef = *node;
-    if (nodeRef.keys.get_ro()[pos] == key) {
+    // if (nodeRef.keys.get_ro()[pos] == key) {
       auto &numKeys = nodeRef.numKeys.get_rw();
       auto &nodeKeys = nodeRef.keys.get_rw();
       auto &nodeValues = nodeRef.values.get_rw();
@@ -390,8 +394,8 @@ class PBPTree {
       PersistEmulation::writeBytes((numKeys - pos) * (sizeof(KeyType) + sizeof(ValueType)) +
                                      sizeof(size_t));
       return true;
-    }
-    return false;
+    // }
+    // return false;
   }
 
   /**

@@ -18,7 +18,8 @@ endif()
 option(ENABLE_LOG         "enables log output for e.g. debugging"        OFF)
 option(BUILD_TEST_CASES   "build tests for functionality of structures"  ON )
 option(BUILD_GOOGLE_BENCH "build google benchmark"                       OFF)
-option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
+option(BUILD_BENCHMARKS   "build benchmarks for structures"              OFF)
+option(ENABLE_PCM         "enables performance counter monitor"          OFF)
 
 ################################################################################
 # End of customization section                                                 #
@@ -26,6 +27,9 @@ option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
 
 if(ENABLE_LOG)
   add_definitions("-DENABLE_LOG")
+endif()
+if(ENABLE_PCM)
+  add_definitions("-DENABLE_PCM")
 endif()
 
 # Benchmark test requires benchmark library
@@ -102,7 +106,7 @@ add_subdirectory(src/pbptrees) # Persistent versions of B⁺-Tree, contains also
                                # - Remake of the wB+Tree
 add_subdirectory(src/ptable)  # BDCC-based analytical table structure
 
-add_subdirectory(src/pskiplists) 
+add_subdirectory(src/pskiplists)
 #########################
 # Unit test using Catch #
 #########################

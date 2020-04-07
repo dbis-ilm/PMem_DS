@@ -370,7 +370,11 @@ class UnsortedPBPTree {
    */
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
-    return eraseFromLeafNodeAtPosition(node, pos, key);
+    if (node->keys.get_ro()[pos] == key) {
+      return eraseFromLeafNodeAtPosition(node, pos, key);
+    } else {
+      return false;
+    }
   }
 
   /**
@@ -384,7 +388,7 @@ class UnsortedPBPTree {
   bool eraseFromLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
                                    const KeyType &key) {
     auto &nodeRef = *node;
-    if (nodeRef.keys.get_ro()[pos] == key) {
+    // if (nodeRef.keys.get_ro()[pos] == key) {
       auto &numKeys = nodeRef.numKeys.get_rw();
       auto &nodeKeys = nodeRef.keys.get_rw();
       auto &nodeVals = nodeRef.values.get_rw();
@@ -397,8 +401,8 @@ class UnsortedPBPTree {
       PersistEmulation::writeBytes(sizeof(size_t) +
                                    (pos != numKeys ? sizeof(KeyType) + sizeof(ValueType) : 0));
       return true;
-    }
-    return false;
+    // }
+    // return false;
   }
 
   /**
@@ -1000,6 +1004,16 @@ class UnsortedPBPTree {
     nodeRef.keys.get_rw()[numKeys] = key;
     nodeRef.values.get_rw()[numKeys] = val;
     ++numKeys;
+    PersistEmulation::writeBytes<sizeof(KeyType) + sizeof(ValueType) + sizeof(size_t)>();
+  }
+  void insertInLeafNodeAtPosition(const pptr<LeafNode> &node, const unsigned int pos,
+                                  const KeyType &key, const ValueType &val) {
+    auto &nodeRef = *node;
+    assert(pos < M);
+    /// insert the new entry at the currently last position
+    nodeRef.keys.get_rw()[pos] = key;
+    nodeRef.values.get_rw()[pos] = val;
+    ++nodeRef.numKeys.get_rw();
     PersistEmulation::writeBytes<sizeof(KeyType) + sizeof(ValueType) + sizeof(size_t)>();
   }
 

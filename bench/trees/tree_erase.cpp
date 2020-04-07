@@ -18,11 +18,31 @@
 #include <libpmemobj++/container/array.hpp>
 #include "common.hpp"
 #include "utils/PersistEmulation.hpp"
+#ifdef ENABLE_PCM
+#include <cpucounters.h>
+#endif
+
+uint64_t pmmwrites = 0;
+uint64_t pmmreads = 0;
+uint64_t modBytes = 0;  ///< modified Bytes
+constexpr auto ArraySize = 4 * L3 / 256;//TARGET_LEAF_SIZE;
 
 void prepare(const persistent_ptr<TreeType> tree);
 
 /* Get benchmarks on Tree */
 static void BM_TreeErase(benchmark::State &state) {
+    #ifdef ENABLE_PCM
+    PCM *pcm_ = PCM::getInstance();
+    auto s = pcm_->program();
+    if (s != PCM::Success) {
+      std::cerr << "Error creating PCM instance: " << s << std::endl;
+      if (s == PCM::PMUBusy)
+        pcm_->resetPMU();
+      else
+        exit(0);
+    }
+  #endif
+
   std::cout << "BRANCHKEYS: " << BRANCHKEYS << " -> " << sizeof(TreeType::BranchNode)
             << "\nLEAFKEYS: " << LEAFKEYS << " -> " << sizeof(TreeType::LeafNode) << "\n";
 
@@ -47,12 +67,12 @@ static void BM_TreeErase(benchmark::State &state) {
     transaction::run(pop, [&] { pop.root()->tree = make_persistent<TreeType>(alloc_class); });
   }
 
-  const auto tree = pop.root()->tree;
+  auto tree = pop.root()->tree;
   prepare(tree);
   auto &treeRef = *tree;
+  tree.flush(pop);
   auto leaf = treeRef.rootNode.leaf;
-  constexpr auto L3 = 30 * 1024 * 1024;
-  constexpr auto ArraySize = L3 / TARGET_LEAF_SIZE;
+  leaf.flush(pop);
 
   pptr<pmem::obj::array<pptr<TreeType::LeafNode>, ArraySize>> leafArray;
   transaction::run(pop, [&] {
@@ -65,17 +85,17 @@ static void BM_TreeErase(benchmark::State &state) {
   });
   pop.drain();
 
-  /* BENCHMARKING */
-  for (auto _ : state) {
-    state.PauseTiming();
-    std::cout.setstate(std::ios_base::failbit);
-    const auto leafNodePos = std::rand() % ArraySize;
-    auto leafNode = (*leafArray)[leafNodePos];
-    const auto pos = treeRef.lookupPositionInLeafNode(leafNode, KEYPOS);
-    // const auto pos = dbis::BitOperations::getFreeZero(leafNode->bits.get_ro());
+  const auto pos = treeRef.lookupPositionInLeafNode(leaf, KEYPOS);
+  // const auto pos = dbis::BitOperations::getFreeZero(leaf->bits.get_ro());
+
+#ifdef ENABLE_PCM
+  SocketCounterState before_sstate;
+  SocketCounterState after_sstate;
+#endif
+
+  /// Lambda function for measured part (needed twice)
+  auto benchmark = [&pop, &treeRef, &pos](pptr<TreeType::LeafNode> &leafNode) {
     auto &leafRef = *leafNode;
-    dbis::PersistEmulation::getBytesWritten();
-    state.ResumeTiming();
     benchmark::DoNotOptimize(*leafNode);
 
     // transaction::run(pop, [&] {
@@ -86,22 +106,68 @@ static void BM_TreeErase(benchmark::State &state) {
     // pop.flush(leafRef.bits);
     // pop.flush(&leafRef.slot.get_ro(),
     //           sizeof(leafRef.slot.get_ro()) + sizeof(leafRef.bits.get_ro()));
+    // pop.flush(&leafRef.bits.get_ro(),
+    //           sizeof(leafRef.bits.get_ro()) + sizeof(leafRef.fp.get_ro()));
     // pop.flush(&leafRef.keys.get_ro()[pos], sizeof(MyKey));
     // pop.flush(&leafRef.values.get_ro()[pos], sizeof(MyTuple));
     pop.flush(&leafRef.keys.get_ro()[pos], (LEAFKEYS - 1 - pos) * sizeof(MyKey));
     pop.flush(&leafRef.values.get_ro()[pos], (LEAFKEYS - 1 - pos) * sizeof(MyTuple));
     pop.drain();
-    // leaf.persist(pop);
+    // leafNode.persist(pop);
 
-    benchmark::DoNotOptimize(*leaf);
-    state.PauseTiming();
+    benchmark::DoNotOptimize(*leafNode);
+  };
+
+ /// BENCHMARK Writes
+  if (pmmwrites == 0) {
+    auto &leafNode = (*leafArray)[0];
+    // auto &leafRef = *leafNode;
+
+    dbis::PersistEmulation::getBytesWritten();
+#ifdef ENABLE_PCM
+    before_sstate = getSocketCounterState(1);
+#endif
+    benchmark(leafNode);
+#ifdef ENABLE_PCM
+    after_sstate = getSocketCounterState(1);
+    pmmreads = getBytesReadFromPMM(before_sstate, after_sstate);
+    pmmwrites = getBytesWrittenToPMM(before_sstate, after_sstate);
+#endif
+    modBytes = dbis::PersistEmulation::getBytesWritten();
     *leafNode = *leaf;  ///< reset the modified node
-    state.ResumeTiming();
+    leafNode.flush(pop);
+    // pop.flush((char *)((uintptr_t)&*leafNode - 64), 64); //< flush header
+    pop.drain();
+  }
+
+  /// BENCHMARK Timing
+  /// avoid output to stdout during benchmark
+  std::cout.setstate(std::ios_base::failbit);
+  std::srand(std::time(nullptr));
+  for (auto _ : state) {
+    const auto leafNodePos = std::rand() % ArraySize;
+    auto leafNode = (*leafArray)[leafNodePos];
+    auto &leafRef = *leafNode;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    benchmark(leafNode);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    leafRef = *leaf;  ///< reset the modified node
+    leafNode.flush(pop);
+    pop.drain();
+
+    auto elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+    state.SetIterationTime(elapsed_seconds.count());
   }
 
   // treeRef.printLeafNode(0, leaf);
   std::cout.clear();
-  std::cout << "Writes:" << dbis::PersistEmulation::getBytesWritten() << '\n';
+  std::cout << "Iterations:" << state.iterations() << '\n';
+  std::cout << "PMM Reads:" << pmmreads << '\n';
+  std::cout << "Writes:" << modBytes << '\n';
+  std::cout << "PMM Writes:" << pmmwrites << '\n';
   std::cout << "Elements:" << ELEMENTS << '\n';
 
   transaction::run(pop, [&] { delete_persistent<TreeType>(tree); });
@@ -109,7 +175,7 @@ static void BM_TreeErase(benchmark::State &state) {
   pmempool_rm(path.c_str(), 0);
 }
 
-BENCHMARK(BM_TreeErase);
+BENCHMARK(BM_TreeErase)->UseManualTime();
 BENCHMARK_MAIN();
 
 /* preparing inserts */

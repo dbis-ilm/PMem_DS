@@ -4,7 +4,7 @@
 REPO_ROOT=$PWD/..
 BUILD_DIR=$REPO_ROOT/build
 DATA="tree_benchL.data"
-OUTPUT_FILE=$PWD/results/lookup.csv
+OUTPUT_FILE=$PWD/results/lookupDRAM.csv
 REPS=5
 
 ### Create header ###
@@ -15,7 +15,8 @@ fi
 ### CUSTOMIZABLE PARAMETERS ###
 bsize=512
 depth=0
-keypos=('first' 'middle' 'last')
+#keypos=('first' 'middle' 'last')
+keypos=('middle' 'last')
 LEAF_SIZES=( 256 512 1024 2048 4096 )
 LEAF_SIZES=($(shuf -e "${LEAF_SIZES[@]}"))
 
@@ -40,7 +41,7 @@ elif [[ "$TREE" =~ ^(FP)$ ]]; then
 elif [[ "$TREE" =~ ^(BitPBP|BitHPBP)$ ]]; then
   TREE_BASE=BitPBP
 fi
-TREE_BASE=wBP
+#TREE_BASE=wBP
 sed -i'' -e 's/\(.*BRANCH_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$bsize"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -e 's/\(.*DEPTH = \)\([0-9]\+\)\(.*\)/\1'"$depth"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -e 's/\(.*\"\).*\(Tree.hpp\"\)/\1'"$TREE"'\2/' $REPO_ROOT/bench/trees/common.hpp #include
@@ -66,7 +67,7 @@ do
     sed -i'' -e 's/\(.*LEAF_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$lsize"'\3/' $REPO_ROOT/bench/trees/common.hpp
     pushd $BUILD_DIR > /dev/null
     make tree_get > /dev/null
-    for r in {1..5}
+    for r in {1..10}
     do
       outLength=$(($REPS + 5))
       OUTPUT="$(sh -c 'bench/tree_get --benchmark_repetitions='"$REPS"' --benchmark_format=csv' 2> /dev/null | tail -$outLength)"

@@ -18,7 +18,6 @@
 #include "common.hpp"
 #include "utils/PersistEmulation.hpp"
 
-constexpr auto L3 = 30 * 1024 * 1024;
 constexpr auto ArraySize = L3 / TARGET_LEAF_SIZE;
 using ArrayType = pmem::obj::array<pptr<TreeType::LeafNode>, ArraySize>;
 
