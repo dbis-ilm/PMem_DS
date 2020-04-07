@@ -772,7 +772,10 @@ class BitHPBPTree {
       if (pos == findMaxKey(nodeRef.keys, nodeRef.bits))
         nodeRef.children[N] = child; ///< new rightmost child
       return child;
-    } else assert(false); ///< shouldn't happen
+    } else {
+      assert(false); ///< shouldn't happen
+      return child;
+    }
   }
 
   /**

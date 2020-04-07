@@ -727,7 +727,10 @@ class BitPBPTree {
       if (pos == findMaxKey(nodeKeys, nodeBits))
         nodeRef.children.get_rw()[N] = child; ///< new rightmost child
       return child;
-    } else assert(false); ///< shouldn't happen
+    } else {
+      assert(false); ///< shouldn't happen
+      return child;
+    }
   }
 
   /**

@@ -17,8 +17,8 @@ endif()
 
 option(ENABLE_LOG         "enables log output for e.g. debugging"        OFF)
 option(BUILD_TEST_CASES   "build tests for functionality of structures"  ON )
-option(BUILD_GOOGLE_BENCH "build google benchmark"                       OFF)
-option(BUILD_BENCHMARKS   "build benchmarks for structures"              OFF)
+option(BUILD_GOOGLE_BENCH "build google benchmark"                       ON )
+option(BUILD_BENCHMARKS   "build benchmarks for structures"              ON )
 option(ENABLE_PCM         "enables performance counter monitor"          OFF)
 
 ################################################################################
