@@ -72,4 +72,23 @@ if(BUILD_BENCHMARKS)
   endif()
 endif()
 
+if(ENABLE_PCM)
+  # PCM ===================================================================== #
+  FetchContent_Declare(
+    pcm
+    GIT_REPOSITORY https://github.com/opcm/pcm.git
+    GIT_TAG        201902
+    )
+  FetchContent_GetProperties(pcm)
+  if(NOT pcm_POPULATED)
+    message(STATUS "Populating PCM")
+    FetchContent_Populate(pcm)
+    add_custom_command(OUTPUT libPCM.a
+                    COMMAND make lib
+                    WORKING_DIRECTORY ${pcm_SOURCE_DIR})
+    add_custom_target(pcm DEPENDS libPCM.a)
+    include_directories(${pcm_SOURCE_DIR})
+  endif()
+endif()
+
 message("===== Finished fetching 3rd Party Dependencies =======================")

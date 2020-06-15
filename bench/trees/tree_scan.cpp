@@ -20,7 +20,6 @@
 #include <libpmemobj++/container/array.hpp>
 #include "common.hpp"
 
-constexpr auto L3 = 30 * 1024 * 1024;
 constexpr auto ArraySize =
     L3 / (TARGET_LEAF_SIZE * (BRANCHKEYS + 1) + TARGET_BRANCH_SIZE) + 2;  ///< at least two
 
@@ -96,11 +95,13 @@ BENCHMARK_MAIN();
 void prepare(pmem::obj::pool<root>& pop, pobj_alloc_class_desc alloc_class) {
   transaction::run(pop, [&] {
     pop.root()->treeArray = make_persistent<pmem::obj::array<pptr<TreeType>, ArraySize>>();
-    treeArray = pop.root()->treeArray;
-    for (int i = 0; i < ArraySize; ++i) {
-      auto& a = *treeArray;
+  });
+  treeArray = pop.root()->treeArray;
+  for (int i = 0; i < ArraySize; ++i) {
+    auto& a = *treeArray;
+    transaction::run(pop, [&] {
       a[i] = make_persistent<TreeType>(alloc_class);
       insert(a[i]);
-    }
-  });
+    });
+  }
 }

@@ -56,6 +56,7 @@ const std::string path = dbis::gPmemPath + "tree_bench.data";
 constexpr auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull;  //< 4GB
 constexpr auto LAYOUT = "Tree";
 constexpr auto NODE_PTR_SIZE = 24;  ///< 24 Byte (8-tag + 16-pptr)
+constexpr auto L3 = 14080 * 1024;
 
 /* wBPTree pre-calculations */
 template <unsigned int KEYS>
@@ -239,7 +240,7 @@ class HybridWrapper {
   inline void recover(T &tree) const { recover(tree, Int2Type<isHybrid>()); }
 };
 
-auto hybridWrapperPtr = new HybridWrapper<TreeType, IS_HYBRID>();
+auto hybridWrapperPtr = std::make_unique<HybridWrapper<TreeType, IS_HYBRID>>();
 auto &hybridWrapper = *hybridWrapperPtr;
 
 /*=== Insert Function ===*/

@@ -40,7 +40,7 @@ elif [[ "$TREE" =~ ^(FP)$ ]]; then
 elif [[ "$TREE" =~ ^(BitPBP|BitHPBP)$ ]]; then
   TREE_BASE=BitPBP
 fi
-TREE_BASE=wBP
+#TREE_BASE=wBP
 sed -i'' -e 's/\(.*BRANCH_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$bsize"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -e 's/\(.*DEPTH = \)\([0-9]\+\)\(.*\)/\1'"$depth"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -e 's/\(.*\"\).*\(Tree.hpp\"\)/\1'"$TREE"'\2/' $REPO_ROOT/bench/trees/common.hpp #include
@@ -66,7 +66,7 @@ do
     sed -i'' -e 's/\(.*LEAF_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$lsize"'\3/' $REPO_ROOT/bench/trees/common.hpp
     pushd $BUILD_DIR > /dev/null
     make tree_get > /dev/null
-    for r in {1..5}
+    for r in {1..10}
     do
       outLength=$(($REPS + 5))
       OUTPUT="$(sh -c 'bench/tree_get --benchmark_repetitions='"$REPS"' --benchmark_format=csv' 2> /dev/null | tail -$outLength)"

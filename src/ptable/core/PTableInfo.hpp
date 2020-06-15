@@ -23,7 +23,7 @@
 #include "VTableInfo.hpp"
 
 #include <libpmemobj++/allocator.hpp>
-#include <libpmemobj++/detail/persistent_ptr_base.hpp>
+#include <libpmemobj++/persistent_ptr_base.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/make_persistent_array.hpp>
 #include <libpmemobj++/p.hpp>

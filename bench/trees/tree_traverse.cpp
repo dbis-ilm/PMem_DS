@@ -18,7 +18,6 @@
 #include <libpmemobj++/container/array.hpp>
 #include "common.hpp"
 
-constexpr auto L3 = 30 * 1024 * 1024;
 constexpr auto ArraySize = L3 / TARGET_BRANCH_SIZE;
 using myTypes = getTypes<TreeType, ArraySize, IS_HYBRID>;
 using BranchPtr = typename myTypes::bNodeType;

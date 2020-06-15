@@ -930,7 +930,7 @@ class PTable<KeyType, std::tuple<Types...>> {
         targetNode->keys.get_rw()[cnt - 1] = key;
         /* Update histogram */
         const auto xtr = static_cast<uint32_t>(getBDCCFromTuple(tp).to_ulong());
-        targetNode->histogram.get_rw()[xtr]++;
+        targetNode->bdccSum += xtr;
       } catch (std::exception &te) {
         std::cerr << te.what() << '\n' << "Inserting Tuple failed: " << tp << '\n';
       }

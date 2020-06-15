@@ -14,8 +14,9 @@ fi
 
 ### CUSTOMIZABLE PARAMETERS ###
 depth=1
-BRANCH_SIZES=( 256 512 1024 2048 4096 )
-LEAF_SIZES=( 256 512 1024 2048 4096 )
+BRANCH_SIZES=( 256 512 1024 2048 4096 8192 )
+#LEAF_SIZES=( 256 512 1024 2048 4096 )
+LEAF_SIZES=( 1024 )
 if [ $# != 2 ]; then
   TREE="UnsortedPBP" #FP/PBP/UnsortedPBP/wBP
   hybrid="false"
@@ -40,7 +41,7 @@ elif [[ "$TREE" =~ ^(FP)$ ]]; then
 elif [[ "$TREE" =~ ^(BitPBP|BitHPBP)$ ]]; then
   TREE_BASE=BitPBP
 fi
-#TREE_BASE=wBP
+TREE_BASE=wBP
 sed -i'' -e 's/\(.*DEPTH = \)\([0-9]\+\)\(.*\)/\1'"$depth"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -E -e 's/(.*HYBRID = )(false|true|0|1)(.*)/\1'"$hybrid"'\3/' $REPO_ROOT/bench/trees/common.hpp
 sed -i'' -e 's/\(.*\"\).*\(Tree.hpp\"\)/\1'"$TREE"'\2/' $REPO_ROOT/bench/trees/common.hpp #include

@@ -17,8 +17,13 @@
 
 #include "common.hpp"
 #include "utils/PersistEmulation.hpp"
+#ifdef ENABLE_PCM
+#include <cpucounters.h>
+#endif
 
-constexpr auto L3 = 30 * 1024 * 1024;
+uint64_t pmmwrites = 0;
+uint64_t pmmreads = 0;
+uint64_t modBytes = 0;  ///< modified Bytes
 constexpr auto ArraySize = L3 / TARGET_LEAF_SIZE;
 using ArrayType = pmem::obj::array<pptr<TreeType::LeafNode>, ArraySize>;
 
@@ -40,6 +45,18 @@ void prepare(const pptr<TreeType> &tree, const pptr<TreeType::LeafNode> &leaf);
 
 /* Get benchmarks on Tree */
 static void BM_TreeMerge(benchmark::State &state) {
+#ifdef ENABLE_PCM
+  PCM *pcm_ = PCM::getInstance();
+  auto s = pcm_->program();
+  if (s != PCM::Success) {
+    std::cerr << "Error creating PCM instance: " << s << std::endl;
+    if (s == PCM::PMUBusy)
+      pcm_->resetPMU();
+    else
+      exit(0);
+  }
+#endif
+
   std::cout << "BRANCHKEYS: " << BRANCHKEYS << " - " << sizeof(TreeType::BranchNode)
             << "\nLEAFKEYS: " << LEAFKEYS << " - " << sizeof(TreeType::LeafNode) << "\n";
 
@@ -73,59 +90,97 @@ static void BM_TreeMerge(benchmark::State &state) {
     }
   }
   pop.drain();
-
   auto &treeRef = *tree;
 
-  /* BENCHMARKING */
+#ifdef ENABLE_PCM
+  SocketCounterState before_sstate;
+  SocketCounterState after_sstate;
+#endif
+
+	/// Lambda function for measured part (needed twice)
+  auto benchmark = [&pop, &treeRef](
+      pptr<TreeType::LeafNode> &sourceNode,
+      pptr<TreeType::LeafNode> &targetNode) {
+    auto &sourceRef = *sourceNode;
+    auto &targetRef = *targetNode;
+
+    benchmark::DoNotOptimize(*sourceNode);
+    benchmark::DoNotOptimize(*targetNode);
+    // transaction::run(pop, [&] {
+    treeRef.mergeLeafNodes(targetNode, sourceNode);
+    // delete_persistent<TreeType::LeafNode>(sourceNode);
+    // });
+
+    pop.flush(targetRef.numKeys);
+    // pop.flush(targetRef.bits);
+    // pop.flush(&targetRef.bits.get_ro(),
+    //           sizeof(targetRef.bits.get_ro()) + sizeof(targetRef.fp.get_ro()));
+    // pop.flush(&targetRef.slot.get_ro(),
+    //           sizeof(targetRef.slot.get_ro()) + sizeof(targetRef.bits.get_ro()));
+    pop.flush(&targetRef.keys.get_ro()[(LEAFKEYS + 1) / 2], sizeof(MyKey) * (LEAFKEYS - 1) / 2);
+    pop.flush(&targetRef.values.get_ro()[(LEAFKEYS + 1) / 2], sizeof(MyTuple) * (LEAFKEYS - 1) / 2);
+    // targetNode.flush(pop);
+    pop.drain();
+
+    benchmark::DoNotOptimize(*sourceNode);
+    benchmark::DoNotOptimize(*targetNode);
+    benchmark::ClobberMemory();
+	};
+
+  /// BENCHMARK Writes
+  if (pmmwrites == 0) {
+    auto sourceNode = (*sourceArray)[0];
+    auto targetNode = (*targetArray)[0];
+    dbis::PersistEmulation::getBytesWritten();
+#ifdef ENABLE_PCM
+    before_sstate = getSocketCounterState(1);
+#endif
+    benchmark(sourceNode, targetNode);
+#ifdef ENABLE_PCM
+    after_sstate = getSocketCounterState(1);
+    pmmreads = getBytesReadFromPMM(before_sstate, after_sstate);
+    pmmwrites = getBytesWrittenToPMM(before_sstate, after_sstate);
+#endif
+    modBytes = dbis::PersistEmulation::getBytesWritten();
+    *targetNode = *leaf2; ///< reset the modified node
+    // (*sourceArray)[0] = treeRef.newLeafNode(leaf);
+    targetNode.persist(pop);
+  }
+
+  /// BENCHMARKING
+  std::cout.setstate(std::ios_base::failbit);
+  std::srand(std::time(nullptr));
   for (auto _ : state) {
-    state.PauseTiming();
-    std::cout.setstate(std::ios_base::failbit);
     const auto leafNodePos = std::rand() % ArraySize;
     auto sourceNode = (*sourceArray)[leafNodePos];
     auto targetNode = (*targetArray)[leafNodePos];
     auto &sourceRef = *sourceNode;
     auto &targetRef = *targetNode;
-    dbis::PersistEmulation::getBytesWritten();
-    state.ResumeTiming();
 
-    //benchmark::DoNotOptimize(*sourceNode);
-    //benchmark::DoNotOptimize(*targetNode);
-    // transaction::run(pop, [&] {
-    treeRef.mergeLeafNodes(targetNode, sourceNode);
-    // });
-    //benchmark::DoNotOptimize(*sourceNode);
-    //benchmark::DoNotOptimize(*targetNode);
+    auto start = std::chrono::high_resolution_clock::now();
+    benchmark(sourceNode, targetNode);
+    auto end = std::chrono::high_resolution_clock::now();
 
-    pop.flush(targetRef.numKeys);
-    //pop.flush(targetRef.bits);
-    // pop.flush(&targetRef.bits.get_ro(),
-    //           sizeof(targetRef.bits.get_ro()) + sizeof(targetRef.fp.get_ro()));
-    // pop.flush(&targetRef.slot.get_ro(),
-    //           sizeof(targetRef.slot.get_ro()) + sizeof(targetRef.bits.get_ro()));
-    //pop.flush(&targetRef.keys.get_ro()[(LEAFKEYS + 1) / 2], sizeof(MyKey) * (LEAFKEYS - 1) / 2);
-    //pop.flush(&targetRef.values.get_ro()[(LEAFKEYS + 1) / 2], sizeof(MyTuple) * (LEAFKEYS - 1) / 2);
-    targetNode.flush(pop);
-    pop.drain();
-
-    state.PauseTiming();
-    //targetNode = treeRef.newLeafNode(leaf2);
     *targetNode = *leaf2; ///< reset the modified node
-    state.ResumeTiming();
+    targetNode.persist(pop);
+    // (*sourceArray)[leafNodePos] = treeRef.newLeafNode(leaf);
+    auto elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+    state.SetIterationTime(elapsed_seconds.count());
   }
 
   // treeRef.printLeafNode(0, leaf);
   std::cout.clear();
-  std::cout << "Writes:" << dbis::PersistEmulation::getBytesWritten() << '\n';
+  std::cout << "Iterations:" << state.iterations() << '\n';
+  std::cout << "PMM Reads:" << pmmreads << '\n';
+  std::cout << "Writes:" << modBytes << '\n';
+  std::cout << "PMM Writes:" << pmmwrites << '\n';
   std::cout << "Elements:" << ELEMENTS << '\n';
-  transaction::run(pop, [&] {
-    delete_persistent<TreeType>(tree);
-    delete_persistent<ArrayType>(sourceArray);
-    delete_persistent<ArrayType>(targetArray);
-  });
+
   pop.close();
   pmempool_rm(path.c_str(), 0);
 }
-BENCHMARK(BM_TreeMerge);
+BENCHMARK(BM_TreeMerge)->UseManualTime();
 
 BENCHMARK_MAIN();
 

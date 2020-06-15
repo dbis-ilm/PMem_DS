@@ -146,7 +146,7 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
       d += get<3>(ptp);
     }
     REQUIRE(c == 3); // 5,6,7
-    REQUIRE(d == 5*12.45 + 6*12.45 + 7*12.45);
+    REQUIRE(std::round(d*10)/10 == 224.1); //5*12.45 + 6*12.45 + 7*12.45);
   }
 
   pTable->print();

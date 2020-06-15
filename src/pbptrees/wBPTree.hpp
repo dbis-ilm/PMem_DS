@@ -63,6 +63,9 @@ class wBPTree {
   static_assert(N % 2 == 0, "order of branch nodes must be even.");
   /// we need at least one key on a leaf node
   static_assert(M > 0, "number of leaf keys should be >0.");
+  static_assert(M < 256, "number of leaf keys should be < 256 (slots are only 8 bit).");
+  static_assert(N < 256, "number of branch keys should be < 256 (slots are only 8 bit).");
+
 
 #ifndef UNIT_TESTS
   private:
@@ -165,9 +168,13 @@ class wBPTree {
   pptr<LeafNode> newLeafNode() {
     auto pop = (pmem::obj::pool_by_vptr(this));
     pptr<LeafNode> newNode = nullptr;
-    transaction::run(pop, [&] {
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] {
+        newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id));
+      });
+    } else {
       newNode = make_persistent<LeafNode>(allocation_flag::class_id(alloc_class.class_id));
-    });
+    }
     return newNode;
   }
 
@@ -182,7 +189,11 @@ class wBPTree {
 
   void deleteLeafNode(pptr<LeafNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { delete_persistent<LeafNode>(node); });
+    } else {
+      delete_persistent<LeafNode>(node);
+    }
     node = nullptr;
   }
 
@@ -192,15 +203,23 @@ class wBPTree {
   pptr<BranchNode> newBranchNode() {
     auto pop = pmem::obj::pool_by_vptr(this);
     pptr<BranchNode> newNode = nullptr;
-    transaction::run(pop, [&] {
-      newNode = make_persistent<BranchNode>(allocation_flag::class_id(alloc_class.class_id));
-    });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] {
+        newNode = make_persistent<BranchNode>(allocation_flag::class_id(alloc_class.class_id));
+      });
+    } else {
+        newNode = make_persistent<BranchNode>(allocation_flag::class_id(alloc_class.class_id));
+    }
     return newNode;
   }
 
   void deleteBranchNode(pptr<BranchNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] { delete_persistent<BranchNode>(node); });
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { delete_persistent<BranchNode>(node); });
+    } else {
+      delete_persistent<BranchNode>(node);
+    }
     node = nullptr;
   }
 
@@ -612,6 +631,7 @@ class wBPTree {
     PersistEmulation::writeBytes<3>();
   }
 
+
   /**
    * Insert a (key, value) pair into the tree recursively by following the path down to the leaf
    * level starting at node @c node at depth @c depth.
@@ -791,7 +811,14 @@ class wBPTree {
    */
   bool eraseFromLeafNode(const pptr<LeafNode> &node, const KeyType &key) {
     auto pos = lookupPositionInLeafNode(node, key);
-    return eraseFromLeafNodeAtPosition(node, pos, key);
+    const auto &nodeRef = *node;
+    const auto &keys = nodeRef.keys.get_ro();
+    const auto &slots = nodeRef.slot.get_ro();
+    if (keys[slots[pos]] == key) {
+      return eraseFromLeafNodeAtPosition(node, pos, key);
+    } else {
+      return false;
+    }
   }
 
   /**
@@ -807,7 +834,7 @@ class wBPTree {
     auto &nodeRef = *node;
     auto &nodeSlots = nodeRef.slot.get_rw();
     auto &nodeBits = nodeRef.bits.get_rw();
-    if (nodeRef.keys.get_ro()[nodeSlots[pos]] == key) {
+    // if (nodeRef.keys.get_ro()[nodeSlots[pos]] == key) {
       nodeBits.reset(nodeSlots[pos]);
       for (auto i = pos; i < nodeSlots[0] + 1; ++i) {
         nodeSlots[i] = nodeSlots[i + 1];
@@ -815,8 +842,8 @@ class wBPTree {
       --nodeSlots[0];
       PersistEmulation::writeBytes(1 + (nodeSlots[0] + 2 - pos));
       return true;
-    }
-    return false;
+    // }
+    // return false;
   }
 
   /**

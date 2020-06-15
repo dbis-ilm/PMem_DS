@@ -9,7 +9,7 @@ OUTPUT_FILE=$PWD/results/mergeFlush.csv
 
 ### Create header ###
 if [ ! -s $OUTPUT_FILE ]; then
-  echo "tree,tblsize,lsize,fillratio,time,writes" >> $OUTPUT_FILE
+  echo "tree,tblsize,lsize,fillratio,time,writes,pmmwrites" >> $OUTPUT_FILE
 fi
 
 ### CUSTOMIZABLE PARAMETERS ###
@@ -53,14 +53,15 @@ do
   sed -i'' -e 's/\(.*LEAF_SIZE = \)\([0-9]\+\)\(.*\)/\1'"$lsize"'\3/' $REPO_ROOT/bench/trees/common.hpp
   pushd $BUILD_DIR > /dev/null
   make tree_merge> /dev/null
-  for r in {1..5}
+  for r in {1..10}
   do
-    outLength=$(($REPS + 6))
+    outLength=$(($REPS + 7))
     OUTPUT="$(sh -c 'bench/tree_merge --benchmark_repetitions='"$REPS"' --benchmark_format=csv' 2> /dev/null | tail -$outLength)"
     writes="$(echo "$OUTPUT" | head -1 | cut -d ':' -f2)"
-    elements="$(echo "$OUTPUT" | head -2 | tail -1 | cut -d ':' -f2)"
+    pmmwrites="$(echo "$OUTPUT" | head -2 | tail -1| cut -d ':' -f2)"
+    elements="$(echo "$OUTPUT" | head -3 | tail -1 | cut -d ':' -f2)"
     time="$(echo "$OUTPUT" | tail -3 | head -1 | cut -d ',' -f3)"
-    echo "${TREE}Tree,$elements,$lsize,$fillratio,$time,$writes" >> $OUTPUT_FILE
+    echo "${TREE}Tree,$elements,$lsize,$fillratio,$time,$writes,$pmmwrites" >> $OUTPUT_FILE
   done
   popd > /dev/null
 done
