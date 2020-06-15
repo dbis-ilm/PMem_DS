@@ -102,16 +102,16 @@ static void BM_TreeErase(benchmark::State &state) {
     treeRef.eraseFromLeafNodeAtPosition(leafNode, pos, KEYPOS);
     //});
 
-    // pop.flush(leafRef.numKeys);
-    pop.flush(leafRef.bits);
+    pop.flush(leafRef.numKeys);
+    // pop.flush(leafRef.bits);
     // pop.flush(&leafRef.slot.get_ro(),
     //           sizeof(leafRef.slot.get_ro()) + sizeof(leafRef.bits.get_ro()));
     // pop.flush(&leafRef.bits.get_ro(),
     //           sizeof(leafRef.bits.get_ro()) + sizeof(leafRef.fp.get_ro()));
     // pop.flush(&leafRef.keys.get_ro()[pos], sizeof(MyKey));
     // pop.flush(&leafRef.values.get_ro()[pos], sizeof(MyTuple));
-    // pop.flush(&leafRef.keys.get_ro()[pos], (LEAFKEYS - 1 - pos) * sizeof(MyKey));
-    // pop.flush(&leafRef.values.get_ro()[pos], (LEAFKEYS - 1 - pos) * sizeof(MyTuple));
+    pop.flush(&leafRef.keys.get_ro()[pos], (LEAFKEYS - 1 - pos) * sizeof(MyKey));
+    pop.flush(&leafRef.values.get_ro()[pos], (LEAFKEYS - 1 - pos) * sizeof(MyTuple));
     pop.drain();
     // leafNode.persist(pop);
 
