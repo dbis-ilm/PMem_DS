@@ -1,10 +1,10 @@
-NVM-based Data Strucutres
+PMem-based Data Strucutres
 =========================
 
 [![pipeline status](https://dbgit.prakinf.tu-ilmenau.de/code/nvm-based_data_structures/badges/master/pipeline.svg)](https://dbgit.prakinf.tu-ilmenau.de/code/nvm-based_data_structures/commits/master)
 [![coverage report](https://dbgit.prakinf.tu-ilmenau.de/code/nvm-based_data_structures/badges/master/coverage.svg?job=coverage)](https://dbgit.prakinf.tu-ilmenau.de/code/nvm-based_data_structures/commits/master)
 
-This is a repository for persistent data structures based on non-volatile memory (NVM).
+This is a repository for persistent data structures based on persistent memory (PMem).
 
 :sparkles: TODOs
 ----------------
@@ -13,8 +13,8 @@ This is a repository for persistent data structures based on non-volatile memory
 - [x] ~~PTable (BDCC + NVM)~~
 - [x] ~~Add Skip-Lists (Alex)~~
 - [ ] Add LSM Trees (Arun)
-- [ ] Add Tries (Leret)
-- [ ] Data structure common benchmark
+- [x] ~~Add Tries (Leret)~~
+- [ ] ~~Data structure common benchmark~~
 - [ ] Documentation
 
 :copyright: License
