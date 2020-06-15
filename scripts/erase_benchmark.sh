@@ -4,7 +4,7 @@
 REPO_ROOT=$PWD/..
 BUILD_DIR=$REPO_ROOT/build
 DATA="tree_benchE.data"
-OUTPUT_FILE=$PWD/results/eraseFlushICC.csv
+OUTPUT_FILE=$PWD/results/eraseFlush.csv
 REPS=5
 
 ### Create header ###
@@ -15,8 +15,7 @@ fi
 ### CUSTOMIZABLE PARAMETERS ###
 bsize=512
 depth=0
-#keypos=('first' 'middle' 'last')
-keypos=('middle')
+keypos=('first' 'middle' 'last')
 LEAF_SIZES=( 256 512 1024 2048 4096 )
 
 ### Do not change anything following here!!! ###

@@ -75,7 +75,7 @@ static void BM_TreeGet(benchmark::State &state) {
   static constexpr auto SlotSize = ((LEAFKEYS+1 + 7) / 8) * 8;
   static constexpr auto HashSize = ((LEAFKEYS + 7) / 8) * 8;
   static constexpr auto BitsetSize = ((LEAFKEYS + 63) / 64) * 8;
-  static constexpr auto SearchSize = BitsetSize +16;
+  static constexpr auto SearchSize = BitsetSize + HashSize + 16;
   static constexpr auto PaddingSize = (64 - SearchSize % 64) % 64;
 
   struct alignas(64) DRAMLeafNode {
@@ -83,18 +83,18 @@ static void BM_TreeGet(benchmark::State &state) {
       //slot[0] = 0;
     }
     DRAMLeafNode(const TreeType::LeafNode &other)
-      : //slot(other.slot.get_ro()),
+      : slot(other.slot.get_ro()),
         bits(other.bits.get_ro()),
-        //fp(other.fp.get_ro()),
+        // fp(other.fp.get_ro()),
         nextLeaf(nullptr),
         prevLeaf(nullptr),
         keys(other.keys.get_ro())
         // values(other.values.get_ro()),
     {}
 
-    //std::array<uint8_t, LEAFKEYS+1> slot;
+    std::array<uint8_t, LEAFKEYS+1> slot;
     std::bitset<LEAFKEYS>           bits;
-    //std::array<uint8_t, LEAFKEYS>     fp;
+    // std::array<uint8_t, LEAFKEYS>     fp;
     DRAMLeafNode               *nextLeaf;
     DRAMLeafNode               *prevLeaf;
     char            padding[PaddingSize];
@@ -103,14 +103,17 @@ static void BM_TreeGet(benchmark::State &state) {
   };
   */
 
+  /// Both PMem and DRAM
   auto &tree = pop.root()->tree;
   insert(tree, 0);
   auto &treeRef = *tree;
   tree.flush(pop);
-  auto &leafArray = pop.root()->leafArray;
+  auto &leafArray = pop.root()->leafArray;  ///< PMem
   auto &leaf = treeRef.rootNode.leaf;
   leaf.flush(pop);
 
+  /// PMem considerations
+  ///*
   transaction::run(pop, [&] {
     leafArray = make_persistent<LeafArray>();
     for (int i = 0; i < ArraySize; ++i) {
@@ -120,6 +123,7 @@ static void BM_TreeGet(benchmark::State &state) {
     }
   });
   pop.drain();
+  //*/
 
   /// DRAM considerations
   /*
@@ -143,21 +147,25 @@ for (auto _ : state) {
 
   auto start = std::chrono::high_resolution_clock::now();
   benchmark::DoNotOptimize(*leafNode);
-  treeRef.lookupPositionInLeafNode(leafNode, KEYPOS);
+  treeRef.lookupPositionInLeafNode(leafNode, KEYPOS); ///< PMem variant
   /// DRAM considerations
+  /*
   // auto pos = 0u;
-  // const auto &nodeRef = *leafNode;
-  // const auto hash = (uint8_t)(key & 0xFF);
-  // const auto &keys = nodeRef.keys;
+  const auto &nodeRef = *leafNode;
+  const auto &keys = nodeRef.keys;
   // const auto num = nodeRef.numKeys;
-  // const auto &slots = nodeRef.slot;
+  const auto &slots = nodeRef.slot;
   // const auto &bits = nodeRef.bits;
+  // const auto hash = (uint8_t)(key & 0xFF);
   // const auto &hashs = nodeRef.fp;
   // for (; pos < LEAFKEYS; ++pos)
-  //   if (bits.test(pos) && keys[pos] == key) break;
+    // if (//hashs[pos] == hash &&
+    // bits.test(pos) && keys[pos] == key) break;
   // for (; pos < num && keys[pos] != key; ++pos);
   // auto pos = dbis::binarySearch<false>(keys, 0, num-1, key);
-  // benchmark::DoNotOptimize(pos);
+  auto pos = dbis::binarySearch<false>(keys, slots, 1, slots[0], key);
+  benchmark::DoNotOptimize(pos);
+  */
   benchmark::DoNotOptimize(*leafNode);
   auto end = std::chrono::high_resolution_clock::now();
   auto elapsed_seconds =

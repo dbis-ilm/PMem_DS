@@ -104,12 +104,9 @@ static void BM_TreeInsert(benchmark::State &state) {
   auto benchmark = [&pop, &treeRef, &reqTup, &pos](
                        const pptr<TreeType::LeafNode> &leafNode) {
     auto &leafRef = *leafNode;
-    //const auto pos = treeRef.lookupPositionInLeafNode(leafNode, KEYPOS);
-    // const auto pos = dbis::BitOperations::getFreeZero(leafNode->bits.get_ro());
     benchmark::DoNotOptimize(*leafNode);
     // transaction::run(pop, [&] {
     treeRef.insertInLeafNodeAtPosition(leafNode, pos, KEYPOS, reqTup);
-    // treeRef.insertInLeafNodeAtLastPosition(leafNode, KEYPOS, reqTup);
     //});
     pop.flush(leafRef.numKeys);
     // pop.flush(leafRef.bits);
@@ -131,7 +128,6 @@ static void BM_TreeInsert(benchmark::State &state) {
   /// BENCHMARK Writes
   if (pmmwrites == 0) {
     auto &leafNode = (*leafArray)[0];
-    // auto &leafRef = *leafNode;
 
     dbis::PersistEmulation::getBytesWritten();
 #ifdef ENABLE_PCM

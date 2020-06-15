@@ -540,9 +540,9 @@ class UnsortedPBPTree {
         ++rNumKeys;
 
         /// fill empty space in donor with its currently last key
-        donorKeys[max] = donorKeys[dNumKeys-1];
-        donorVals[max] = donorVals[dNumKeys-1];
         --dNumKeys;
+        donorKeys[max] = donorKeys[dNumKeys];
+        donorVals[max] = donorVals[dNumKeys];
       }
     } else {
       /// mode from one node to a node with smaller keys
@@ -555,13 +555,13 @@ class UnsortedPBPTree {
         ++rNumKeys;
 
         /// fill empty space in donor with its currently last key
-        donorKeys[min] = donorKeys[dNumKeys-1];
-        donorVals[min] = donorVals[dNumKeys-1];
         --dNumKeys;
+        donorKeys[min] = donorKeys[dNumKeys];
+        donorVals[min] = donorVals[dNumKeys];
       }
     }
     PersistEmulation::writeBytes(2 * toMove * (sizeof(KeyType) + sizeof(ValueType)) +
-                                 2* sizeof(unsigned int));
+                                 2* sizeof(LeafNode::numKeys));
   }
 
   /* -------------------------------------------------------------------------------------------- */

@@ -928,7 +928,7 @@ class BitPBPTree {
     */
 
     /// Alternative: move instead of complete copy
-    ///*
+    // /*
     const auto sibling = newLeafNode();
     auto &sibRef = *sibling;
     auto &sibKeys = sibRef.keys.get_rw();
@@ -948,7 +948,7 @@ class BitPBPTree {
     }
     PersistEmulation::writeBytes(j * (sizeof(KeyType) + sizeof(ValueType)) +
                                  ((j * 2 + 7) >> 3));  /// j entries + j*2 bits
-    //*/
+    // */
 
     /// setup the list of leaf nodes
     if(nodeRef.nextLeaf != nullptr) {

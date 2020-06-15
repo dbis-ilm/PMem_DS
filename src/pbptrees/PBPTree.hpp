@@ -538,9 +538,8 @@ class PBPTree {
         receiverValues[j] = donorValues[i];
         ++rNumKeys;
       }
-      PersistEmulation::writeBytes((rNumKeys + dNumKeys - balancedNum) *
-                                       (sizeof(KeyType) + sizeof(ValueType)) +
-                                   sizeof(unsigned int));
+      PersistEmulation::writeBytes(rNumKeys * (sizeof(KeyType) + sizeof(ValueType)) +
+          sizeof(LeafNode::numKeys));
     } else {
       /// move from one node to a node with smaller keys
       unsigned int i = 0;
@@ -558,10 +557,10 @@ class PBPTree {
         donorValuesW[i] = donorValues[toMove + i];
       }
       PersistEmulation::writeBytes(dNumKeys * (sizeof(KeyType) + sizeof(ValueType)) +
-                                   sizeof(unsigned int));
+                                   sizeof(LeafNode::numKeys));
     }
     dNumKeys -= toMove;
-    PersistEmulation::writeBytes<sizeof(unsigned int)>();
+    PersistEmulation::writeBytes<sizeof(LeafNode::numKeys)>();
   }
 
   /* -------------------------------------------------------------------------------------------- */

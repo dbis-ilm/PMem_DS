@@ -5,7 +5,7 @@ REPO_ROOT=$PWD/..
 BUILD_DIR=$REPO_ROOT/build
 DATA="tree_benchI.data"
 REPS=5
-OUTPUT_FILE=$PWD/results/insertAtFlushICC.csv
+OUTPUT_FILE=$PWD/results/insertAtFlush.csv
 
 ### Create header ###
 if [ ! -s $OUTPUT_FILE ]; then
@@ -15,8 +15,7 @@ fi
 ### CUSTOMIZABLE PARAMETERS ###
 bsize=512
 depth=0
-#keypos=('first' 'middle' 'last')
-keypos=('middle')
+keypos=('first' 'middle' 'last')
 LEAF_SIZES=(256 512 1024 2048 4096)
 #LEAF_SIZES=($(shuf -e "${LEAF_SIZES[@]}"))
 #LEAF_SIZES=($(seq 256 256 4096))
