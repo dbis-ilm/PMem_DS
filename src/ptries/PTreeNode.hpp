@@ -20,11 +20,10 @@
 
 #include "utils/PatriciaUtils.hpp"
 
-#include <zconf.h>
 #include <cstdlib>
-
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <unistd.h>
 
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/utils.hpp>

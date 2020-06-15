@@ -362,6 +362,7 @@ reInsert:
         }
       }
     }
+    return nullptr;
   }
 
   ValueType* search(const KeyType key) const {
@@ -394,6 +395,6 @@ reInsert:
 
 }; /// end class woPSkiplist
 
-} /// namespace dbis::pbptrees
+} /// namespace dbis::pskiplists
 
 #endif /// WOP_SKIPLIST_HPP

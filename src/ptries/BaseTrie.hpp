@@ -18,13 +18,12 @@
 #ifndef BASETRIE_HPP
 #define BASETRIE_HPP
 
-#include <zconf.h>
-
 // std
 #include <array>
-#include <memory>
 #include <cmath>
 #include <iostream>
+#include <memory>
+#include <unistd.h>
 
 // pmdk
 #include <libpmemobj++/make_persistent.hpp>

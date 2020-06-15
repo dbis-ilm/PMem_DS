@@ -25,7 +25,6 @@
 #include <random>
 #include <chrono>
 
-#include <zconf.h>
 #include <assert.h>
 
 /*
