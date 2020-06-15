@@ -105,8 +105,8 @@ add_subdirectory(src/pbptrees) # Persistent versions of B⁺-Tree, contains also
                                # - Remake of the FPTree
                                # - Remake of the wB+Tree
 add_subdirectory(src/ptable)  # BDCC-based analytical table structure
-
 add_subdirectory(src/pskiplists)
+add_subdirectory(src/ptries)
 #########################
 # Unit test using Catch #
 #########################

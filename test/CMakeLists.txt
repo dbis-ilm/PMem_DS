@@ -28,3 +28,6 @@ do_test(PTupleTest ptable)
 do_test(PTableTest ptable)
 # woPSkiplist
 do_test(woPSkiplistTest)
+# PTries
+do_test(BaseTrieTest)
+do_test(PatriciaTest)
