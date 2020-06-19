@@ -9,7 +9,8 @@ PMem-based Skip Lists
 
 :books: Documentation
 ---------------------
-Currently there two types of skip lists_:
+Currently there two types of skip lists:
+
 | | |
 |-|-|
 | simplePSkiplist   | a persistent skip list with a single entry per node                    |
