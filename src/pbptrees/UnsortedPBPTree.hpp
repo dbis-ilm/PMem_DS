@@ -945,9 +945,8 @@ class UnsortedPBPTree {
     auto &nodeRef = *node;
 
     /* determine the split position by finding the median in unsorted array of keys */
-    auto data = nodeRef.keys.get_ro();
-    const auto [__unused__, splitPos] = findSplitKey(data);
-    const auto splitKey = data[splitPos];
+    const auto [__unused__, splitPos] = findSplitKey<KeyType, M>(nodeRef.keys.get_ro().data());
+    const auto splitKey = nodeRef.keys.get_ro()[splitPos];
 
     /* move all entries with greater or equal keys to a new sibling node */
     auto sibling = newLeafNode();

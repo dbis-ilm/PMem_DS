@@ -914,9 +914,8 @@ class BitPBPTree {
     auto &nodeRef = *node;
 
     /// determine the split position by finding the median in unsorted array of keys
-    const auto data = nodeRef.keys.get_ro();
-    auto [b, splitPos] = findSplitKey(data);
-    const auto &splitKey = data[splitPos];
+    const auto [b, splitPos] = findSplitKey<KeyType, M>(nodeRef.keys.get_ro().data());
+    const auto &splitKey = nodeRef.keys.get_ro()[splitPos];
 
     /// copy leaf with flipped bitmap
     /*
@@ -1004,7 +1003,7 @@ class BitPBPTree {
 
     /// determine the split position (by finding median in unsorted array of keys)
     auto data = nodeKeys;
-    auto [b, splitPos] = findSplitKey(data);
+    auto [b, splitPos] = findSplitKey<KeyType, N>(nodeKeys.data());
     const auto &splitKey = nodeKeys[splitPos];
 
     /// copy node and flip bits

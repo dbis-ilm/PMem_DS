@@ -541,9 +541,8 @@ class FPTree {
     auto &nodeRef = *node;
 
     /* determine the split position by finding median in unsorted array of keys*/
-    const auto data = nodeRef.keys.get_ro();
-    auto [bitmap, splitPos] = findSplitKey(data);
-    const auto &splitKey = data[splitPos];
+    const auto [bitmap, splitPos] = findSplitKey<KeyType, M>(nodeRef.keys.get_ro().data());
+    const auto &splitKey = nodeRef.keys.get_ro()[splitPos];
 
     /// copy leaf
     /*

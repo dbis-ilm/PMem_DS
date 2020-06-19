@@ -80,8 +80,10 @@ class ElementOfRankK {
 
 template<typename KeyType, size_t M>
 std::pair<std::bitset<M>, size_t>
-findSplitKey(const std::array<KeyType, M> &data) {
-  auto repData = data;
+findSplitKey(const KeyType * const data) {
+  ///TODO: can this be accelerated?
+  std::array<KeyType, M> repData;
+  memcpy(repData.begin(), data, M * sizeof(KeyType));
   std::bitset<M> b{};
   const auto splitKey = ElementOfRankK::elementOfRankK((M+1)/2 + 1, repData.data(), 0, M);
   size_t splitPos;
