@@ -12,3 +12,6 @@ do_bench(trees/tree_merge)
 #do_bench(ptable/insert ptable)
 do_bench(ptable/scan ptable)
 do_bench(ptable/point ptable)
+# PSKIPLISTS
+do_bench(pskiplists/pskip_get)
+do_bench(pskiplists/pskip_insert)

@@ -18,20 +18,28 @@
 #ifndef WOP_SKIPLIST_HPP
 #define WOP_SKIPLIST_HPP
 
-#include <cstdlib>
-#include <cstdint>
-#include <iostream>
+#include <algorithm> ///< std::copy
 #include <array>
 #include <bitset>
+#include <cstdlib>   ///< size_t
+#include <iostream>  ///< std:cout
 
-#include <libpmemobj++/utils.hpp>
+#include <libpmemobj/ctl.h>
+#include <libpmemobj++/container/array.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/transaction.hpp>
+#include <libpmemobj++/utils.hpp>
+
+#include "utils/BitOperations.hpp"
+#include "utils/Random.hpp"
+#include "utils/SearchFunctions.hpp"
 
 namespace dbis::pskiplists {
 
+using pmem::obj::allocation_flag;
+using pmem::obj::array;
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
 using pmem::obj::p;
@@ -40,354 +48,403 @@ using pmem::obj::transaction;
 template <typename Object>
 using pptr = persistent_ptr<Object>;
 
-class Random {
-  public:
-    explicit Random(uint32_t s) : seed(s & 0x7fffffffu) {
-      if (seed == 0 || seed == 2147483647L) {
-        seed = 1;
-      }
-    }
-
-    uint32_t Next() {
-      static const uint32_t M = 2147483647L;
-      static const uint64_t A = 16807;
-      uint64_t product = seed * A;
-
-      seed = static_cast<uint32_t>((product >> 31) + (product & M));
-      if (seed > M) {
-        seed -= M;
-      }
-      return seed;
-    }
-
-    uint32_t Uniform(int n) { return (Next() % n); }
-    bool OneIn(int n) { return (Next() % n) == 0; }
-    uint32_t Skewed(int max_log) {
-      return Uniform(1 << Uniform(max_log + 1));
-    }
-
-  private:
-    uint32_t seed;
-};
-
 /**
- * A persistent memory implementation of a write-optimized Skip List.
+ * A persistent memory implementation of a skip list with multiple records per node.
  *
  * @tparam KeyType the data type of the key
  * @tparam ValueType the data type of the values associated with the key
- * @tparam N the bucket size
- * @tparam M the maximum level
+ * @tparam N the bucket size of a node
+ * @tparam M the maximum number of levels
  */
-template<typename KeyType, typename ValueType, int N, int M>
+template<typename KeyType, typename ValueType, size_t N, size_t M>
 class woPSkiplist {
+
+  static_assert(N > 0, "A node must have at least 1 element.");
 
   static constexpr auto MAX_KEY = std::numeric_limits<KeyType>::max();
   static constexpr auto MIN_KEY = std::numeric_limits<KeyType>::min();
+
+#ifndef UNIT_TESTS
+  private:
+#else
+  public:
+#endif
 
   /**
    * A structure for representing a node of a skip list.
    */
   struct alignas(64) SkipNode {
-    p<std::bitset<N>> bitset;           ///< a bitmap indicating empty/used slots
-    p<KeyType> minKey;                  ///< SMA min
-    p<KeyType> maxKey;                  ///< SMA max
-    p<size_t> nodeLevel;                ///< the level of this node
-    /// TODO: padding to 64 bytes?
-    p<std::array<KeyType, N>> keys;     ///< the actual keys
-    p<std::array<ValueType, N>> values; ///< the actual values
+    static constexpr auto BitsetSize = ((N + 63) / 64) * 8;  ///< number * size of words
+    static constexpr auto ForwardSize = M * 16;
+    static constexpr auto PaddingSize = (64 - (BitsetSize + ForwardSize + 2 * sizeof(KeyType) +
+                                               sizeof(size_t)) % 64) % 64;
 
-    pptr<std::array<pptr<SkipNode>, M>> forward; ///< the forward pointers to the following nodes
+    p<std::bitset<N>> bitset;         ///< a bitmap indicating empty/used slots
+    p<KeyType> minKey;                ///< SMA min
+    p<KeyType> maxKey;                ///< SMA max
+    p<size_t> nodeLevel;              ///< the height of this node
+    array<pptr<SkipNode>, M> forward; ///< the forward pointers to the following nodes
+    char padding[PaddingSize];        ///< padding to align keys to a multiple of 64 bytes
+    array<KeyType, N> keys;           ///< the actual keys
+    array<ValueType, N> values;       ///< the actual values
+
 
     /**
      * Constructor for creating a new empty node.
      */
-    SkipNode() : maxKey(MIN_KEY), minKey(MAX_KEY), nodeLevel(0) {}
+    SkipNode() :
+      minKey(MAX_KEY), maxKey(MIN_KEY), nodeLevel(0) {}
+
+    /**
+     * Constructor for creating a new empty node on a given level.
+     */
+    SkipNode(size_t level) :
+      minKey(MAX_KEY), maxKey(MIN_KEY), nodeLevel(level) {}
+
+    /**
+     * Constructor for creating a new empty node on a given level and min/max bounds
+     */
+    SkipNode(const KeyType &min, const KeyType &max, size_t level) :
+      minKey(min), maxKey(max), nodeLevel(level) {}
 
     /**
      * Constructor for creating a new node with an initial key and value.
      */
-    SkipNode(const KeyType _key, const ValueType _value) : keys(_key), values(_value) {}
+    explicit SkipNode(const KeyType &_key, const ValueType &_value) :
+      bitset(1), minKey(_key), maxKey(_key), nodeLevel(0), keys(_key), values(_value) {}
 
     /**
-     * Calculate the average key value of this node.
+     * Check if the node is full.
      *
-     * @return the average
+     * @return true if the node is full
      */
-    KeyType getAvg() const {
-      KeyType sum = 0;
-      auto btCount = 0u;
-      const auto &bs = bitset.get_ro();
-      const auto &ks = keys.get_ro();
-      for (auto i = 0u; i < N; ++i) {
-        if (bs.test(i)) {
-          const auto &k = ks[i];
-          if (k != minKey && k != maxKey) {
-            sum += k;
-            btCount++;
-          }
-        }
-      }
-      return sum / btCount;
-    }
-
-    bool isFull() {
+    inline bool isFull() const {
       return bitset.get_ro().all();
     }
 
-    bool keyBetween(KeyType newKey) {
-      if(minKey == - 1 ||
-          maxKey == -1)
-        return true;
-
-      return newKey >= minKey && newKey <= maxKey;
+    /**
+     * Print this node's bounds and keys.
+     */
+    void printNode() const {
+      std::cout << "\u001b[30;1m[" << minKey << "|" << maxKey << "](" << bitset.get_ro().count()
+                <<  "):\u001b[0m{";
+      for (auto i = 0u; i < N; ++i) {
+        if (bitset.get_ro().test(i))
+          std::cout << keys[i] << ",";
+      }
+      std::cout << "} --> ";
     }
 
-    ValueType* searchKey(const KeyType searchKey) {
-      for(int i=0; i<N; i++) {
-        if(bitset.get_ro().test(i)) {
-          if(keys.get_ro()[i] == searchKey) {
-            return &values.get_rw().at(i);
-          }
-        }
-      }
-      return nullptr;
-    }
+  }; /// end struct SkipNode
 
-    void splitNode(pptr<SkipNode> prevNode, pptr<SkipNode> nextNode, int listLevel) {
-      auto pop = pmem::obj::pool_by_vptr(this);
-      transaction::run(pop, [&] {
-          auto newNode = make_persistent<SkipNode>();
+  /* -------------------------------------------------------------------------------------------- */
 
-          newNode->forward = make_persistent<std::array<pptr<SkipNode>,M>>();
-          newNode->forward.get()->at(0) = nextNode;
-          newNode->maxKey = this->minKey;
-          newNode->minKey = this->maxKey;
-          this->forward.get()->at(0) = newNode;
+  p<size_t> level;                   ///< the current number of levels (height)
+  p<size_t> nodeCount;               ///< the current number of nodes
+  dbis::Random* rnd;                 ///< volatile pointer to a random number generator
+  pptr<SkipNode> head;               ///< pointer to the entry node of the skip list
+  pobj_alloc_class_desc alloc_class; ///< Allocation class for correct alignment
 
-          int leftPos = 0;
-
-          auto avg = getAvg();
-
-          for(int i=0; i<N; i++) {
-          if(bitset.get_ro().test(i)) {
-          if(keys.get_ro()[i] >= avg) {
-          newNode->keys.get_rw()[leftPos] = keys.get_ro()[i];
-          newNode->values.get_rw()[leftPos] = values.get_ro()[i];
-          newNode->bitset.get_rw().set(leftPos);
-          bitset.get_rw().reset(i);
-          leftPos++;
-          if(keys.get_ro()[i] < newNode->minKey)
-            newNode->minKey = keys.get_ro()[i];
-          if(keys.get_ro()[i] > newNode->maxKey)
-            newNode->maxKey = keys.get_ro()[i];
-          }
-          }
-          }
-          refreshBounds();
-      });
-    }
-
-    void refreshBounds() {
-      KeyType tmpMax = -1;
-      KeyType tmpMin = -1;
-
-      for(int i=0; i<N; i++) {
-        if(bitset.get_ro().test(i)) {
-          if(tmpMax == -1 || keys.get_ro()[i] > tmpMax)
-            tmpMax = keys.get_ro()[i];
-          if(tmpMin == -1 || keys.get_ro()[i] < tmpMin)
-            tmpMin = keys.get_ro()[i];
-        }
-      }
-
-
-      maxKey.get_rw() = tmpMax;
-      minKey.get_rw() = tmpMin;
-    }
-
-    void insertInNode(pptr<SkipNode> prevNode, KeyType k, ValueType v, bool& splitInfo, int level) {
-      if(isFull()) {
-        splitNode(prevNode, forward.get()->at(0), level);
-        //prevNode->forward[0]->key[3] = k;
-        //prevNode->forward[0]->bitset.set(3);
-        splitInfo = true;
-        return;
-      }
-      int freeSlot = 0;
-      while(bitset.get_ro().test(freeSlot)) {
-        freeSlot++;
-      }
-
-      keys.get_rw().at(freeSlot) = k;
-      values.get_rw().at(freeSlot)= v;
-      bitset.get_rw().set(freeSlot);
-
-      if(this->minKey == -1 || k < this->minKey) {
-        this->minKey = k;
-      } else if(this->maxKey == -1 || k > this->maxKey) {
-        this->maxKey = k;
-      }
-    }
-
-    void printNode() {
-      std::cout << "{"<<minKey << "|" << maxKey <<"}[";
-      for(int i=0; i<N; i++) {
-        if(bitset.get_ro().test(i))
-          std::cout << keys.get_ro()[i] << ",";
-      }
-      std::cout << "]->";
-    }
-  };
-
-  static constexpr auto MAX_LEVEL  = M;
-  pptr<SkipNode> head;
-  pptr<SkipNode> tail;
-  p<int> level;
-  bool nl;
-  p<size_t> nodeCount;
-  Random rnd;
-
-  void createNode(int level, pptr<SkipNode> &node) {
+  /**
+   * Create a new node within the skip list.
+   *
+   * @param level the level of the node within the skip list
+   * @param min the initial minimum bound
+   * @param max the initial maximum bound
+   * @param node[out] the pointer/reference to the newly allocated node
+   */
+  void newSkipNode(size_t level, const KeyType &min, const KeyType &max, pptr<SkipNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
     transaction::run(pop, [&] {
-        node = make_persistent<SkipNode>();
-        node->forward = make_persistent<std::array<pptr<SkipNode>,M>>();
-        node->nodeLevel = level;
-        node->maxKey = -1;
-        node->minKey = -1;
-        });
+        node = make_persistent<SkipNode>(allocation_flag::class_id(alloc_class.class_id),
+            level, min, max);
+    });
   }
 
-  void createList(KeyType tailKey) {
+  /**
+   * Create a new node within the skip list.
+   *
+   * @param node[out] the pointer/reference to the newly allocated node
+   */
+  void newSkipNode(pptr<SkipNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
     transaction::run(pop, [&] {
+        node = make_persistent<SkipNode>(allocation_flag::class_id(alloc_class.class_id));
+    });
+  }
 
-        createNode(0, tail);
-        tail->maxKey = -tailKey;
-        tail->minKey = tailKey;
-        this->level = 0;
+  /**
+   * Initialize a skip list with a new head and initial empty node.
+   */
+  void initList() {
+    newSkipNode(MIN_KEY, MIN_KEY, M, head);
+    pptr<SkipNode> node;
+    const auto height = getRandomLevel();
+    newSkipNode(MAX_KEY, MIN_KEY, height, node);  ///< first empty node
+    auto &headForward = head->forward;
+    for (auto i = 0; i < height; ++i) {
+      headForward[i] = node;
+    }
+    level.get_rw() = height;
+  }
 
-        createNode(MAX_LEVEL, head);
-        for (int i = 0; i < MAX_LEVEL; ++i) {
-        head->forward.get()->at(i) = tail.get();
+  /**
+   * Search for the node containing the given key.
+   *
+   * @param key the key to be searched for
+   * @return volatile reference of the node possibly containing the key
+   */
+  SkipNode* searchNode(const KeyType &key) const {
+    auto pred = head.get();
+    for (auto i = level.get_ro();; --i) {
+      auto node = pred->forward[i].get();
+      while (node) {
+        if (key > node->maxKey.get_ro()) {
+          pred = node;
+          node = node->forward[i].get();
         }
-        nodeCount = 0;
-        });
-  }
-
-  int getRandomLevel() {
-    int level = static_cast<int>(rnd.Uniform(MAX_LEVEL));
-    if (level == 0) {
-      level = 1;
-    }
-    return level;
-  }
-
-  public:
-
-  woPSkiplist() : head(nullptr), tail(nullptr), level(0), nl(false), nodeCount(0), rnd(0x12378) {}
-
-  woPSkiplist(KeyType tailKey) : rnd(0x12378) {
-    createList(tailKey);
-    nl = false;
-  }
-
-  bool insert(KeyType key, ValueType value) {
-    if (head == nullptr)
-      createList(key);
-reInsert:
-    auto update = new SkipNode[MAX_LEVEL]();
-
-    auto node = head;
-    auto prev = head;
-    auto last = head;
-
-    for(int i = level; i>= 0; --i) {
-      while((node->maxKey <= key)) {
-        if(node->forward.get()->at(i) == nullptr)
-          break;
-        last = prev;
-        prev = node;
-        node = node->forward.get()->at(i);
+        else if (key < node->minKey.get_ro()) break;
+        else return node;
       }
-      if(node->maxKey > key) {
-        node = prev;
-        prev = last;
-      }
-      update[i] = *prev;
-    }
-
-    auto nodeLevel = getRandomLevel();
-
-    bool splitInfo = false;
-    if(node->forward.get()->at(0)) {
-      prev = node;
-      node = node->forward.get()->at(0);
-    }
-
-    node->insertInNode(prev, key, value, *&splitInfo, level);
-    if(splitInfo) {
-      nl = true;
-      nodeCount.get_rw()++;
-      goto reInsert;
-    }
-
-    if(nl) {
-      if(nodeLevel > level.get_ro()) {
-        nodeLevel = ++level.get_rw();
-        update[nodeLevel] = *head;
-      }
-      auto n = &update[nodeLevel];
-      for(int i = nodeLevel; i >= 1; --i) {
-        update[i].forward.get()->at(i) = node;
-        prev->forward[i] = update[i].forward[i];
-      }
-      nl = false;
-    }
-    return true;
-  }
-
-  pptr<SkipNode> searchNode(const KeyType key) const {
-    auto pred = head;
-    for(auto i = level.get_ro(); i >= 0; --i) {
-      auto item = (*pred->forward)[i];
-      while(item != nullptr) {
-        if( key > item->maxKey) {
-          pred = item;
-          item = (*item->forward)[i];
-        } else if(key < item->minKey) {
-          break;
-        } else {
-          return item;
-        }
-      }
+      if (i == 0) break;
     }
     return nullptr;
   }
 
-  ValueType* search(const KeyType key) const {
-    const auto node = searchNode(key);
-    return node ? node->searchKey(key) : nullptr;
-  }
-
-  void printElementNode() {
-    std::cout << "\nLevel: " << level << std::endl;
-    auto tmp = head;
-
-    for(int i = level; i>=0; i--) {
-      while(tmp != nullptr && tmp->forward) {
-        tmp->printNode();
-        tmp = tmp->forward.get()->at(i);
+  /**
+   * Search for a given key within the given node.
+   *
+   * @param node a pointer to the node to be searched
+   * @param key the key to be searched for
+   * @param[out] val the value associated to this key
+   * @return the true if the key was found
+   */
+  bool searchInNode(const SkipNode * const node, const KeyType &key, ValueType &val) const {
+    for (auto i = 0u; i < N; ++i) {
+      if (node->bitset.get_ro().test(i) && node->keys[i] == key) {
+        val = node->values[i];
+        return true;
       }
-      tmp = head;
-      std::cout << std::endl;
     }
+    return false;
   }
 
-  void printLastLevel() {
-    auto tmp = head;
+  /**
+   * Insert a new key-value pair into this node.
+   *
+   * @param key the key to be inserted
+   * @param value the value to be inserted
+   * @return true if split was necessary
+   */
+  bool insertInNode(SkipNode * const node, const KeyType &key, const ValueType &value) {
+    auto wasSplit = false;
+    auto targetNode = node;
 
-    while(tmp != nullptr && tmp->forward) {
+    /// Handle overflow
+    if (node->isFull()) {
+      auto splitKey = splitNode(node);
+      wasSplit = true;
+      if (key >= splitKey)
+        targetNode = node->forward[0].get();
+    }
+
+    /// Insert
+    auto &targetBits = targetNode->bitset.get_rw();
+    const auto slot = BitOperations::getFreeZero(targetBits);
+    targetNode->keys[slot] = key;
+    targetNode->values[slot] = value;
+    targetBits.set(slot);
+    if (key < targetNode->minKey) targetNode->minKey.get_rw() = key;
+    if (key > targetNode->maxKey) targetNode->maxKey.get_rw() = key;
+    return wasSplit;
+  }
+
+  /**
+   * Split the given node and balance the records.
+   *
+   * @param node the node to be split
+   * @return the split key
+   */
+  KeyType splitNode(SkipNode * const node) {
+    /// Create new sibling and load fields
+    pptr<SkipNode> sibling;
+    newSkipNode(sibling);
+    auto sib = sibling.get();
+    auto &sibBits = sib->bitset.get_rw();
+    auto &sibMin = sib->minKey.get_rw();
+    auto &sibMax = sib->maxKey.get_rw();
+    auto &nodeBits = node->bitset.get_rw();
+
+    /// Balance this with the new sibling node
+    auto sibPos = 0u;
+    const auto [b, splitPos] = findSplitKey<KeyType, N>(node->keys.data());
+    const auto &splitKey = node->keys[splitPos];
+    for (auto i = 0u; i < N; ++i) {
+      if (nodeBits.test(i) && node->keys[i] >= splitKey) {
+        sib->keys[sibPos] = node->keys[i];
+        sib->values[sibPos] = node->values[i];
+        if (node->keys[i] < sibMin) sibMin = node->keys[i];
+        if (node->keys[i] > sibMax) sibMax = node->keys[i];
+        sibBits.set(sibPos);
+        ++sibPos;
+      }
+    }
+    nodeBits = b;
+
+    /// Refresh bounds
+    KeyType tmpMax = MIN_KEY;
+    KeyType tmpMin = MAX_KEY;
+    for (auto i = 0u; i < N; ++i) {
+      if (nodeBits.test(i)) {
+        if (node->keys[i] > tmpMax) tmpMax = node->keys[i];
+        if (node->keys[i] < tmpMin) tmpMin = node->keys[i];
+      }
+    }
+    node->maxKey.get_rw() = tmpMax;
+    node->minKey.get_rw() = tmpMin;
+
+    /// Link new Node
+    sib->forward[0] = node->forward[0];
+    node->forward[0] = sibling;
+    return splitKey;
+  }
+
+  /**
+   * Calculate a random level.
+   *
+   * @return the calculated level
+   */
+  size_t getRandomLevel() const {
+    const auto rlevel = rnd->Uniform(M);
+    return (rlevel ? rlevel : 1);
+  }
+
+  /* -------------------------------------------------------------------------------------------- */
+
+ public:
+  static constexpr pobj_alloc_class_desc AllocClass{256, 64, 1, POBJ_HEADER_COMPACT};
+
+  /**
+   * Constructor for creating a new skip list.
+   *
+   * @param _alloc an allocation class object created in the active pool
+   */
+  explicit woPSkiplist(struct pobj_alloc_class_desc _alloc) :
+    level(0), nodeCount(1), rnd(new dbis::Random(std::time(nullptr))), alloc_class(_alloc) {
+      initList();
+  }
+
+  /**
+   * Destructor for the skip list; should only free volatile parts.
+   */
+  ~woPSkiplist() {
+    delete rnd;
+  }
+
+  /**
+   * Search for the value for a given key.
+   *
+   * @param key the key to be searched for
+   * @param[out] value a reference to the value
+   * @return true if found, else otherwise
+   */
+  bool search(const KeyType &key, ValueType &value) const {
+    const auto node = searchNode(key);
+    return node ? searchInNode(node, key, value) : false;
+  }
+
+  /**
+   * Inserts a new key-value pair into the skip list.
+   *
+   * @param key the key to be inserted
+   * @param value the value to be inserted
+   * @return true if insert was successful, false if a value was updated
+   */
+  bool insert(const KeyType &key, const ValueType &value) {
+    auto wasSplit = false;
+
+    /// find target node @c node and prepare forward pointers for each level in DRAM
+    std::array<SkipNode*, M> update{};
+    auto node = head.get();
+    for (auto i = level.get_ro(); ; --i) {
+      auto next = node->forward[i].get();
+      while (next != nullptr && next->maxKey < key) {
+        node = next;
+        next = next->forward[i].get();
+      }
+      update[i] = node;
+      if (i == 0) break;
+    }
+
+    /// get sibling node of last level, if not tail
+    const auto next = node->forward[0].get();
+    if (next) node = next;
+
+    /// handle duplicates
+    for (auto i = 0u; i < N; ++i) {
+      if (node->bitset.get_ro().test(i) && node->keys[i] == key) {
+        node->values[i] = value;
+        return false;
+      }
+    }
+
+    /// insert key and value into target node
+    if (insertInNode(node, key, value)) {
+      wasSplit = true;
+      ++nodeCount.get_rw();
+    }
+
+    /// Additionally increase the height of the new node to a random level in case of a split
+    if (wasSplit) {
+      /// increase global height, if necessary
+      const auto newLevel = getRandomLevel();
+      if (newLevel > level.get_ro()) {
+        for (auto i = level.get_ro() + 1; i < newLevel; ++i)
+          update[i] = head.get();
+        level.get_rw() = newLevel;
+      }
+      /// update links on all affected levels
+      auto next = node->forward[0].get();
+      next->nodeLevel.get_rw() = newLevel;
+      for (auto i = 1; i < newLevel; ++i) {
+        next->forward[i] = update[i]->forward[i];
+        update[i]->forward[i] = node->forward[0];
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Recover volatile parts of the skip list.
+   */
+  void recover() {
+    rnd = new dbis::Random(std::time(nullptr));
+  }
+
+  /**
+   * Print all nodes to standard output.
+   */
+  void printList() const {
+    std::cout << "\nLevels: " << level + 1 << ", Nodes: " << nodeCount << "\n";
+    std::cout << "________\n";
+    for (int i = level; i >= 0; --i) {
+      auto tmp = head->forward[i];
+      std::cout << "|HEAD|" << i << "| --> ";
+      while (tmp) {
+        tmp->printNode();
+        tmp = tmp->forward[i];
+      }
+      std::cout << "\u001b[31mTAIL\u001b[0m\n";
+    }
+    std::cout << "‾‾‾‾‾‾‾‾" << std::endl;
+  }
+
+  /**
+   * Print only nodes of the last level to standard output.
+   */
+  void printLastLevel() const {
+    auto tmp = head;
+    while(tmp) {
       tmp->printNode();
       tmp = tmp->forward[0];
     }

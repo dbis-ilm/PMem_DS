@@ -19,209 +19,253 @@
 #define SIMPLE_PSKIPLIST_HPP
 
 #include <cstdlib>
-#include <cstdint>
 #include <iostream>
-#include <libpmemobj++/utils.hpp>
-#include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/container/array.hpp>
+#include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
 #include <libpmemobj++/transaction.hpp>
+#include <libpmemobj++/utils.hpp>
+
+#include "utils/Random.hpp"
+
+namespace dbis::pskiplists {
+
 namespace pmemobj_exp = pmem::obj::experimental;
+
+using pmem::obj::array;
 using pmem::obj::delete_persistent;
 using pmem::obj::make_persistent;
 using pmem::obj::p;
 using pmem::obj::persistent_ptr;
 using pmem::obj::transaction;
+template <typename Object>
+using pptr = persistent_ptr<Object>;
 
-class Random {
-  uint32_t seed;
-  public:
-  explicit Random(uint32_t s) : seed(s & 0x7fffffffu) {
-    if (seed == 0 || seed == 2147483647L) {
-      seed = 1;
-    }
-  }
-
-  uint32_t Next() {
-    static const uint32_t M = 2147483647L;   // 2^31-1
-    static const uint64_t A = 16807;  // bits 14, 8, 7, 5, 2, 1, 0
-    uint64_t product = seed * A;
-    seed = static_cast<uint32_t>((product >> 31) + (product & M));
-    if(seed>M) {
-      seed -= M;
-    }
-    return seed;
-  }
-
-  uint32_t Uniform(int n) { return (Next() % n); }
-
-  bool OneIn(int n) { return (Next() % n) == 0; }
-
-  uint32_t Skewed(int max_log) {
-    return Uniform(1 << Uniform(max_log + 1));
-  }
-};
-
+/**
+ * A persistent memory implementation of a skip list with a single record per node.
+ *
+ * @tparam KeyType the data type of the key
+ * @tparam ValueType the data type of the values associated with the key
+ * @tparam MAX_LEVEL the maximum number of levels
+ */
 template<typename KeyType, typename ValueType, int MAX_LEVEL>
 class simplePSkiplist {
 
-  struct SkipNode {
+  static constexpr auto MAX_KEY = std::numeric_limits<KeyType>::max();
+  static constexpr auto MIN_KEY = std::numeric_limits<KeyType>::min();
+
+#ifndef UNIT_TESTS
+    private:
+#else
+    public:
+#endif
+
+  /**
+   * A structure for representing a node of a skip list.
+   */
+  struct alignas(64) SkipNode {
     p<KeyType> key;
     p<ValueType> value;
-    persistent_ptr<persistent_ptr<SkipNode>> forward;
-    p<int> nodeLevel;
+    p<size_t> nodeLevel;
+    array<pptr<SkipNode>, MAX_LEVEL> forward;
 
-    SkipNode() {}
+    /**
+     * Constructor for creating a new empty node.
+     */
+    SkipNode() : nodeLevel(0) {}
 
-    SkipNode(const KeyType key, const ValueType value) {
-      this->key = key;
-      this->value = value;
+    /**
+     * Constructor for creating a new empty node on a given level.
+     */
+    SkipNode(size_t level) : nodeLevel(level) {}
+
+    /**
+     * Constructor for creating a new node with an initial key and value.
+     */
+    explicit SkipNode(const KeyType &key, const ValueType &value, size_t level) :
+      key(key), value(value), nodeLevel(level) {}
+
+    /**
+     * Print details this node to standard output.
+     */
+    void printNode() {
+      std::cout << "{" << key << "," << value << "} --> ";
     }
-  };
 
-  persistent_ptr<SkipNode> head;
-  persistent_ptr<SkipNode> tail;
-  p<int> level;
+  }; /// end struct SkipNode
 
+  /* -------------------------------------------------------------------------------------------- */
 
-  p<size_t> nodeCount;
-  Random rnd;
+  p<size_t> level;     ///< the current number of levels (height)
+  p<size_t> nodeCount; ///< the current number of nodes
+  dbis::Random* rnd;   ///< volatile pointer to a random number generator
+  pptr<SkipNode> head; ///< pointer to the entry node of the skip list
 
-  void createNode(int level, persistent_ptr<SkipNode> &node) {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    transaction::run(pop, [&] {node = make_persistent<SkipNode>();
-        node->forward = make_persistent<persistent_ptr<SkipNode>>();
-        for(int i=0; i<level+1;i++) {
-        node->forward[i] = make_persistent<SkipNode>();
-        }
-        //node->forward = new SkipNode*[level+1];
-        node->nodeLevel = level;
-        });
-  }
-
-  void createNode(int level, persistent_ptr<SkipNode> &node, KeyType key, ValueType value) {
+  /**
+   * Create a new node within the skip list.
+   *
+   * @param node[out] the pointer/reference to the newly allocated node
+   */
+  void newSkipNode(pptr<SkipNode> &node) {
     auto pop = pmem::obj::pool_by_vptr(this);
     transaction::run(pop, [&] {
-        node = make_persistent<SkipNode>(key, value);
-        if(level > 0) {
-        //node->forward = new SkipNode*[level +1];
-        node->forward = make_persistent<persistent_ptr<SkipNode>>();
-        for(int i=0; i<level+1; i++) {
-        node->forward[i] = make_persistent<SkipNode>();
-        }
-        }
-        node->nodeLevel = level;
-        });
+        node = make_persistent<SkipNode>(level);
+    });
   }
 
-  void createList(KeyType tailKey) {
-    createNode(0, tail);
-    tail->key = tailKey;
-    this->level = 0;
+  /**
+   * Create a new node within the skip list.
+   *
+   * @param level the level of the node within the skip list
+   * @param key the initial key
+   * @param value the initial value
+   * @param node[out] the pointer/reference to the newly allocated node
+   */
+  void newSkipNode(const KeyType &key, const ValueType &value, size_t level, pptr<SkipNode> &node) {
+    auto pop = pmem::obj::pool_by_vptr(this);
+    transaction::run(pop, [&] {
+        node = make_persistent<SkipNode>(key, value, level);
+    });
+  }
 
-    createNode(MAX_LEVEL, head);
-    for(int i=0; i < MAX_LEVEL; ++i) {
-      head->forward[i] = tail;
+  /**
+   * Initialize a skip list with a new head and initial empty node.
+   */
+  void initList() {
+    newSkipNode(MIN_KEY, ValueType{}, MAX_LEVEL, head);
+    auto &headForward = head->forward;
+    for (auto i = 0u; i < MAX_LEVEL; ++i) {
+      headForward[i] = nullptr;
     }
-    nodeCount = 0;
   }
 
-  int getRandomLevel() {
-    int level = static_cast<int>(rnd.Uniform(MAX_LEVEL));
-    if (level == 0) {
-      level = 1;
-    }
-    return level;
+  size_t getRandomLevel() const {
+    const auto rlevel = rnd->Uniform(MAX_LEVEL);
+    return (rlevel ? rlevel : 1);
   }
+
+  /* -------------------------------------------------------------------------------------------- */
 
   public:
 
-  simplePSkiplist() : head(nullptr), tail(nullptr), level(0), nodeCount(0), rnd(0x12345678) {}
-
-  simplePSkiplist(KeyType tailKey) : rnd(0x12345678) {
-    createList(tailKey);
+  /**
+   * Constructor for creating a new skip list.
+   */
+  simplePSkiplist() : level(0), nodeCount(0), rnd(new dbis::Random(std::time(nullptr))) {
+    initList();
   }
 
-
-  bool insert(KeyType key, ValueType value) {
-    auto pop = pmem::obj::pool_by_vptr(this);
-    bool ret = true;
-    transaction::run(pop, [&] {
-        persistent_ptr<SkipNode> update[MAX_LEVEL];
-
-        auto node = head;
-
-        for(int i = level; i>= 0; --i) {
-        while(node->forward[i]->key < key) {
-        node = node->forward[i];
-        }
-        update[i] = node;
-        }
-
-        node = node->forward[0];
-
-        if(node->key == key) {
-        ret = false;
-        }
-
-        auto nodeLevel = getRandomLevel();
-
-        if(nodeLevel > level) {
-          nodeLevel = ++level;
-          update[nodeLevel] = head;
-        }
-
-        persistent_ptr<SkipNode> newNode;
-        createNode(nodeLevel, newNode, key, value);
-
-        for(int i = nodeLevel; i >= 0; --i) {
-          node = update[i];
-          newNode->forward[i] = node->forward[i];
-          node->forward[i] = newNode;
-        }
-        ++nodeCount;
-    });
-    return ret;
+  /**
+   * Destructor for the skip list; should only free volatile parts.
+   */
+  ~simplePSkiplist() {
+    delete rnd;
   }
 
-  persistent_ptr<SkipNode> search(const KeyType key) {
-    auto node = head;
-    for(int i = level; i >= 0; --i) {
-      while(node->forward[i]->key < key) {
-        node = *(node->forward + i);
+  /**
+   * Inserts a new key-value pair into the skip list.
+   *
+   * @param key the key to be inserted
+   * @param value the value to be inserted
+   * @return true if insert was successful, false if a value was updated
+   */
+  bool insert(const KeyType &key, const ValueType &value) {
+    /// find target node @c node and prepare forward pointers for each level in DRAM
+    std::array<SkipNode*, MAX_LEVEL> update{};
+    auto node = head.get();
+    for(auto i = level.get_ro();; --i) {
+      auto next = node->forward[i].get();
+      while(next != nullptr && next->key < key) {
+        node = next;
+        next = node->forward[i].get();
       }
+      update[i] = node;
+      if (i == 0) break;
     }
-    node = node->forward[0];
+
+    /// get sibling node of last level, if not tail
+    const auto next = node->forward[0].get();
+    if (next) node = next;
+
+    /// handle duplicates
     if(node->key == key) {
-      return node;
-    } else {
-      return nullptr;
+      node->value = value;
+      return false;
     }
+
+    /// insert key and value into a new node with random level
+    const auto newLevel = getRandomLevel();
+    if(newLevel > level.get_ro()) {
+      for (auto i = level.get_ro() + 1; i < newLevel; ++i)
+        update[i] = head.get();
+      level.get_rw() = newLevel;
+    }
+    pptr<SkipNode> newNode;
+    newSkipNode(key, value, newLevel, newNode);
+    auto newNodeV = newNode.get();
+    for(auto i = 0u; i < newLevel; ++i) {
+      newNodeV->forward[i] = update[i]->forward[i];
+      update[i]->forward[i] = newNode;
+    }
+    ++nodeCount.get_rw();
+
+    return true;
   }
 
-  void printNodes() {
-    auto tmp = head;
-    while (tmp->forward[0] != tail) {
-      tmp = tmp->forward[0];
-      dumpNodeDetail(tmp, tmp->nodeLevel);
-      std::cout << "----------------------------" << std::endl;
+  /**
+   * Search for the value for a given key.
+   *
+   * @param key the key to be searched for
+   * @param[out] value a copy of the value
+   * @return true if found, else otherwise
+   */
+  bool search(const KeyType &key, ValueType &val) const {
+    auto node = head.get();
+    for (auto i = level.get_ro();; --i) {
+      auto next = node->forward[i].get();
+      while (next && key > next->key.get_ro()) {
+        node = next;
+        next = next->forward[i].get();
+      }
+      if (i == 0) break;
     }
-    std::cout << std::endl;
+    node = node->forward[0].get();
+    if(node && node->key == key) {
+      val = node->value;
+      return true;
+    }
+    return false;
   }
 
-  void dumpNodeDetail(persistent_ptr<SkipNode> node, int nodeLevel) {
-    if (node == nullptr) {
-      return;
-    }
-    std::cout << "node->key:" << node->key << ",node->value:" << node->value << std::endl;
-    for (int i = 0; i <= nodeLevel; ++i) {
-      std::cout << "forward[" << i << "]:" << "key:" << node->forward[i]->key << ",value:" << node->forward[i]->value
-        << std::endl;
-    }
+  /**
+   * Recover volatile parts of the skip list.
+   */
+  void recover() {
+    rnd = new dbis::Random(std::time(nullptr));
   }
 
-};
+  /**
+   * Print all nodes to standard output.
+   */
+  void printList() const {
+    std::cout << "\nLevels: " << level + 1 << ", Nodes: " << nodeCount << "\n";
+    std::cout << "________\n";
+    for (int i = level; i >= 0; --i) {
+      auto tmp = head->forward[i];
+      std::cout << "|HEAD|" << i << "| --> ";
+      while (tmp) {
+        tmp->printNode();
+        tmp = tmp->forward[i];
+      }
+      std::cout << "\u001b[31mTAIL\u001b[0m\n";
+    }
+    std::cout << "‾‾‾‾‾‾‾‾" << std::endl;
+  }
 
-#endif //SIMPLE_PSKIPLIST_HPP
+}; /// end class simplePSkiplist
+
+} /// namespace dbis::pskiplists
+
+#endif /// SIMPLE_PSKIPLIST_HPP
 

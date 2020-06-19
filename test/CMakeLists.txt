@@ -27,6 +27,7 @@ do_test(PTableInfoTest ptable)
 do_test(PTupleTest ptable)
 do_test(PTableTest ptable)
 # woPSkiplist
+do_test(simplePSkiplistTest)
 do_test(woPSkiplistTest)
 # PTries
 do_test(BaseTrieTest)
