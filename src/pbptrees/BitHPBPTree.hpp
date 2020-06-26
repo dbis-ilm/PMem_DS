@@ -541,30 +541,30 @@ class BitHPBPTree {
       if (pos > 0 && (prevNumKeys = leafRef.prevLeaf->bits.get_ro().count()) > middle) {
         /// we have a sibling at the left for rebalancing the keys
         balanceLeafNodes(leafRef.prevLeaf, leaf);
-        const auto newMin = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
-                                                             leafRef.bits.get_ro())];
-        const auto prevPos = findMinKeyGreaterThan(leafRef.keys.get_ro(), leafRef.bits.get_ro(),
-                                                   newMin);
+        const auto newMin = leafRef.keys.get_ro()[findMinKeyPos(leafRef.keys.get_ro(),
+                                                                leafRef.bits.get_ro())];
+        const auto prevPos = findMinKeyPosGreaterThan(leafRef.keys.get_ro(), leafRef.bits.get_ro(),
+                                                      newMin);
         nodeRef.keys[prevPos] = newMin;
       } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() > middle) {
         /// we have a sibling at the right for rebalancing the keys
         balanceLeafNodes(leafRef.nextLeaf, leaf);
         const auto &nextLeaf = *leafRef.nextLeaf;
         nodeRef.keys[pos] =
-          nextLeaf.keys.get_ro()[findMinKey(nextLeaf.keys.get_ro(), nextLeaf.bits.get_ro())];
+          nextLeaf.keys.get_ro()[findMinKeyPos(nextLeaf.keys.get_ro(), nextLeaf.bits.get_ro())];
       } else {
         /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
         ///    direct parent
         pptr<LeafNode> survivor = nullptr;
 
-        if (findMinKey(nodeRef.keys, nodeRef.bits) != pos && prevNumKeys <= middle) {
+        if (findMinKeyPos(nodeRef.keys, nodeRef.bits) != pos && prevNumKeys <= middle) {
           /// merge left
           survivor = mergeLeafNodes(leafRef.prevLeaf, leaf);
           deleteLeafNode(leaf);
           /// move to next left slot
           const auto prevPos = (pos == N) ?
-            findMaxKey(nodeRef.keys, nodeRef.bits) : ///< we need a new rightmost node
-            findMaxKeySmallerThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
+            findMaxKeyPos(nodeRef.keys, nodeRef.bits) : ///< we need a new rightmost node
+            findMaxKeyPosSmallerThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
           nodeRef.children[pos] = nodeRef.children[prevPos];
           nodeRef.bits.reset(prevPos);
         } else if (pos < N && leafRef.nextLeaf->bits.get_ro().count() <= middle) {
@@ -572,7 +572,7 @@ class BitHPBPTree {
           survivor = mergeLeafNodes(leaf, leafRef.nextLeaf);
           deleteLeafNode(leafRef.nextLeaf);
           /// move to next right slot
-          const auto nextPos = findMinKeyGreaterThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
+          const auto nextPos = findMinKeyPosGreaterThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
           nodeRef.children[nextPos] = nodeRef.children[pos];
           nodeRef.bits.reset(pos);
         } else  assert(false); ///< this shouldn't happen?!
@@ -649,7 +649,7 @@ class BitHPBPTree {
     if (donorKeys[0] < receiverKeys[0]) {
       /// move from one node to a node with larger keys
       for (auto i = 0u; i < toMove; ++i) {
-        const auto max = findMaxKey(donorKeys, donorBits);
+        const auto max = findMaxKeyPos(donorKeys, donorBits);
         const auto u = BitOperations::getFreeZero(receiverBits);
         /// move the donor's maximum key to the receiver
         receiverKeys[u] = donorKeys[max];
@@ -660,7 +660,7 @@ class BitHPBPTree {
     } else {
       /// move from one node to a node with smaller keys
       for (auto i = 0u; i < toMove; ++i) {
-        const auto min = findMinKey(donorKeys, donorBits);
+        const auto min = findMinKeyPos(donorKeys, donorBits);
         const auto u = BitOperations::getFreeZero(receiverBits);
         /// move the donor's minimum key to the receiver
         receiverKeys[u] = donorKeys[min];
@@ -733,10 +733,10 @@ class BitHPBPTree {
     assert(node != nullptr);
     assert(child != nullptr);
     auto &nodeRef = *node;
-    const auto nMinKeyPos = findMinKey(nodeRef.keys, nodeRef.bits);
-    const auto prevPos = findMaxKeySmallerThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]); //could be N
+    const auto nMinKeyPos = findMinKeyPos(nodeRef.keys, nodeRef.bits);
+    const auto prevPos = findMaxKeyPosSmallerThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]); //could be N
     const auto prevNumKeys = nodeRef.children[prevPos].branch->bits.count();
-    const auto nextPos = findMinKeyGreaterThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
+    const auto nextPos = findMinKeyPosGreaterThan(nodeRef.keys, nodeRef.bits, nodeRef.keys[pos]);
     const auto nextNumKeys = nodeRef.children[nextPos].branch->bits.count();
     constexpr auto middle = (N + 1) / 2;
 
@@ -769,7 +769,7 @@ class BitHPBPTree {
       mergeBranchNodes(child, nodeRef.keys[pos], rSibling);
       deleteBranchNode(rSibling);
       nodeRef.bits.reset(pos);
-      if (pos == findMaxKey(nodeRef.keys, nodeRef.bits))
+      if (pos == findMaxKeyPos(nodeRef.keys, nodeRef.bits))
         nodeRef.children[N] = child; ///< new rightmost child
       return child;
     } else {
@@ -793,8 +793,8 @@ class BitHPBPTree {
     const auto &nodeRef = *node;
     auto &sibRef = *sibling;
 
-    assert(key <= nodeRef.keys[findMinKey(nodeRef.keys, nodeRef.bits)]);
-    assert(sibRef.keys[findMaxKey(sibRef.keys, sibRef.bits)] < key);
+    assert(key <= nodeRef.keys[findMinKeyPos(nodeRef.keys, nodeRef.bits)]);
+    assert(sibRef.keys[findMaxKeyPos(sibRef.keys, sibRef.bits)] < key);
 
     auto u = BitOperations::getFreeZero(sibRef.bits);
     sibRef.keys[u] = key;
@@ -844,7 +844,7 @@ class BitHPBPTree {
       receiverRef.bits.set(u);
       /// 1.2. move toMove-1 keys/children from donor to receiver
       for (auto i = 1u; i < toMove; ++i) {
-        const auto max = findMaxKey(donorRef.keys, donorRef.bits);
+        const auto max = findMaxKeyPos(donorRef.keys, donorRef.bits);
         u = BitOperations::getFreeZero(receiverRef.bits);
         receiverRef.keys[u] = donorRef.keys[max];
         receiverRef.children[u] = donorRef.children[max];
@@ -852,7 +852,7 @@ class BitHPBPTree {
         donorRef.bits.reset(max);
       }
       /// 1.3 set donors new rightmost child and new parent key
-      const auto dPos = findMaxKey(donorRef.keys, donorRef.bits);
+      const auto dPos = findMaxKeyPos(donorRef.keys, donorRef.bits);
       donorRef.children[N] = donorRef.children[dPos];
       parentRef.keys[pos] = donorRef.keys[dPos];
       donorRef.bits.reset(dPos);
@@ -867,14 +867,14 @@ class BitHPBPTree {
       /// 2.2. move toMove-1 keys/children from donor to receiver
       for (auto i = 1u; i < toMove; ++i) {
         u = BitOperations::getFreeZero(receiverRef.bits);
-        const auto min = findMinKey(donorRef.keys, donorRef.bits);
+        const auto min = findMinKeyPos(donorRef.keys, donorRef.bits);
         receiverRef.keys[u] = donorRef.keys[min];
         receiverRef.children[u] = donorRef.children[min];
         receiverRef.bits.set(u);
         donorRef.bits.reset(min);
       }
       /// 2.3. set receivers new rightmost child and new parent key
-      const auto dPos = findMinKey(donorRef.keys, donorRef.bits);
+      const auto dPos = findMinKeyPos(donorRef.keys, donorRef.bits);
       receiverRef.children[N] = donorRef.children[dPos];
       parentRef.keys[pos] = donorRef.keys[dPos];
       donorRef.bits.reset(dPos);
@@ -917,7 +917,7 @@ class BitHPBPTree {
       if (key > splitRef.key) {
         insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.bits.get_ro()), key, val);
       } else {
-        if (key > findMaxKey(nodeRef.keys.get_ro(), nodeRef.bits.get_ro())) {
+        if (key > nodeRef.keys.get_ro()[findMaxKeyPos(nodeRef.keys.get_ro(), nodeRef.bits.get_ro())]) {
           /// Special case: new key would be the middle, thus must be right
           insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.bits.get_ro()), key, val);
           splitRef.key = key;
@@ -1085,7 +1085,7 @@ class BitHPBPTree {
       /// Insert new key and children
       auto &hostRef = *host;
       const auto u = BitOperations::getFreeZero(hostRef.bits);
-      const auto nextPos = findMinKeyGreaterThan(hostRef.keys, hostRef.bits, childSplitInfo.key);
+      const auto nextPos = findMinKeyPosGreaterThan(hostRef.keys, hostRef.bits, childSplitInfo.key);
 
       hostRef.keys[u] = childSplitInfo.key;
       hostRef.children[u] = childSplitInfo.leftChild;
@@ -1130,7 +1130,7 @@ class BitHPBPTree {
    * @return the position of the key + 1 (or 0 or @c N)
    */
   auto lookupPositionInBranchNode(const BranchNode *node, const KeyType &key) const {
-    return findMinKeyGreaterThan(node->keys, node->bits, key);
+    return findMinKeyPosGreaterThan(node->keys, node->bits, key);
   }
 
   /**
@@ -1206,14 +1206,14 @@ class BitHPBPTree {
         BranchNode *newNode = newBranchNode();
         newNode->children[0] = leaf;
         auto &splitRef = *splitInfo;
-        splitRef.key = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
+        splitRef.key = leafRef.keys.get_ro()[findMinKeyPos(leafRef.keys.get_ro(),
                                                         leafRef.bits.get_ro())];
         splitRef.leftChild = node;
         splitRef.rightChild = newNode;
         return true;
       } else {
         nodeRef.bits.set(nNumKeys);
-        nodeRef.keys[nNumKeys] = leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(),
+        nodeRef.keys[nNumKeys] = leafRef.keys.get_ro()[findMinKeyPos(leafRef.keys.get_ro(),
                                                                   leafRef.bits.get_ro())];
         if (nNumKeys > 0)
           nodeRef.children[nNumKeys] = nodeRef.children[N];

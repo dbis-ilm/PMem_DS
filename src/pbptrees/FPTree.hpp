@@ -513,7 +513,7 @@ class FPTree {
       if (key > splitRef.key) {
         insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.bits.get_ro()), key, val);
       } else {
-        if (key > findMaxKey(nodeRef.keys.get_ro(), nodeRef.bits.get_ro())) {
+        if (key > nodeRef.keys.get_ro()[findMaxKeyPos(nodeRef.keys.get_ro(), nodeRef.bits.get_ro())]) {
           /// Special case: new key would be the middle, thus must be right
           insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.bits.get_ro()), key, val);
           splitRef.key = key;
@@ -869,13 +869,13 @@ class FPTree {
       balanceLeafNodes(leafRef.prevLeaf, leaf);
 
       nodeRef.keys[pos - 1] =
-          leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(), leafRef.bits.get_ro())];
+          leafRef.keys.get_ro()[findMinKeyPos(leafRef.keys.get_ro(), leafRef.bits.get_ro())];
     } else if (pos < nodeRef.numKeys && leafRef.nextLeaf->bits.get_ro().count() > middle) {
       /// we have a sibling at the right for rebalancing the keys
       balanceLeafNodes(leafRef.nextLeaf, leaf);
       auto &nextLeaf = *leafRef.nextLeaf;
       nodeRef.keys[pos] =
-          nextLeaf.keys.get_ro()[findMinKey(nextLeaf.keys.get_ro(), nextLeaf.bits.get_ro())];
+          nextLeaf.keys.get_ro()[findMinKeyPos(nextLeaf.keys.get_ro(), nextLeaf.bits.get_ro())];
     } else {
       /// 2. if this fails we have to merge two leaf nodes but only if both nodes have the same
       ///    direct parent
@@ -1011,7 +1011,7 @@ class FPTree {
     if (donorKeys[0] < receiverKeys[0]) {
       /// move to a node with larger keys
       for (auto i = 0u; i < toMove; ++i) {
-        const auto max = findMaxKey(donorKeys, donorBits);
+        const auto max = findMaxKeyPos(donorKeys, donorBits);
         const auto pos = BitOperations::getFreeZero(receiverBits);
         receiverBits.set(pos);
         receiverHashs[pos] = fpHash(donorKeys[max]);
@@ -1022,7 +1022,7 @@ class FPTree {
     } else {
       /// move to a node with smaller keys
       for (auto i = 0u; i < toMove; ++i) {
-        const auto min = findMinKey(donorKeys, donorBits);
+        const auto min = findMinKeyPos(donorKeys, donorBits);
         const auto pos = BitOperations::getFreeZero(receiverBits);
         receiverBits.set(pos);
         receiverHashs[pos] = fpHash(donorKeys[min]);
@@ -1227,13 +1227,13 @@ class FPTree {
         auto newNode = newBranchNode();
         newNode->children[0] = leaf;
         splitRef.key =
-            leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(), leafRef.bits.get_ro())];
+            leafRef.keys.get_ro()[findMinKeyPos(leafRef.keys.get_ro(), leafRef.bits.get_ro())];
         splitRef.leftChild = node;
         splitRef.rightChild = newNode;
         return true;
       } else {
         nodeRef.keys[nodeRef.numKeys] =
-            leafRef.keys.get_ro()[findMinKey(leafRef.keys.get_ro(), leafRef.bits.get_ro())];
+            leafRef.keys.get_ro()[findMinKeyPos(leafRef.keys.get_ro(), leafRef.bits.get_ro())];
         ++nodeRef.numKeys;
         nodeRef.children[nodeRef.numKeys] = leaf;
         return false;

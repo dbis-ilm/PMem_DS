@@ -348,7 +348,7 @@ TEST_CASE("Finding the leaf node containing a key", "[BitHPBPTree]") {
     btree.underflowAtBranchLevel(innerNodes[0], 0, innerNodes[1]);
 
     REQUIRE(node1Ref.bits.count() == 1);
-    REQUIRE((node1Ref.keys)[dbis::findMinKey(node1Ref.keys, node1Ref.bits)] == 9);
+    REQUIRE((node1Ref.keys)[dbis::findMinKeyPos(node1Ref.keys, node1Ref.bits)] == 9);
 
     REQUIRE(node2Ref.bits.count() == 2);
     REQUIRE(node3Ref.bits.count() == 2);

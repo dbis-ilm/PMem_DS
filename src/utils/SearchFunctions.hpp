@@ -24,6 +24,7 @@
 #include <array>
 #include <bitset>
 #include <cstdlib> //< rand()
+#include <utility> //< pair
 
 namespace dbis {
 
@@ -36,10 +37,10 @@ using pptr = pmem::obj::persistent_ptr<Object>;
 class ElementOfRankK {
  public:
   template <typename KeyType>
-  static size_t elementOfRankK(const size_t k, KeyType data[], const size_t start,
-                               const size_t length) {
-    const size_t end = start + length - 1;
-    size_t i;
+  static std::size_t elementOfRankK(const std::size_t k, KeyType data[], const std::size_t start,
+                               const std::size_t length) {
+    const std::size_t end = start + length - 1;
+    std::size_t i;
     const auto parts = (length  + 4) / 5;
     KeyType median[parts];
     for (i = 0; i < length / 5; ++i) median[i] = findMedian(data + start + i * 5, 5);
@@ -48,7 +49,7 @@ class ElementOfRankK {
       ++i;
     }
     const KeyType medOfMed = (i == 1)? median[i - 1]: elementOfRankK(i / 2, median, 0, i);
-    const size_t pos = partition(data, start, end, medOfMed);
+    const std::size_t pos = partition(data, start, end, medOfMed);
     if (pos - start == k - 1) return data[pos];
     if (pos - start  > k - 1) return elementOfRankK(k, data, start, pos - start);
     return elementOfRankK(k - pos + start - 1, data, pos + 1, end - pos);
@@ -57,14 +58,14 @@ class ElementOfRankK {
 
   private:
     template <typename KeyType>
-    static inline KeyType findMedian(KeyType data[], const size_t length) {
+    static inline KeyType findMedian(KeyType data[], const std::size_t length) {
       std::sort(data, data + length);
       return data[length / 2];
     }
 
     template <typename KeyType>
-    static auto partition(KeyType data[], const size_t start, const size_t end, const KeyType &x) {
-      size_t i;
+    static auto partition(KeyType data[], const std::size_t start, const std::size_t end, const KeyType &x) {
+      std::size_t i;
       for (i = start; i < end; ++i) if (data[i] == x) break;
       std::swap(data[i], data[end]);
 
@@ -78,15 +79,15 @@ class ElementOfRankK {
 
 }; /* end class */
 
-template<typename KeyType, size_t M>
-std::pair<std::bitset<M>, size_t>
+template<typename KeyType, std::size_t M>
+std::pair<std::bitset<M>, std::size_t>
 findSplitKey(const KeyType * const data) {
   ///TODO: can this be accelerated?
   std::array<KeyType, M> repData;
   memcpy(repData.begin(), data, M * sizeof(KeyType));
   std::bitset<M> b{};
   const auto splitKey = ElementOfRankK::elementOfRankK((M+1)/2 + 1, repData.data(), 0, M);
-  size_t splitPos;
+  std::size_t splitPos;
   for(auto i = 0u; i < M; ++i) {
     if(data[i] < splitKey) {
       b.set(i);
@@ -102,7 +103,7 @@ findSplitKey(const KeyType * const data) {
  * @return position of the minimum key
  */
 template<typename Node>
-static inline auto findMinKey(const pptr<Node> &node) {
+static inline auto findMinKeyPos(const pptr<Node> &node) {
   const auto &nodeRef = *node;
   const auto &keysRef = nodeRef.keys.get_ro();
   auto pos = 0u;
@@ -120,8 +121,8 @@ static inline auto findMinKey(const pptr<Node> &node) {
  * @param node the node to find the minimum key in
  * @return position of the minimum key
  */
-template<typename KeyType, size_t N>
-static inline auto findMinKey(const std::array<KeyType, N> &keysRef,
+template<typename KeyType, std::size_t N>
+static inline auto findMinKeyPos(const std::array<KeyType, N> &keysRef,
                               const std::bitset<N> &bitsRef) {
   auto pos = 0u;
   auto currMinKey = std::numeric_limits<KeyType>::max();
@@ -140,7 +141,7 @@ static inline auto findMinKey(const std::array<KeyType, N> &keysRef,
  * @return position of the maximum key
  */
 template<typename Node>
-static inline auto findMaxKey(const pptr<Node> &node) {
+static inline auto findMaxKeyPos(const pptr<Node> &node) {
   const auto &nodeRef = *node;
   const auto &keysRef = nodeRef.keys.get_ro();
   auto pos = 0u;
@@ -159,8 +160,8 @@ static inline auto findMaxKey(const pptr<Node> &node) {
  * @param bitsRef a reference to the bitset of the node
  * @return position of the maximum key
  */
-template<typename KeyType, size_t N>
-static inline auto findMaxKey(const std::array<KeyType, N> &keysRef,
+template<typename KeyType, std::size_t N>
+static inline auto findMaxKeyPos(const std::array<KeyType, N> &keysRef,
                               const std::bitset<N> &bitsRef) {
   auto pos = 0u;
   auto currMaxKey = std::numeric_limits<KeyType>::min();
@@ -180,8 +181,8 @@ static inline auto findMaxKey(const std::array<KeyType, N> &keysRef,
  * @param key the current minimum key
  * @return position of the next minimum key
  */
-template<size_t N, typename KeyType>
-static inline auto findMinKeyGreaterThan(const std::array<KeyType, N> &keysRef,
+template<std::size_t N, typename KeyType>
+static inline auto findMinKeyPosGreaterThan(const std::array<KeyType, N> &keysRef,
                                          const std::bitset<N> &bitsRef,
                                          const KeyType &key) {
   auto pos = 0ul;
@@ -204,8 +205,8 @@ static inline auto findMinKeyGreaterThan(const std::array<KeyType, N> &keysRef,
  * @param key the current maximum key
  * @return position of the next maximum key
  */
-template<size_t N, typename KeyType>
-static inline auto findMaxKeySmallerThan(const std::array<KeyType, N> &keysRef,
+template<std::size_t N, typename KeyType>
+static inline auto findMaxKeyPosSmallerThan(const std::array<KeyType, N> &keysRef,
                                          const std::bitset<N> &bitsRef,
                                          const KeyType &key) {
   auto pos = 0ul;
@@ -229,7 +230,7 @@ static inline auto findMaxKeySmallerThan(const std::array<KeyType, N> &keysRef,
  * @param key the searched key
  * @return position of the key
  */
-template<bool isBranch, typename KeyType, size_t N>
+template<bool isBranch, typename KeyType, std::size_t N>
 static inline unsigned int binarySearch(const std::array<KeyType, N> &keys, int l, int r,
                                         const KeyType &key) {
   auto pos = 0u;
@@ -255,7 +256,7 @@ static inline unsigned int binarySearch(const std::array<KeyType, N> &keys, int 
  * @param key the searched key
  * @return position of the key
  */
-template<bool isBranch, typename KeyType, size_t N>
+template<bool isBranch, typename KeyType, std::size_t N>
 static inline unsigned int binarySearch(const std::array<KeyType, N> &keys,
                                         const std::array<uint8_t, N+1> &slots, int l, int r,
                                         const KeyType &key) {
