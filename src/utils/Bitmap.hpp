@@ -69,7 +69,6 @@ struct Sanitize<0> {
       return (static_cast<Word>(1)) << (bitPos % BITS_PER_WORD);
     }
 
-   private:
     void check(size_t bitpos) const {
       if (bitpos >= NUM_BITS)
         throw std::out_of_range("pos (which is " + std::to_string(bitpos) +
@@ -109,19 +108,19 @@ struct Sanitize<0> {
       }
 
       Bitref& operator=(const Bitref& other) noexcept {
-        if ((*(other.wordPtr) & maskbit(other.bitPos)))
-          *wordPtr |= maskbit(bitPos);
+        if ((*(other.wordPtr) & Bitmap::maskbit(other.bitPos)))
+          *wordPtr |= Bitmap::maskbit(bitPos);
         else
-          *wordPtr &= ~maskbit(bitPos);
+          *wordPtr &= ~Bitmap::maskbit(bitPos);
         return *this;
       }
 
-      bool operator~() const noexcept { return (*(wordPtr)&maskbit(bitPos)) == 0; }
+      bool operator~() const noexcept { return (*(wordPtr)&Bitmap::maskbit(bitPos)) == 0; }
 
-      operator bool() const noexcept { return (*(wordPtr)&maskbit(bitPos)) != 0; }
+      operator bool() const noexcept { return (*(wordPtr)&Bitmap::maskbit(bitPos)) != 0; }
 
       Bitref& flip() noexcept {
-        *wordPtr ^= maskbit(bitPos);
+        *wordPtr ^= Bitmap::maskbit(bitPos);
         return *this;
       }
     };  /// end class Bitref
