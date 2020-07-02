@@ -86,7 +86,7 @@ static void BM_TreeErase(benchmark::State &state) {
   pop.drain();
 
   const auto pos = treeRef.lookupPositionInLeafNode(leaf, KEYPOS);
-  // const auto pos = dbis::BitOperations::getFreeZero(leaf->bits.get_ro());
+  // const auto pos = leaf->bits.get_ro().getFreeZero();
 
 #ifdef ENABLE_PCM
   SocketCounterState before_sstate;

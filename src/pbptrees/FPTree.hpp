@@ -19,7 +19,6 @@
 #define DBIS_FPTree_hpp_
 
 #include <array>
-#include <bitset>
 #include <cmath>
 #include <iostream>
 
@@ -31,7 +30,7 @@
 #include <libpmemobj++/utils.hpp>
 
 #include "config.h"
-#include "utils/BitOperations.hpp"
+#include "utils/Bitmap.hpp"
 #include "utils/PersistEmulation.hpp"
 #include "utils/SearchFunctions.hpp"
 
@@ -131,7 +130,7 @@ class FPTree {
     static constexpr auto PaddingSize = (64 - SearchSize % 64) % 64;
 
     // p<LeafSearch> search;               ///< helper structure for faster searches
-    p<std::bitset<M>> bits;              ///< bitset for valid entries
+    p<dbis::Bitmap<M>> bits;             ///< bitmap for valid entries
     p<std::array<uint8_t, M>> fp;        ///< fingerprint array (n & 0xFF)
     pptr<LeafNode> nextLeaf;             ///< pointer to the subsequent sibling
     pptr<LeafNode> prevLeaf;             ///< pointer to the preceeding sibling
@@ -501,7 +500,7 @@ class FPTree {
       nodeRef.values.get_rw()[pos] = val;
       return false;
     }
-    pos = BitOperations::getFreeZero(nodeRef.bits.get_ro());
+    pos = nodeRef.bits.get_ro().getFreeZero();
     if (pos == M) {
       /* split the node */
       splitLeafNode(node, splitInfo);
@@ -511,14 +510,14 @@ class FPTree {
 
       /* insert the new entry */
       if (key > splitRef.key) {
-        insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.bits.get_ro()), key, val);
+        insertInLeafNodeAtPosition(sibling, sibRef.bits.get_ro().getFreeZero(), key, val);
       } else {
         if (key > nodeRef.keys.get_ro()[findMaxKeyPos(nodeRef.keys.get_ro(), nodeRef.bits.get_ro())]) {
           /// Special case: new key would be the middle, thus must be right
-          insertInLeafNodeAtPosition(sibling, BitOperations::getFreeZero(sibRef.bits.get_ro()), key, val);
+          insertInLeafNodeAtPosition(sibling, sibRef.bits.get_ro().getFreeZero(), key, val);
           splitRef.key = key;
         } else {
-          insertInLeafNodeAtPosition(node, BitOperations::getFreeZero(nodeRef.bits.get_ro()), key, val);
+          insertInLeafNodeAtPosition(node, nodeRef.bits.get_ro().getFreeZero(), key, val);
         }
       }
       /* inform the caller about the split */
@@ -1012,7 +1011,7 @@ class FPTree {
       /// move to a node with larger keys
       for (auto i = 0u; i < toMove; ++i) {
         const auto max = findMaxKeyPos(donorKeys, donorBits);
-        const auto pos = BitOperations::getFreeZero(receiverBits);
+        const auto pos = receiverBits.getFreeZero();
         receiverBits.set(pos);
         receiverHashs[pos] = fpHash(donorKeys[max]);
         receiverKeys[pos] = donorKeys[max];
@@ -1023,7 +1022,7 @@ class FPTree {
       /// move to a node with smaller keys
       for (auto i = 0u; i < toMove; ++i) {
         const auto min = findMinKeyPos(donorKeys, donorBits);
-        const auto pos = BitOperations::getFreeZero(receiverBits);
+        const auto pos = receiverBits.getFreeZero();
         receiverBits.set(pos);
         receiverHashs[pos] = fpHash(donorKeys[min]);
         receiverKeys[pos] = donorKeys[min];
@@ -1132,7 +1131,7 @@ class FPTree {
     const auto &node2Values = node2Ref.values.get_ro();
     for (auto i = 0u; i < M; i++) {
       if (node2Bits.test(i)) {
-        const auto pos = BitOperations::getFreeZero(node1Bits);
+        const auto pos = node1Bits.getFreeZero();
         node1Bits.set(pos);
         node1Hashs[pos] = node2Hashs[i];
         node1Keys[pos] = node2Keys[i];

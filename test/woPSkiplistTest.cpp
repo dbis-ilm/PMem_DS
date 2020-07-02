@@ -65,7 +65,7 @@ TEST_CASE("Insert and lookup key", "[woPSkiplist]") {
     auto &node = *sl.head->forward[0];
     for (auto i = 0; i < 5; ++i) {
       node.keys[i] = i;
-      node.bitset.get_rw().set(i);
+      node.bits.get_rw().set(i);
     }
     node.minKey.get_rw() = 0;
     node.maxKey.get_rw() = 4;

@@ -18,13 +18,13 @@
 #ifndef DBIS_ELEMENTOFRANKK_HPP
 #define DBIS_ELEMENTOFRANKK_HPP
 
-#include <libpmemobj++/persistent_ptr.hpp>
-
 #include <algorithm>
 #include <array>
-#include <bitset>
-#include <cstdlib> //< rand()
-#include <utility> //< pair
+#include <cstdlib>  //< rand()
+#include <libpmemobj++/persistent_ptr.hpp>
+#include <utility>  //< pair
+
+#include "utils/Bitmap.hpp"
 
 namespace dbis {
 
@@ -80,12 +80,12 @@ class ElementOfRankK {
 }; /* end class */
 
 template<typename KeyType, std::size_t M>
-std::pair<std::bitset<M>, std::size_t>
+std::pair<dbis::Bitmap<M>, std::size_t>
 findSplitKey(const KeyType * const data) {
   ///TODO: can this be accelerated?
   std::array<KeyType, M> repData;
   memcpy(repData.begin(), data, M * sizeof(KeyType));
-  std::bitset<M> b{};
+  dbis::Bitmap<M> b{};
   const auto splitKey = ElementOfRankK::elementOfRankK((M+1)/2 + 1, repData.data(), 0, M);
   std::size_t splitPos;
   for(auto i = 0u; i < M; ++i) {
@@ -123,7 +123,7 @@ static inline auto findMinKeyPos(const pptr<Node> &node) {
  */
 template<typename KeyType, std::size_t N>
 static inline auto findMinKeyPos(const std::array<KeyType, N> &keysRef,
-                              const std::bitset<N> &bitsRef) {
+                                 const dbis::Bitmap<N> &bitsRef) {
   auto pos = 0u;
   auto currMinKey = std::numeric_limits<KeyType>::max();
   for (auto i = 0u; i < N; ++i) {
@@ -157,12 +157,12 @@ static inline auto findMaxKeyPos(const pptr<Node> &node) {
  * Find the maximum key in a key array with bitmap.
  *
  * @param keysRef a reference to the node's keys to find the maximum key in
- * @param bitsRef a reference to the bitset of the node
+ * @param bitsRef a reference to the bitmap of the node
  * @return position of the maximum key
  */
 template<typename KeyType, std::size_t N>
 static inline auto findMaxKeyPos(const std::array<KeyType, N> &keysRef,
-                              const std::bitset<N> &bitsRef) {
+                                 const dbis::Bitmap<N> &bitsRef) {
   auto pos = 0u;
   auto currMaxKey = std::numeric_limits<KeyType>::min();
   for (auto i = 0u; i < N; ++i) {
@@ -177,13 +177,13 @@ static inline auto findMaxKeyPos(const std::array<KeyType, N> &keysRef,
  * Searches for the next greater key than @key in a key array with bitmap.
  *
  * @param keysRef a reference to the node's keys to find the key in
- * @param bitsRef a reference to the bitset of the node
+ * @param bitsRef a reference to the bitmap of the node
  * @param key the current minimum key
  * @return position of the next minimum key
  */
 template<std::size_t N, typename KeyType>
 static inline auto findMinKeyPosGreaterThan(const std::array<KeyType, N> &keysRef,
-                                         const std::bitset<N> &bitsRef,
+                                         const dbis::Bitmap<N> &bitsRef,
                                          const KeyType &key) {
   auto pos = 0ul;
   constexpr auto maxLmt = std::numeric_limits<KeyType>::max();
@@ -201,13 +201,13 @@ static inline auto findMinKeyPosGreaterThan(const std::array<KeyType, N> &keysRe
  * Searches for the next smaller key than @key in a key array with bitmap.
  *
  * @param keysRef a reference to the node's keys to find the key in
- * @param bitsRef a reference to the bitset of the node
+ * @param bitsRef a reference to the bitmap of the node
  * @param key the current maximum key
  * @return position of the next maximum key
  */
 template<std::size_t N, typename KeyType>
 static inline auto findMaxKeyPosSmallerThan(const std::array<KeyType, N> &keysRef,
-                                         const std::bitset<N> &bitsRef,
+                                         const dbis::Bitmap<N> &bitsRef,
                                          const KeyType &key) {
   auto pos = 0ul;
   constexpr auto minLmt = std::numeric_limits<KeyType>::min();

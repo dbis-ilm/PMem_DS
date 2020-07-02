@@ -93,7 +93,7 @@ static void BM_TreeInsert(benchmark::State &state) {
 
   const auto reqTup = MyTuple(KEYPOS, KEYPOS * 100, KEYPOS * 1.0);
   const auto pos = treeRef.lookupPositionInLeafNode(leaf, KEYPOS);
-  //const auto pos = dbis::BitOperations::getFreeZero(leaf->bits.get_ro());
+  // const auto pos = leaf->bits.get_ro().getFreeZero();
 
 #ifdef ENABLE_PCM
   SocketCounterState before_sstate;

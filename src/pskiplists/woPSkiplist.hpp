@@ -18,13 +18,12 @@
 #ifndef WOP_SKIPLIST_HPP
 #define WOP_SKIPLIST_HPP
 
+#include <libpmemobj/ctl.h>
+
 #include <algorithm> ///< std::copy
 #include <array>
-#include <bitset>
 #include <cstdlib>   ///< size_t
 #include <iostream>  ///< std:cout
-
-#include <libpmemobj/ctl.h>
 #include <libpmemobj++/container/array.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
@@ -32,7 +31,7 @@
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/utils.hpp>
 
-#include "utils/BitOperations.hpp"
+#include "utils/Bitmap.hpp"
 #include "utils/Random.hpp"
 #include "utils/SearchFunctions.hpp"
 
@@ -79,7 +78,7 @@ class woPSkiplist {
     static constexpr auto PaddingSize = (64 - (BitsetSize + ForwardSize + 2 * sizeof(KeyType) +
                                                sizeof(size_t)) % 64) % 64;
 
-    p<std::bitset<N>> bitset;         ///< a bitmap indicating empty/used slots
+    p<dbis::Bitmap<N>> bits;          ///< a bitmap indicating empty/used slots
     p<KeyType> minKey;                ///< SMA min
     p<KeyType> maxKey;                ///< SMA max
     p<size_t> nodeLevel;              ///< the height of this node
@@ -111,7 +110,7 @@ class woPSkiplist {
      * Constructor for creating a new node with an initial key and value.
      */
     explicit SkipNode(const KeyType &_key, const ValueType &_value) :
-      bitset(1), minKey(_key), maxKey(_key), nodeLevel(0), keys(_key), values(_value) {}
+      bits(1), minKey(_key), maxKey(_key), nodeLevel(0), keys(_key), values(_value) {}
 
     /**
      * Check if the node is full.
@@ -119,17 +118,17 @@ class woPSkiplist {
      * @return true if the node is full
      */
     inline bool isFull() const {
-      return bitset.get_ro().all();
+      return bits.get_ro().all();
     }
 
     /**
      * Print this node's bounds and keys.
      */
     void printNode() const {
-      std::cout << "\u001b[30;1m[" << minKey << "|" << maxKey << "](" << bitset.get_ro().count()
+      std::cout << "\u001b[30;1m[" << minKey << "|" << maxKey << "](" << bits.get_ro().count()
                 <<  "):\u001b[0m{";
       for (auto i = 0u; i < N; ++i) {
-        if (bitset.get_ro().test(i))
+        if (bits.get_ro().test(i))
           std::cout << keys[i] << ",";
       }
       std::cout << "} --> ";
@@ -221,7 +220,7 @@ class woPSkiplist {
    */
   bool searchInNode(const SkipNode * const node, const KeyType &key, ValueType &val) const {
     for (auto i = 0u; i < N; ++i) {
-      if (node->bitset.get_ro().test(i) && node->keys[i] == key) {
+      if (node->bits.get_ro().test(i) && node->keys[i] == key) {
         val = node->values[i];
         return true;
       }
@@ -249,8 +248,8 @@ class woPSkiplist {
     }
 
     /// Insert
-    auto &targetBits = targetNode->bitset.get_rw();
-    const auto slot = BitOperations::getFreeZero(targetBits);
+    auto &targetBits = targetNode->bits.get_rw();
+    const auto slot = targetBits.getFreeZero();
     targetNode->keys[slot] = key;
     targetNode->values[slot] = value;
     targetBits.set(slot);
@@ -270,10 +269,10 @@ class woPSkiplist {
     pptr<SkipNode> sibling;
     newSkipNode(sibling);
     auto sib = sibling.get();
-    auto &sibBits = sib->bitset.get_rw();
+    auto &sibBits = sib->bits.get_rw();
     auto &sibMin = sib->minKey.get_rw();
     auto &sibMax = sib->maxKey.get_rw();
-    auto &nodeBits = node->bitset.get_rw();
+    auto &nodeBits = node->bits.get_rw();
 
     /// Balance this with the new sibling node
     auto sibPos = 0u;
@@ -382,7 +381,7 @@ class woPSkiplist {
 
     /// handle duplicates
     for (auto i = 0u; i < N; ++i) {
-      if (node->bitset.get_ro().test(i) && node->keys[i] == key) {
+      if (node->bits.get_ro().test(i) && node->keys[i] == key) {
         node->values[i] = value;
         return false;
       }

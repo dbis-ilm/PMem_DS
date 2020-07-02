@@ -18,12 +18,11 @@
 #ifndef DBIS_wBPTree_hpp_
 #define DBIS_wBPTree_hpp_
 
+#include <libpmemobj/ctl.h>
+
 #include <array>
-#include <bitset>
 #include <cmath>
 #include <iostream>
-
-#include <libpmemobj/ctl.h>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
@@ -31,7 +30,7 @@
 #include <libpmemobj++/utils.hpp>
 
 #include "config.h"
-#include "utils/BitOperations.hpp"
+#include "utils/Bitmap.hpp"
 #include "utils/PersistEmulation.hpp"
 #include "utils/SearchFunctions.hpp"
 
@@ -122,12 +121,6 @@ class wHBPTree {
     };
   };
 
-  template<size_t E>
-  struct alignas(64) Search {
-    std::array<uint8_t, E+1> slot; ///< slot array for indirection, first = num
-    std::bitset<E> b;              ///< bitset for valid entries
-  };
-
   /**
    * A structure for representing a leaf node of a B+ tree.
    */
@@ -143,7 +136,7 @@ class wHBPTree {
     static constexpr auto PaddingSize = (64 - SearchSize % 64) % 64;
 
     p<std::array<uint8_t, M + 1>> slot;  ///< slot array for indirection, first = num
-    p<std::bitset<M>> bits;                 ///< bitset for valid entries
+    p<dbis::Bitmap<M>> bits;             ///< bitmap for valid entries
     pptr<LeafNode> nextLeaf;             ///< pointer to the subsequent sibling
     pptr<LeafNode> prevLeaf;             ///< pointer to the preceeding sibling
     char padding[PaddingSize];           ///< padding to align keys to 64 bytes
@@ -166,7 +159,7 @@ class wHBPTree {
     static constexpr auto PaddingSize = (64 - SearchSize % 64) % 64;
 
     std::array<uint8_t, N + 1> slot;   ///< slot array for indirection, first = num
-    std::bitset<N> bits;               ///< bitset for valid entries
+    dbis::Bitmap<N> bits;              ///< bitmap for valid entries
     char padding[PaddingSize];         ///< padding to align keys to 64 bytes
     std::array<KeyType, N> keys;       ///< the actual keys
     std::array<Node, N + 1> children;  ///< pointers to child nodes (BranchNode or LeafNode)
@@ -634,7 +627,7 @@ class wHBPTree {
     auto &nodeRef = *node;
     auto &slots = nodeRef.slot.get_rw();
     auto &bits = nodeRef.bits.get_rw();
-    const auto u = BitOperations::getFreeZero(bits);  ///< unused Entry
+    const auto u = bits.getFreeZero();  ///< unused Entry
 
     /* insert the new entry at unused position */
     nodeRef.keys.get_rw()[u] = key;
@@ -692,7 +685,7 @@ class wHBPTree {
       }
       /// Insert new key and children
       auto &hostRef = *host;
-      const auto u = BitOperations::getFreeZero(hostRef.bits);
+      const auto u = hostRef.bits.getFreeZero();
       hostRef.keys[u] = childSplitInfo.key;
       hostRef.children[u] = childSplitInfo.leftChild;
 
@@ -1051,7 +1044,7 @@ class wHBPTree {
         receiverSlots[i + toMove] = receiverSlots[i];
       /// move from donor to receiver
       for (i = balancedNum + 1; i <= donorSlots[0]; i++, ++j) {
-        const auto u = BitOperations::getFreeZero(receiverBits);
+        const auto u = receiverBits.getFreeZero();
         receiverKeys[u] = donorKeys[donorSlots[i]];
         receiverValues[u] = donorValues[donorSlots[i]];
         receiverSlots[j] = u;
@@ -1061,7 +1054,7 @@ class wHBPTree {
     } else {
       /// move to a node with smaller keys
       for (auto i = 1u; i < toMove + 1; ++i) {
-        const auto u = BitOperations::getFreeZero(receiverBits);
+        const auto u = receiverBits.getFreeZero();
         receiverKeys[u] = donorKeys[donorSlots[i]];
         receiverValues[u] = donorValues[donorSlots[i]];
         receiverSlots[receiverSlots[0] + i] = u;
@@ -1106,14 +1099,14 @@ class wHBPTree {
       }
       /// 1.2. move toMove keys/children from donor to receiver
       /// the most right child first
-      const auto u = BitOperations::getFreeZero(receiverRef.bits);
+      const auto u = receiverRef.bits.getFreeZero();
       receiverRef.keys[u] = parent->keys[parent->slot[pos]];
       receiverRef.children[u] = donorRef.children[N];
       receiverRef.slot[toMove] = u;
       receiverRef.bits.set(u);
       /// now the rest
       for (auto i = 2u; i <= toMove; ++i) {
-        const auto u2 = BitOperations::getFreeZero(receiverRef.bits);
+        const auto u2 = receiverRef.bits.getFreeZero();
         const auto dPos = donorRef.slot[balancedNum + i];
         receiverRef.keys[u2] = donorRef.keys[dPos];
         receiverRef.children[u2] = donorRef.children[dPos];
@@ -1128,7 +1121,7 @@ class wHBPTree {
     /// 2. move from one node to a node with smaller keys
     else {
       /// 2.1. copy parent key and rightmost child of receiver
-      const auto u = BitOperations::getFreeZero(receiverRef.bits);
+      const auto u = receiverRef.bits.getFreeZero();
       receiverRef.keys[u] = parent->keys[parent->slot[pos]];
       receiverRef.children[u] = receiverRef.children[N];
       receiverRef.slot[receiverRef.slot[0] + 1] = u;
@@ -1136,7 +1129,7 @@ class wHBPTree {
 
       /// 2.2. move toMove keys/children from donor to receiver
       for (auto i = 2u; i <= toMove; ++i) {
-        const auto u2 = BitOperations::getFreeZero(receiverRef.bits);
+        const auto u2 = receiverRef.bits.getFreeZero();
         const auto dPos = donorRef.slot[i - 1];
         receiverRef.keys[u2] = donorRef.keys[dPos];
         receiverRef.children[u2] = donorRef.children[dPos];
@@ -1181,7 +1174,7 @@ class wHBPTree {
 
     /// we move all keys/values from node2 to node1
     for (auto i = 1u; i < node2Slots[0] + 1; ++i) {
-      const auto u = BitOperations::getFreeZero(node1Bits);
+      const auto u = node1Bits.getFreeZero();
       node1Keys[u] = node2Keys[node2Slots[i]];
       node1Vals[u] = node2Vals[node2Slots[i]];
       node1Slots[node1Slots[0] + i] = u;
@@ -1213,7 +1206,7 @@ class wHBPTree {
     assert(sibRef.keys[sibRef.slot[sNumKeys]] < key);
 
     /// merge parent key and drag rightmost child forward
-    auto u = BitOperations::getFreeZero(sibRef.bits);
+    auto u = sibRef.bits.getFreeZero();
     sibRef.keys[u] = key;
     sibRef.children[u] = sibRef.children[N];
     sibRef.bits.set(u);
@@ -1221,7 +1214,7 @@ class wHBPTree {
 
     /// merge node
     for (auto i = 1u; i < nodeRef.slot[0] + 1; ++i) {
-      u = BitOperations::getFreeZero(sibRef.bits);
+      u = sibRef.bits.getFreeZero();
       sibRef.keys[u] = nodeRef.keys[nodeRef.slot[i]];
       sibRef.children[u] = nodeRef.children[nodeRef.slot[i]];
       sibRef.bits.set(u);
