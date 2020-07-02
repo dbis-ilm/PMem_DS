@@ -50,7 +50,7 @@ macro (do_bench path)
   add_test(
     NAME ${name}
     COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${name}"
-    --benchmark_min_time=0.01
+    --benchmark_min_time=0.0001
     )
   if (${ARGC} GREATER 1) # extra dependencies
     build_bench( ${path} ${ARGV1})
