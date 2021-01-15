@@ -238,7 +238,7 @@ class PBPTree {
    * Find the given @c key in the B+ tree and if found return the corresponding value.
    *
    * @param key the key we are looking for
-   * @param[out] val a pointer to memory where the value is stored if the key was found
+   * @param[out] val a copy of the value if the key was found
    * @return true if the key was found, false otherwise
    */
   bool lookup(const KeyType &key, ValueType *val) const {
@@ -254,6 +254,26 @@ class PBPTree {
     }
     return false;
   }
+
+  /**
+   * Find the given @c key in the B+ tree and if found return a reference to the corresponding
+   * value.
+   *
+   * @param key the key we are looking for
+   * @param[out] val a pointer to memory where the value is stored if the key was found
+   * @return true if the key was found, false otherwise
+   */
+	bool lookupRef(const KeyType &key, ValueType **val) const {
+		const auto leafNode = findLeafNode(key);
+		const auto pos = lookupPositionInLeafNode(leafNode, key);
+		auto &leafRef = *leafNode;
+		if (pos < leafRef.numKeys.get_ro() && leafRef.keys.get_ro()[pos] == key) {
+			/// we found it!
+			*val = &leafRef.values.get_rw()[pos];
+			return true;
+		}
+		return false;
+	}
 
   /**
    * Delete the entry with the given key @c key from the tree.
@@ -1100,15 +1120,15 @@ class PBPTree {
    * @return the leaf node that would store the key
    */
   pptr<LeafNode> findLeafNode(const KeyType &key) const {
-    auto node = rootNode;
+    const auto *node = &rootNode;
     auto d = depth.get_ro();
     while (d-- > 0) {
       /// as long as we aren't at the leaf level we follow the path down
-      auto n = node.branch;
+      const auto &n = node->branch;
       auto pos = lookupPositionInBranchNode(n, key);
-      node = n->children.get_ro()[pos];
+      node = &n->children.get_ro()[pos];
     }
-    return node.leaf;
+    return node->leaf;
   }
 
   /**
