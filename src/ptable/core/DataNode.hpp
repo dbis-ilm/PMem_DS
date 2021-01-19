@@ -93,7 +93,7 @@ struct DataNode {
 
   persistent_ptr<DataNode> next;
   p<BDCC_Block> block;
-  p<KeyVector> keys;
+  //p<KeyVector> keys;
   p<DeletedVector> deleted;
   //p<HistogramType> histogram;
   p<size_t> bdccSum{0};

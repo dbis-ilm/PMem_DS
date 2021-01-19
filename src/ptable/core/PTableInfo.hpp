@@ -62,6 +62,7 @@ template<typename KeyType, typename TupleType>
 class PTableInfo {
   PString name;
   persistent_ptr<PColumnVector> columns;
+  p<std::size_t> keyColumn;
 //  p<ColumnType> keyType;
  public:
 
@@ -91,14 +92,15 @@ class PTableInfo {
     }
   }
 
-  std::string tableName() const { return std::string(name.data()); }
-  ColumnType typeOfKey() const { return toColumnType<KeyType>(); }
-  const PColumnInfo &columnInfo(int pos) const { return columns->at(pos); }
-  std::size_t numColumns() const { return columns->size(); }
-  PColumnIterator begin() const { return columns->begin(); }
-  PColumnIterator end() const { return columns->end(); }
+  inline std::string tableName() const { return std::string(name.data()); }
+  inline ColumnType typeOfKey() const { return toColumnType<KeyType>(); }
+  inline std::size_t getKeyColumnIndex() const { return keyColumn.get_ro(); }
+  inline const PColumnInfo &columnInfo(int pos) const { return columns->at(pos); }
+  inline std::size_t numColumns() const { return columns->size(); }
+  inline PColumnIterator begin() const { return columns->begin(); }
+  inline PColumnIterator end() const { return columns->end(); }
 
-  void setColumns(const ColumnVector vec) {
+  void setColumns(const ColumnVector &vec) {
     auto pop = pool_by_vptr(this);
     transaction::run(pop, [&] {
       delete_persistent<PColumnVector>(columns);
@@ -108,9 +110,10 @@ class PTableInfo {
     });
   }
 
-  int findColumnByName(const std::string &colName) const {
-    for (std::size_t i = 0; i < (*columns).size(); i++) {
-      if (columns->at(i).getName() == colName) return (int) i;
+  inline int findColumnByName(const std::string &colName) const {
+    const auto &cols = *columns;
+    for (int i = 0; i < cols.size(); ++i) {
+      if (cols[i].getName() == colName) return i;
     }
     return -1;
   }

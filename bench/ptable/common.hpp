@@ -44,15 +44,15 @@ struct root {
   persistent_ptr<PTableType> pTable;
 };
 
-const std::string path = dbis::gPmemPath + "benchdb.db";
-const auto NUM_TUPLES = 1000 * 10;
-const auto POOL_SIZE = 1024 * 1024 * 256; // * 4ull; // 1GB
+const std::string path = dbis::gPmemPath + "benchdb" + std::to_string(dbis::ptable::gBlockSize) + "B.db";
+const auto NUM_TUPLES = 1000 * 1000;
+const auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull; // 4GB
 
 const auto ALIGNMENT = hibit_pos(NUM_TUPLES) + 1;
 VectorVector pv;
 const auto POINT_ACCESS = *createPointVector<NUM_TUPLES>(&pv);
 
-const VectorVector KEY_RANGES = {
+/*const VectorVector KEY_RANGES = {
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 2000, NUM_TUPLES / 2 + NUM_TUPLES / 2000}, //  0,1%
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 400, NUM_TUPLES / 2 + NUM_TUPLES / 400},   //  0,5%
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 200, NUM_TUPLES / 2 + NUM_TUPLES / 200},   //  1,0%
@@ -60,9 +60,21 @@ const VectorVector KEY_RANGES = {
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 20, NUM_TUPLES / 2 + NUM_TUPLES / 20},     // 10,0%
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 10, NUM_TUPLES / 2 + NUM_TUPLES / 10},     // 20,0%
   Vector{0, NUM_TUPLES-1}                                                         //100,0%
-};
+};*/
 
-const VectorVector NON_KEY_RANGES = {
+/// Format: (window size, max value)
+const VectorVector KEY_RANGES = {
+  Vector{NUM_TUPLES / 1000, NUM_TUPLES - NUM_TUPLES / 1000}, //  0,1%
+  Vector{NUM_TUPLES /  500, NUM_TUPLES - NUM_TUPLES /  500}, //  0,2%
+  Vector{NUM_TUPLES /  200, NUM_TUPLES - NUM_TUPLES /  200}, //  0,5%
+  Vector{NUM_TUPLES /  100, NUM_TUPLES - NUM_TUPLES /  100}, //  1,0%
+  Vector{NUM_TUPLES /   50, NUM_TUPLES - NUM_TUPLES /   50}, //  2,0%
+  Vector{NUM_TUPLES /   20, NUM_TUPLES - NUM_TUPLES /   20}, //  5,0%
+  Vector{NUM_TUPLES /   10, NUM_TUPLES - NUM_TUPLES /   10}, // 10,0%
+  Vector{NUM_TUPLES /    5, NUM_TUPLES - NUM_TUPLES /    5}, // 20,0%
+  Vector{NUM_TUPLES       , 1}};                             //100,0%
+
+/*const VectorVector NON_KEY_RANGES = {
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 1000, NUM_TUPLES / 2 + NUM_TUPLES / 1000,
          NUM_TUPLES / 2, NUM_TUPLES / 2 + NUM_TUPLES / 500},                      //  0,1%
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 200, NUM_TUPLES / 2 + NUM_TUPLES / 200,
@@ -76,8 +88,24 @@ const VectorVector NON_KEY_RANGES = {
   Vector{NUM_TUPLES / 2 - NUM_TUPLES / 5, NUM_TUPLES / 2 + NUM_TUPLES / 5,
          NUM_TUPLES / 2, NUM_TUPLES / 2 + NUM_TUPLES * 2 / 5 },                   // 20,0%
   Vector{0, NUM_TUPLES - 1, 0, NUM_TUPLES - 1}                                    //100,0%
-};
+};*/
 
+/// Format: (window size, max of second attribute)
+const VectorVector NON_KEY_RANGES = {
+  Vector{NUM_TUPLES / 1000, NUM_TUPLES - NUM_TUPLES / 500},  //  0,1%
+  Vector{NUM_TUPLES /  500, NUM_TUPLES - NUM_TUPLES / 250},  //  0,2%
+  //Vector{NUM_TUPLES * 45/  10000, NUM_TUPLES - NUM_TUPLES*45 / 500},  //  0,45%
+  //Vector{NUM_TUPLES /  250, NUM_TUPLES - NUM_TUPLES / 125},  //  0,4%
+  //Vector{NUM_TUPLES*3 /  500, NUM_TUPLES - NUM_TUPLES*3 / 250},  //  0,6%
+  //Vector{NUM_TUPLES /  125, NUM_TUPLES - NUM_TUPLES*2 / 125}  //  0,8%
+  Vector{NUM_TUPLES /  200, NUM_TUPLES - NUM_TUPLES / 100},  //  0,5%
+  Vector{NUM_TUPLES /  100, NUM_TUPLES - NUM_TUPLES /  50},  //  1,0%
+  Vector{NUM_TUPLES /   50, NUM_TUPLES - NUM_TUPLES /  25},  //  2,0%
+  Vector{NUM_TUPLES /   20, NUM_TUPLES - NUM_TUPLES /  10},  //  5,0%
+  Vector{NUM_TUPLES /   10, NUM_TUPLES - NUM_TUPLES /   5},  // 10,0%
+  Vector{NUM_TUPLES /    5, NUM_TUPLES - NUM_TUPLES * 2 / 5},// 20,0%
+  Vector{NUM_TUPLES       , 1}                              //100,0%
+};
 int hibit_pos(int n) noexcept {
   int c = 0;
   while (n>>1 != 0) {
@@ -102,15 +130,16 @@ void insert (pool<root> &pop, const std::string &path, size_t entries) {
   std::vector<typename std::chrono::duration<int64_t, std::micro>::rep> measures;
 
   pop = pool<root>::create(path, LAYOUT, POOL_SIZE);
-  const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>(
-      "heap.alloc_class.128.desc", PTableType::IndexType::AllocClass);
+  /// Only if index is persistent version
+  //const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>(
+  //    "heap.alloc_class.128.desc", PTableType::IndexType::AllocClass);
   transaction::run(pop, [&] {
     const auto tInfo = VTableInfo<MyKey, MyTuple>("MyTable", {"a","b","c","d"});
     const auto dims = Dimensions({
                                    {0, 10, ALIGNMENT},
                                    {3, 10, ALIGNMENT}
                                  });
-    pop.root()->pTable = make_persistent<PTableType>(alloc_class, tInfo, dims);
+    pop.root()->pTable = make_persistent<PTableType>(/*alloc_class,*/ tInfo, dims);
   });
 
   auto &pTable = pop.root()->pTable;
@@ -130,6 +159,7 @@ void insert (pool<root> &pop, const std::string &path, size_t entries) {
     auto diff = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     measures.push_back(diff);
   }
+  std::cout << std::endl;
 
   const auto avg = std::accumulate(measures.begin(), measures.end(), 0) / measures.size();
   const auto minmax = std::minmax_element(std::begin(measures), std::end(measures));

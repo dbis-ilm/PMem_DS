@@ -30,12 +30,15 @@
 #include "core/utils.hpp"
 #include "core/VTableInfo.hpp"
 #include "pbptrees/PBPTree.hpp"
+#include "pbptrees/BPTree.hpp"
 
 namespace dbis::ptable {
 
 constexpr auto LAYOUT = "PTable";
 
 constexpr auto TARGET_INDEX_NODE_SIZE =  1 * 1024; // 1KB
+constexpr auto TARGET_BRANCH_SIZE = 4096;
+constexpr auto TARGET_LEAF_SIZE = 4096;
 
 /** Abort reason codes: */
 const auto NOT_ENOUGH_SPACE = 1;
@@ -57,9 +60,11 @@ class PTable;
 template<typename KeyType, class... Types>
 class PTable<KeyType, std::tuple<Types...>> {
   using Tuple = std::tuple<Types...>;
-  static constexpr auto BRANCHKEYS = ((TARGET_INDEX_NODE_SIZE - 28) / (sizeof(KeyType) + 24)) & ~1;
-  static constexpr auto LEAFKEYS = ((TARGET_INDEX_NODE_SIZE - 36) /
-    (sizeof(KeyType) + sizeof(PTuple<KeyType, Tuple>)));
+  //static constexpr auto BRANCHKEYS = ((TARGET_INDEX_NODE_SIZE - 28) / (sizeof(KeyType) + 24)) & ~1;
+  //static constexpr auto LEAFKEYS = ((TARGET_INDEX_NODE_SIZE - 36) /
+  //  (sizeof(KeyType) + sizeof(PTuple<KeyType, Tuple>)));
+  static const auto BRANCHKEYS = ((TARGET_BRANCH_SIZE - 16) / (sizeof(int) + 8)) & ~1;
+  static const auto LEAFKEYS = ((TARGET_LEAF_SIZE - 24) / (sizeof(int) + sizeof(PTuple<KeyType,Tuple>)));
 
   using VTableInfoType = VTableInfo<KeyType, Tuple>;
   using PTableInfoType = PTableInfo<KeyType, Tuple>;
@@ -96,6 +101,7 @@ class PTable<KeyType, std::tuple<Types...>> {
       currentNode(candidates.cbegin()),
       currentCnt(candidates.size() > 0 ?
                  reinterpret_cast<const uint32_t &>((*currentNode)->block.get_ro()[gCountPos]) : 0) {
+      //std::cout << "Candidates: " << candidates.size() << std::endl;
       if (candidates.size() > 0) ++(*this);
       else currentPos = 1; // --> setting to end()
     }
@@ -198,7 +204,8 @@ class PTable<KeyType, std::tuple<Types...>> {
   };
 
  public:
-  using IndexType = pbptrees::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
+  //using IndexType = pbptrees::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
+  using IndexType = pbptrees::BPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
 
   /************************************************************************//**
    * \brief Public Iterator to iterate over all inserted tuples using the index.
@@ -295,6 +302,15 @@ class PTable<KeyType, std::tuple<Types...>> {
   explicit PTable(struct pobj_alloc_class_desc _alloc, const VTableInfoType &tInfo,
                   const Dimensions &_bdccInfo = Dimensions())
       : index_alloc_class(_alloc) {
+    auto pop = pool_by_vptr(this);
+    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+      transaction::run(pop, [&] { init(tInfo, _bdccInfo); });
+    } else {
+      init(tInfo, _bdccInfo);
+    }
+  }
+  explicit PTable(const VTableInfoType &tInfo,
+                  const Dimensions &_bdccInfo = Dimensions()) {
     auto pop = pool_by_vptr(this);
     if (pmemobj_tx_stage() == TX_STAGE_NONE) {
       transaction::run(pop, [&] { init(tInfo, _bdccInfo); });
@@ -533,7 +549,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     const auto colCnt = tInfo.numColumns();
 
     do {
-      auto b = currentNode->block.get_ro();
+      auto &b = currentNode->block.get_ro();
 
       const auto &key1 = reinterpret_cast<const uint32_t &>(b[gBDCCRangePos1]);
       const auto &key2 = reinterpret_cast<const uint32_t &>(b[gBDCCRangePos2]);
@@ -696,11 +712,12 @@ class PTable<KeyType, std::tuple<Types...>> {
    * \param[in] _bdccInfo
    *   a mapping of column ids to number of BDCC bits to use
    ***************************************************************************/
-  void init(const std::string &_tName, const StringInitList &_columns, const Dimensions &_bdccInfo) {
+  void init(const std::string &_tName, const StringInitList &_columns, const std::size_t _keyIndex,
+            const Dimensions &_bdccInfo) {
     this->root = make_persistent<struct root>();
-    this->root->tInfo.get_rw() = make_persistent<PTableInfoType>(_tName, _columns);
+    this->root->tInfo.get_rw() = make_persistent<PTableInfoType>(_tName, _columns, _keyIndex);
     this->root->bdccInfo = make_persistent<BDCCInfo>(_bdccInfo);
-    this->root->index = make_persistent<IndexType>(index_alloc_class);
+    this->root->index = make_persistent<IndexType>(/*index_alloc_class*/);
     this->root->dataNodes = make_persistent<DataNode<KeyType>>();
     this->root->dataNodes->block.get_rw() = initBlock(0, ((1L << this->root->bdccInfo->numBins()) - 1));
   }
@@ -717,7 +734,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     this->root = make_persistent<struct root>();
     this->root->tInfo = make_persistent<PTableInfoType>(_tInfo);
     this->root->bdccInfo = make_persistent<BDCCInfo>(_bdccInfo);
-    this->root->index = make_persistent<IndexType>(index_alloc_class);
+    this->root->index = make_persistent<IndexType>(/*index_alloc_class*/);
     this->root->dataNodes = make_persistent<struct DataNode<KeyType>>();
     this->root->dataNodes->block.get_rw() = initBlock(0, ((1L << this->root->bdccInfo->numBins()) - 1));
   }
@@ -927,7 +944,7 @@ class PTable<KeyType, std::tuple<Types...>> {
         /* Insert into index structure */
         root->index->insert(key, PTuple<KeyType, Tuple>(targetNode, pTupleOffsets));
         /* Add key to KeyVector */
-        targetNode->keys.get_rw()[cnt - 1] = key;
+        //targetNode->keys.get_rw()[cnt - 1] = key;
         /* Update histogram */
         const auto xtr = static_cast<uint32_t>(getBDCCFromTuple(tp).to_ulong());
         targetNode->bdccSum += xtr;
@@ -937,11 +954,11 @@ class PTable<KeyType, std::tuple<Types...>> {
     }; ///< end insertFun
 
     /// Check if we are already in a transaction; if not, we need to start a new transaction
-    if (pmemobj_tx_stage() == TX_STAGE_NONE) {
-      transaction::run(pop, [&] { insertFun(); });
-    } else {
+    //if (pmemobj_tx_stage() == TX_STAGE_NONE) {
+    //  transaction::run(pop, [&] { insertFun(); });
+    //} else {
       insertFun();
-    }
+    //}
     return 1;
   }
 
@@ -961,8 +978,10 @@ class PTable<KeyType, std::tuple<Types...>> {
     DataNodePtr newNode2;
 
     /* Create two new blocks */
-    newNode1 = make_persistent<struct DataNode<KeyType>>();
-    newNode2 = make_persistent<struct DataNode<KeyType>>();
+    transaction::run(pop, [&] {
+      newNode1 = make_persistent<struct DataNode<KeyType>>();
+      newNode2 = make_persistent<struct DataNode<KeyType>>();
+    });
     auto &block1Ref = newNode1->block.get_rw();
     auto &block2Ref = newNode2->block.get_rw();
     block1Ref = initBlock(bdccMin, splitValue);
@@ -978,18 +997,14 @@ class PTable<KeyType, std::tuple<Types...>> {
       if (std::find(deleted.begin(), deleted.end(), tuplePos) != deleted.end())
         continue;
 
+      /// Set all attribute offsets
       std::array<uint16_t, PTuple<KeyType, Tuple>::NUM_ATTRIBUTES> pTupleOffsets;
-      const auto &key = oldNode->keys.get_ro()[tuplePos];
-
-      /*
-      auto setPTupleOffsets = [&](auto element, std::size_t idx) {
-        pTupleOffsets[idx] = ColumnAttributes<toColumnType<decltype(element)>()>::dataOffsetPos(
-          block0, gDataOffsetPos + idx * gAttrOffsetSize, tuplePos
-        );
-      };
-      forEachTypeInTuple<decltype(setPTupleOffsets), Types...>(setPTupleOffsets);
-      */
-
+      //auto setPTupleOffsets = [&](auto element, std::size_t idx) {
+      //  pTupleOffsets[idx] = ColumnAttributes<toColumnType<decltype(element)>()>::dataOffsetPos(
+      //    block0, gDataOffsetPos + idx * gAttrOffsetSize, tuplePos
+      //  );
+      //};
+      //forEachTypeInTuple<decltype(setPTupleOffsets), Types...>(setPTupleOffsets);
       auto attributeIdx = 0u;
       for (auto &c : tInfo) {
         const auto &dataPos =
@@ -1014,6 +1029,24 @@ class PTable<KeyType, std::tuple<Types...>> {
       } /* end of attribute loop */
 
       const auto oldPTuple = PTuple<KeyType, Tuple>(oldNode, pTupleOffsets);
+
+      /// Extract the key
+      //const auto &key = oldNode->keys.get_ro()[tuplePos];
+      const auto &keyColumn = reinterpret_cast<const uint16_t &>(block0[gDataOffsetPos + tInfo.getKeyColumnIndex() * gAttrOffsetSize]);
+      uint16_t keyPos;
+      switch (tInfo.typeOfKey()) {
+        case ColumnType::IntType:
+          keyPos = keyColumn + tuplePos * sizeof(int);
+          break;
+        case ColumnType::DoubleType:
+          keyPos = keyColumn + tuplePos * sizeof(double);
+          break;
+        case ColumnType::StringType:
+          keyPos = reinterpret_cast<const uint16_t &>(block0[keyColumn + tuplePos * gOffsetSize]);
+          break;
+        default:throw PTableException("unsupported column type\n");
+      }
+      const auto &key = reinterpret_cast<const uint16_t &>(block0[keyPos]);
 
       /* Insert into correct new Block depending on BDCC value */
       root->index->erase(key);

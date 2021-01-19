@@ -16,6 +16,7 @@
  */
 
 #include <unistd.h>
+#include <random>
 
 #include "benchmark/benchmark.h"
 #include "fmt/format.h"
@@ -28,6 +29,8 @@ static void BM_PointQuery(benchmark::State& state) {
   pool<root> pop;
 
   const std::string path = dbis::gPmemPath + "benchdb" + std::to_string(state.range(0)) + ".db";
+  std::mt19937 gen(std::random_device{}());
+  std::uniform_int_distribution<> dis(1, state.range(0));
 
   // std::remove(path.c_str());
   if (access(path.c_str(), F_OK) != 0) {
@@ -40,11 +43,12 @@ static void BM_PointQuery(benchmark::State& state) {
   auto& pTable = *pop.root()->pTable;
 
   for (auto _ : state) {
-    auto ptp = pTable.getByKey(state.range(1));
-    if (ptp.getNode() != nullptr)
-      ptp;  // ptp.createTuple();
-    else
-      std::cerr << "key not found" << '\n';
+    //auto ptp = pTable.getByKey(state.range(1));
+    auto ptp = pTable.getByKey(dis(gen));
+    if (ptp.getNode() != nullptr) {
+      ptp.createTuple();
+      //benchmark::DoNotOptimize(ptp);
+    } else std::cerr << "key not found" << '\n';
   }
 
   transaction::run(pop, [&] { delete_persistent<PTableType>(pop.root()->pTable); });
