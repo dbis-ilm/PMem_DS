@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017-2021 DBIS Group - TU Ilmenau, All Rights Reserved.
+ *
+ * This file is part of our PMem-based Data Structures repository.
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #ifndef BPTree_hpp_
 #define BPTree_hpp_
 
@@ -18,14 +35,6 @@
 #endif
 
 namespace dbis::pbptrees {
-/**
- * An in-memory implementation of a B+ tree.
- *
- * @tparam KeyType the data type of the key
- * @tparam ValueType the data type of the values associated with the key
- * @tparam N the maximum number of keys on a branch node
- * @tparam M the maximum number of keys on a leaf node
- */
 template <typename KeyType, typename ValueType, int N, int M, int NODE_ALIGNMENT = 64>
 class BPTree {
   // we need at least two keys on a branch node to be able to split
