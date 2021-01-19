@@ -40,6 +40,7 @@ TEST_CASE("Storing tuples in PTable", "[PTable]") {
 
   if (access(path.c_str(), F_OK) != 0) {
     pop = pool<root>::create(path, LAYOUT, 16 * 1024 * 1024);
+    /// Only needed for persistent index
     const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>(
         "heap.alloc_class.128.desc", PTableType::IndexType::AllocClass);
     transaction::run(pop, [&] {

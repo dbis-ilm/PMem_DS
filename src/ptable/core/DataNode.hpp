@@ -80,7 +80,6 @@ using BDCC_Block = typename std::array<uint8_t, gBlockSize>;
 template<typename KeyType>
 struct DataNode {
   using DeletedVector = std::vector<uint16_t, allocator<uint16_t>>;
-  using KeyVector = std::array<KeyType, 8192>;
   /*
   using HistogramType = std::unordered_map<uint32_t,
                                           std::size_t,
@@ -93,7 +92,6 @@ struct DataNode {
 
   persistent_ptr<DataNode> next;
   p<BDCC_Block> block;
-  //p<KeyVector> keys;
   p<DeletedVector> deleted;
   //p<HistogramType> histogram;
   p<size_t> bdccSum{0};

@@ -204,8 +204,8 @@ class PTable<KeyType, std::tuple<Types...>> {
   };
 
  public:
-  //using IndexType = pbptrees::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
-  using IndexType = pbptrees::BPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
+  using IndexType = pbptrees::PBPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
+  //using IndexType = pbptrees::BPTree<KeyType, PTuple<KeyType, Tuple>, BRANCHKEYS, LEAFKEYS>;
 
   /************************************************************************//**
    * \brief Public Iterator to iterate over all inserted tuples using the index.
@@ -717,7 +717,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     this->root = make_persistent<struct root>();
     this->root->tInfo.get_rw() = make_persistent<PTableInfoType>(_tName, _columns, _keyIndex);
     this->root->bdccInfo = make_persistent<BDCCInfo>(_bdccInfo);
-    this->root->index = make_persistent<IndexType>(/*index_alloc_class*/);
+    this->root->index = make_persistent<IndexType>(index_alloc_class);
     this->root->dataNodes = make_persistent<DataNode<KeyType>>();
     this->root->dataNodes->block.get_rw() = initBlock(0, ((1L << this->root->bdccInfo->numBins()) - 1));
   }
@@ -734,7 +734,7 @@ class PTable<KeyType, std::tuple<Types...>> {
     this->root = make_persistent<struct root>();
     this->root->tInfo = make_persistent<PTableInfoType>(_tInfo);
     this->root->bdccInfo = make_persistent<BDCCInfo>(_bdccInfo);
-    this->root->index = make_persistent<IndexType>(/*index_alloc_class*/);
+    this->root->index = make_persistent<IndexType>(index_alloc_class);
     this->root->dataNodes = make_persistent<struct DataNode<KeyType>>();
     this->root->dataNodes->block.get_rw() = initBlock(0, ((1L << this->root->bdccInfo->numBins()) - 1));
   }

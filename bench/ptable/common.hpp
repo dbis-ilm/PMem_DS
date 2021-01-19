@@ -45,7 +45,7 @@ struct root {
 };
 
 const std::string path = dbis::gPmemPath + "benchdb" + std::to_string(dbis::ptable::gBlockSize) + "B.db";
-const auto NUM_TUPLES = 1000 * 1000;
+const auto NUM_TUPLES = 1000 * 10;
 const auto POOL_SIZE = 1024 * 1024 * 1024 * 4ull; // 4GB
 
 const auto ALIGNMENT = hibit_pos(NUM_TUPLES) + 1;
@@ -131,15 +131,15 @@ void insert (pool<root> &pop, const std::string &path, size_t entries) {
 
   pop = pool<root>::create(path, LAYOUT, POOL_SIZE);
   /// Only if index is persistent version
-  //const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>(
-  //    "heap.alloc_class.128.desc", PTableType::IndexType::AllocClass);
+  const auto alloc_class = pop.ctl_set<struct pobj_alloc_class_desc>(
+      "heap.alloc_class.128.desc", PTableType::IndexType::AllocClass);
   transaction::run(pop, [&] {
     const auto tInfo = VTableInfo<MyKey, MyTuple>("MyTable", {"a","b","c","d"});
     const auto dims = Dimensions({
                                    {0, 10, ALIGNMENT},
                                    {3, 10, ALIGNMENT}
                                  });
-    pop.root()->pTable = make_persistent<PTableType>(/*alloc_class,*/ tInfo, dims);
+    pop.root()->pTable = make_persistent<PTableType>(alloc_class, tInfo, dims);
   });
 
   auto &pTable = pop.root()->pTable;

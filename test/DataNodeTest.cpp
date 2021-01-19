@@ -51,16 +51,13 @@ TEST_CASE("Testing to create a new BDCCInfo instance", "[BDCCInfo]") {
   transaction::run(pop, [&] {
     for (auto i = 0u; i < 10; ++i) {
       node->bdccSum += (i % 2) + 5;
-      node->keys.get_rw()[i] = i;
       node->block.get_rw()[i] = 0xFF;
     }
     reinterpret_cast<uint16_t &>(node->block.get_rw()[gCountPos]) = 10;
   });
 
-  REQUIRE(node->keys.get_ro().size() == 8 * 1024);
   REQUIRE(node->calcAverageBDCC() == 5);  /* 5.5 */
   for (auto i = 0u; i < 10; ++i) {
-    REQUIRE(node->keys.get_ro()[i] == i);
     if (i != gCountPos && i != gCountPos + 1)
       REQUIRE(node->block.get_ro()[i] == 0xFF);
   }
