@@ -186,7 +186,7 @@ class PBPTree {
   /**
    * Constructor for creating a new B+ tree.
    */
-  explicit PBPTree(struct pobj_alloc_class_desc _alloc) : depth(0), alloc_class(_alloc) {
+  explicit PBPTree(struct pobj_alloc_class_desc _alloc) : alloc_class(_alloc), depth(0) {
   //PBPTree() : depth(0) {
     rootNode = newLeafNode();
     LOG("created new tree with sizeof(BranchNode) = " << sizeof(BranchNode) <<
